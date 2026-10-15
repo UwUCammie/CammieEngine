@@ -105,10 +105,11 @@ class NightmareVisionPaths {
  public var root:String;
  public static var lastKey:String='';
  public static var lastOwnerCheck:Bool=true;
+ public static var lastLibrary:String=null;
  public static var atlasCalls:Array<String>=[];
  public function new(root:String) this.root=root;
  public function getTextureAtlas(key:String,?parentFolder:String,allowGPU:Bool=true,checkMods:Bool=true):FlxAtlasFrames {
-  lastKey=key; lastOwnerCheck=checkMods; atlasCalls.push(key); return new FlxAtlasFrames(key);
+  lastKey=key; lastOwnerCheck=checkMods; lastLibrary=parentFolder; atlasCalls.push(key); return new FlxAtlasFrames(key);
  }
 }
 class FakeAnimation {
@@ -237,6 +238,13 @@ class Main {
   check(NightmareVisionPaths.atlasCalls.join('|')=='characters/Boy|characters/Stomp',
    'every component is loaded through the selected owner Paths facade');
   check(multiActor.animation.exists('stomp'),'multi-atlas character animation registration');
+  // The core shared library holds Nightmare Vision's own base cast.
+  var sharedActor=new Character();
+  check(sharedActor.loadNightmareVisionCharacterVisual({animations:[{anim:'idle',name:'BF idle dance',indices:[],fps:24}]},
+   ownerRoot+'/__nmv_core/shared/images/characters/BOYFRIEND',ownerRoot),'core shared library visual initialization');
+  check(NightmareVisionPaths.lastKey=='characters/BOYFRIEND' && NightmareVisionPaths.lastLibrary=='shared'
+   && !NightmareVisionPaths.lastOwnerCheck,'a core shared atlas loads through the shared library of the core');
+  check(sharedActor.animation.exists('idle'),'core shared animation registration');
   Sys.println('nightmare-vision-character-runtime-ok');
  }
 }
@@ -260,6 +268,10 @@ class Main {
                 atlas = owner / 'images/characters' / name
                 Path(str(atlas) + '.png').write_text('', newline='\n')
                 Path(str(atlas) + '.xml').write_text('<TextureAtlas/>', newline='\n')
+            shared = owner / '__nmv_core/shared/images/characters/BOYFRIEND'
+            shared.parent.mkdir(parents=True)
+            Path(str(shared) + '.png').write_text('', newline='\n')
+            Path(str(shared) + '.xml').write_text('<TextureAtlas/>', newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, '-cp', str(work), '--run', 'Main',
                  owner_arg + '/images/characters/Dusk', owner_arg + '/images/characters/Sparrow',

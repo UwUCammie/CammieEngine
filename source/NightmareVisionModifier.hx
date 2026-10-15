@@ -8,7 +8,7 @@ enum abstract ModifierType(String) from String to String { var NOTE_MOD = "NOTE_
 enum abstract ModifierOrder(Int) from Int to Int { var FIRST = -1000; var PRE_REVERSE = -3; var REVERSE = -2; var POST_REVERSE = -1; var DEFAULT = 0; var LAST = 1000; }
 
 @:keep
-class NightmareVisionModifier
+class NightmareVisionModifier implements nightmarevision.modchart.NightmareVisionModifierCalls
 {
 	public var modMgr:NightmareVisionModManager;
 	public var percents:Array<Float> = [0, 0];
@@ -56,7 +56,7 @@ class NightmareVisionModifier
 		else return 0;
 	}
 
-	public function getSubmodValue(modName:String, player:Int)
+	public function getSubmodValue(modName:String, player:Int):Float
 	{
 		if (submods.exists(modName)) return submods.get(modName).getValue(player);
 		else return 0;
@@ -90,7 +90,17 @@ class NightmareVisionModifier
 
 	public function updateSustainSplash(beat:Float, splash:Dynamic, pos:NightmareVisionModchartVector, player:Int) {}
 
-	public function getPos(time:Float, diff:Float, tDiff:Float, beat:Float, pos:NightmareVisionModchartVector, data:Int, player:Int, obj:Dynamic) return pos;
+	public function getPos(time:Float, diff:Float, tDiff:Float, beat:Float, pos:NightmareVisionModchartVector, data:Int, player:Int, obj:Dynamic):NightmareVisionModchartVector return pos;
+
+	/** The per-kind update a renderer pass asks for, as one typed call (see NightmareVisionModifierCalls). */
+	public function updateObjectOfKind(beat:Float, obj:Dynamic, pos:NightmareVisionModchartVector, player:Int, kind:String):Void {
+		switch (kind) {
+			case 'note': updateNote(beat, obj, pos, player);
+			case 'receptor': updateReceptor(beat, obj, pos, player);
+			case 'noteSplash': updateNoteSplash(beat, obj, pos, player);
+			case 'sustainSplash': updateSustainSplash(beat, obj, pos, player);
+		}
+	}
 
 	public function update(elapsed:Float) {}
 

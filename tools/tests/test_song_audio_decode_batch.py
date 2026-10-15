@@ -112,7 +112,9 @@ class TestSongAudioDecodeBatch {
         self.assertIn("prefetchedSound == null ? FNFAssets.getSound(path) : prefetchedSound", loader)
         initializer = play_state.split("private function initializeVocalTracks(", 1)[1].split(
             "private function syncVocalTrackState(", 1)[0]
-        self.assertIn("if (splitPaths.length == 2 && ImportIO.current() == null)", initializer)
+        # A retry that already holds both decoded stems skips the worker decode.
+        self.assertIn("if (splitPaths.length == 2 && ImportIO.current() == null\n"
+            "\t\t\t\t&& !SongRetry.hasCarriedTrack(splitPaths[0].path, songTrackVariant())) {", initializer)
         self.assertIn("FNFAssets.resolveCaseInsensitivePath(entry.path)", initializer)
         self.assertIn("FileSystem.exists(absolutePath)", initializer)
         self.assertIn("FileSystem.isDirectory(absolutePath)", initializer)

@@ -132,6 +132,9 @@ class ExistsCacheFixture {
         self.assertIn("directoryEntries == null ? resolveProbedDiskPath(id) : resolveDiskPath(id, directoryEntries)", exists)
         for marker in ("public static function saveContent(", "public static function saveBytes("):
             self.assertIn("invalidatePathCache();", extract_method(source, marker))
+        # Owner lookups probe several folders per asset; they share the miss cache.
+        resolver = extract_method(source, "public static function resolveCaseInsensitivePath(")
+        self.assertIn("var diskPath = resolveProbedDiskPath(id);", resolver)
         # The plain resolver keeps answering fresh for readers that need it.
         self.assertNotIn("pathMisses", extract_method(source, "static function resolveDiskPath("))
 

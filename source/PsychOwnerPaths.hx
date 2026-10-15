@@ -406,9 +406,17 @@ class PsychOwnerPaths {
 		return Reflect.callMethod(facade, read, []);
 	}
 
+	/** Psych's Paths.image traces and returns null for an image it cannot load,
+		and scripts depend on that: `new FlxSprite().loadGraphic(Paths.image(''))`
+		followed by makeGraphic is a common way to make a solid backdrop. Throwing
+		stopped the rest of the callback, so whatever it set up next never existed.
+		An unsafe key is refused the same way: nothing is read for it either. */
 	static function image(owner:String, key:String, library:String, currentLevel:String):FlxGraphic {
 		var clean = PsychOwnerAssetPath.cleanId(key);
-		if (clean == null) throw '[psych-assets] Refused unsafe Psych image key: ' + Std.string(key);
+		if (clean == null) {
+			trace('[psych-assets] Paths.image returned null for an empty or unsafe key: ' + Std.string(key));
+			return null;
+		}
 		var path = ownerAsset(owner, 'images/' + clean + '.png', library, currentLevel);
 		if (path == null) {
 			// Psych stages commonly reuse the engine's stock stageback/front assets.
@@ -428,8 +436,10 @@ class PsychOwnerPaths {
 					path = candidate;
 					break;
 				}
-			if (path == null)
-				throw '[psych-assets] Image is unavailable in selected owner and base shared assets: ' + clean;
+			if (path == null) {
+				trace('[psych-assets] Paths.image returned null; the image is unavailable in the selected owner and base shared assets: ' + clean);
+				return null;
+			}
 		}
 		return graphic(path);
 	}
@@ -484,13 +494,20 @@ class PsychOwnerPaths {
 		if (clean == null) throw '[psych-assets] Refused unsafe Psych atlas key: ' + Std.string(key);
 		var imagePath = ownerAsset(owner, 'images/' + clean + '.png', library, currentLevel);
 		var sparrow = ownerAsset(owner, 'images/' + clean + '.xml', library, currentLevel);
+		// Psych stops at the Sparrow file too. The other two lookups are misses
+		// for almost every atlas, and a miss walks the owner's folders on disk.
+		// The XML goes in by path so a repeat load is a cache hit without reading it.
+		if (sparrow != null) {
+			if (imagePath == null)
+				throw '[psych-assets] Incomplete selected-owner atlas: ' + clean;
+			return DynamicAtlasFrames.fromSparrow(imagePath, sparrow);
+		}
 		var aseprite = ownerAsset(owner, 'images/' + clean + '.json', library, currentLevel);
 		var packer = ownerAsset(owner, 'images/' + clean + '.txt', library, currentLevel);
-		var hasOwnerMetadata = sparrow != null || aseprite != null || packer != null;
+		var hasOwnerMetadata = aseprite != null || packer != null;
 		if (hasOwnerMetadata) {
 			if (imagePath == null)
 				throw '[psych-assets] Incomplete selected-owner atlas: ' + clean;
-			if (sparrow != null) return DynamicAtlasFrames.fromSparrow(imagePath, FNFAssets.getText(sparrow));
 			if (aseprite != null) return DynamicAtlasFrames.fromTexturePackerJson(imagePath, FNFAssets.getText(aseprite));
 			return DynamicAtlasFrames.fromSpriteSheetPacker(imagePath, FNFAssets.getText(packer));
 		}

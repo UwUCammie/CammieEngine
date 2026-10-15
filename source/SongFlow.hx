@@ -66,6 +66,22 @@ class SongFlow {
 		return {song: song, chart: chartName(song, index, names, defaultDifficulty), difficulty: index};
 	}
 
+	/**
+		True when a load target is the chart being played: same song (as the
+		caller spelled it, ignoring case), same difficulty and the chart file
+		that difficulty uses. Loading it again is a retry of the song.
+	**/
+	public static function sameChart(target:Null<SongLoadTarget>, currentSong:Null<String>, currentDifficulty:Int,
+			difficultyNames:Array<String>, defaultDifficulty:Int):Bool {
+		if (target == null || currentSong == null)
+			return false;
+		var song = StringTools.trim(currentSong);
+		if (song == '' || target.song.toLowerCase() != song.toLowerCase() || target.difficulty != currentDifficulty)
+			return false;
+		var names = difficultyNames == null ? [] : difficultyNames;
+		return target.chart == chartName(song, currentDifficulty, names, defaultDifficulty);
+	}
+
 	/** The default difficulty is the plain `<song>.json`, the rest add `-<name>`. */
 	public static function chartName(song:String, difficulty:Int, difficultyNames:Array<String>,
 			defaultDifficulty:Int):String {

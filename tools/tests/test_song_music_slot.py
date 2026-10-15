@@ -48,7 +48,7 @@ class SongMusicSlotTest(unittest.TestCase):
     def test_play_state_creates_it_before_scripts_run(self):
         source = (ROOT / 'source/PlayState.hx').read_text(encoding='utf-8')
         create = source.index('override public function create() {')
-        self.assertLess(source.index('SongMusicSlot.ensure();', create), source.index('EngineMemory.enterSong(this);', create))
+        self.assertLess(source.index('SongMusicSlot.ensure();', create), source.index('EngineMemory.enterSong(this, OptionsHandler.options.lowMemoryMode);', create))
 
 
 if __name__ == '__main__':

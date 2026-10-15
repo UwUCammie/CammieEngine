@@ -135,6 +135,21 @@ class PsychFlxGCompat {
 	public static var state(get, never):Dynamic;
 	static function get_state():Dynamic return FlxG.game == null ? null : FlxG.state;
 
+	/** Psych's FlxG.resetState() during a song reloads PlayState, which is a
+	 * retry. It reached Flixel directly and skipped the retry path, so song
+	 * retry callbacks did not run and held images, audio and translations were
+	 * dropped. PlayState.resetCurrentState takes that path in a song and does a
+	 * plain reset anywhere else. Resolved by name so this facade does not pull
+	 * PlayState into every build that uses it. */
+	public static function resetState():Void {
+		var play = Type.resolveClass('PlayState');
+		var reset = play == null ? null : Reflect.field(play, 'resetCurrentState');
+		if (reset != null && Reflect.isFunction(reset))
+			Reflect.callMethod(play, reset, []);
+		else
+			FlxG.resetState();
+	}
+
 	/** Preserve this facade's live convenience views and delegate the rest of
 	 * Psych's FlxG surface to the actual global class. */
 	static function getField(field:String):Dynamic {

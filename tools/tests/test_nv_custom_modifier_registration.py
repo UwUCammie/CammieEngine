@@ -104,6 +104,16 @@ class Main {
   ok(returned!=p&&returned.x==6&&returned.y==8&&returned.z==9&&native.touched==123,'position args/native/replacement');
   for(kind in ['note','receptor','noteSplash','sustainSplash']) entry.updateObject(1,native,returned,0,kind);
   ok(native.alpha==0.25&&records.slice(1).join(',')=='note:true,receptor,splash,hold','typed object callbacks');
+  // The renderer prefers entry.calls; for a scripted modifier it must reach the same script functions.
+  ok(entry.calls==mod,'typed route is the registered modifier');
+  native.touched=0.0;var viaCalls=entry.calls.getPos(123,8,9,1,new NightmareVisionModchartVector(4,5,6),2,0,native);
+  ok(viaCalls.x==6&&viaCalls.y==8&&viaCalls.z==9&&native.touched==123,'typed position matches the field route');
+  var callsStart=records.length;
+  for(kind in ['note','receptor','noteSplash','sustainSplash']) entry.calls.updateObjectOfKind(1,native,returned,0,kind);
+  ok(records.slice(callsStart).join(',')=='note:true,receptor,splash,hold','typed object route matches the field route');
+  ok(entry.calls.getValue(0)==entry.value(0)&&entry.calls.getValue(0)==2,'typed value matches the field route');
+  ok(entry.calls.getSubmodValue('script-child',0)==entry.subValue('script-child',0),'typed submod value matches the field route');
+  records.splice(callsStart,records.length-callsStart);
   mod.script.interp.variables.set('this','prior');entry.updateObject(1,native,p,0,'note');ok(mod.script.interp.variables.get('this')=='prior','receiver restore');
   m.update(0.1);ok(errors.length==0,'active independent gate');mod.active=true;m.update(0.1);m.update(0.1);
   ok(errors.length==2&&shared.get('sharedCount')==2&&mod.script.interp.variables.get('this')=='prior','error ownership/continued update/shared state');

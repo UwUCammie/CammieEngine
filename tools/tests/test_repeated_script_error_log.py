@@ -25,7 +25,7 @@ MAIN = '''class Main {
   var play = sys.io.File.getContent('source/PlayState.hx');
   if (play.indexOf('RepeatedScriptErrorLog.line(usehaxe') < 0) throw 'script errors do not go through the repeat filter';
   var create = play.indexOf('override public function create() {');
-  if (play.indexOf('RepeatedScriptErrorLog.reset();', create) < 0 || play.indexOf('RepeatedScriptErrorLog.reset();', create) > play.indexOf('EngineMemory.enterSong(this);', create))
+  if (play.indexOf('RepeatedScriptErrorLog.reset();', create) < 0 || play.indexOf('RepeatedScriptErrorLog.reset();', create) > play.indexOf('EngineMemory.enterSong(this, OptionsHandler.options.lowMemoryMode);', create))
    throw 'a new song must report errors again';
  }
 }

@@ -14,6 +14,11 @@ class PsychGroupReflectionTest(unittest.TestCase):
   for name in names:
    start=reflect.index('function(',reflect.index('"'+name+'"'));callbacks.append('public static var '+name+'='+extract_method(reflect[start:],'function(')+';')
   methods='\n'.join('public static '+extract_method(utils,'function '+name+'(') for name in ['getGroupStuff','setGroupStuff','getVarInArray','getPropertyLoop','getObjectDirectly','getTargetInstance','isMap'])
+  # Psych release builds define HXCPP_CHECK_POINTER, so isMap(null) throws there.
+  # The interpreter running the donor here reads null fields as null instead,
+  # so add the check the native donor has before comparing.
+  body=methods.index('{',methods.index('function isMap('))+1
+  methods=methods[:body]+'if(variable==null)throw "Null Object Reference";'+methods[body:]
   fixture=r'''import Type.ValueType;
 using StringTools;
 typedef FlxSprite=Dynamic;

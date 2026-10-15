@@ -77,6 +77,15 @@ class Main {
   check(NightmareVisionCharacterData.imageRoot(owner, localCoreAtlas)
    == owner + '/__nmv_core/images/characters/LocalCore',
    'valid core atlas is considered when an empty owner directory exists');
+  var sharedCore = NightmareVisionCharacterData.load(owner, 'shared-core');
+  check(NightmareVisionCharacterData.imageRoot(owner, sharedCore)
+   == owner + '/__nmv_core/shared/images/characters/SharedBoy',
+   'the core shared library holds the base cast, as Nightmare Vision Paths searches it');
+  var preferPreload = NightmareVisionCharacterData.load(owner, 'both-core');
+  check(NightmareVisionCharacterData.imageRoot(owner, preferPreload)
+   == owner + '/__nmv_core/images/characters/BothCore', 'a core preload atlas keeps its earlier priority');
+  check(NightmareVisionCharacterData.imageRoot(owner, {image:'characters/SiblingShared'}) == null,
+   'the shared library lookup stays inside the owner');
   check(NightmareVisionCharacterData.load(owner, 'sibling-only') == null,
    'character definitions never escape to sibling owners');
   check(NightmareVisionCharacterData.definitionPath(owner, '../other-owner/sibling-only') == null,
@@ -137,6 +146,15 @@ class Main {
                    '{"image":"characters/LocalCore"}')
         (self.owner / 'images/characters/LocalCore').mkdir(parents=True)
         self.make_animate(self.owner, '__nmv_core/images/characters/LocalCore')
+        self.write(self.owner, '__nmv_core/characters/shared-core.json', '{"image":"characters/SharedBoy"}')
+        self.write(self.owner, '__nmv_core/shared/images/characters/SharedBoy.png')
+        self.write(self.owner, '__nmv_core/shared/images/characters/SharedBoy.xml', '<TextureAtlas/>')
+        self.write(self.owner, '__nmv_core/characters/both-core.json', '{"image":"characters/BothCore"}')
+        for folder in ('__nmv_core/images/characters/', '__nmv_core/shared/images/characters/'):
+            self.write(self.owner, folder + 'BothCore.png')
+            self.write(self.owner, folder + 'BothCore.xml', '<TextureAtlas/>')
+        self.write(self.sibling, '__nmv_core/shared/images/characters/SiblingShared.png')
+        self.write(self.sibling, '__nmv_core/shared/images/characters/SiblingShared.xml', '<TextureAtlas/>')
 
         result = subprocess.run(
             [*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', str(self.work),

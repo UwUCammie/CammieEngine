@@ -89,9 +89,10 @@ class Probe {
     check(pixelVariant != null && pixelVariant.image ==
       first + '/images/pixelUI/Pix-red.png' && pixelVariant.endsImage ==
       first + '/images/pixelUI/PixENDS-red.png', 'pixel postfix follows ENDS');
+    // Psych only needs ENDS for sustains, so the tap-note sheet still resolves.
     var broken = PsychSkinResolver.resolveDetailed('Broken', first, true);
-    check(broken.descriptor == null && broken.reason.indexOf('BrokenENDS.png') >= 0,
-      'pixel ENDS required');
+    check(broken.descriptor != null && broken.descriptor.image == first + '/images/pixelUI/Broken.png'
+      && broken.descriptor.endsImage == null, 'pixel sheet without ENDS resolves without ENDS');
     check(PsychSkinResolver.resolve('noteSkins/Legacy', first, false) == null,
       'scoped owner cannot fall through to global');
     check(PsychSkinResolver.resolve('noteSkins/Legacy', '', false).image ==

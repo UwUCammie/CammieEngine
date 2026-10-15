@@ -504,6 +504,9 @@ class PlayState extends FlxState {
  public function new(?root:String='') {super('PlayState');this.root=root;}
  public function nightmareVisionSelectedRoot():String return root;
  public static function activeNightmareVisionInputScope(owner:Dynamic):Dynamic return null;
+ // Resetting while a song plays is the shared retry; outside a song it is never reached.
+ public static var instance:PlayState;
+ public static function resetCurrentState():Void throw 'reset retried a song that was not playing';
  __PLAY_ADOPT__
 }
 class Song {public static function storageFolder(song:Dynamic):String return "song";}

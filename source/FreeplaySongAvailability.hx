@@ -45,14 +45,13 @@ class FreeplaySongAvailability {
 			return {ready:false, state:'checking', reason:'Checking whether this imported package is ready.'};
 		if (containsRoot(snapshot.committedOwnerRoots, owner))
 			return {ready:true, state:'ready', reason:''};
-		// Stopped failures retain their own reservations, not a global legacy gate.
-		// Snapshots without work metadata retain the conservative pending gate.
-		var workPending = !Reflect.hasField(snapshot, "refreshInProgress") || snapshot.refreshInProgress;
-		if (workPending && ((snapshot.pendingOwnerRoots != null && snapshot.pendingOwnerRoots.length > 0)
-			|| (snapshot.handoffPendingOwnerRoots != null && snapshot.handoffPendingOwnerRoots.length > 0)))
-			return {ready:false, state:'checking', reason:'This package has not been verified by the active import refresh.'};
 		// Imports without retained-manager receipts use the established provenance
 		// and chart checks. They are stable once initial receipt inspection ends.
+		// A refresh can only rewrite owners it reserved: every queued receipt and
+		// every dependent its receipts name is already in pendingOwnerRoots, and
+		// shared output it writes is caught per song by touchesPath. Gating every
+		// other owner kept unrelated packages unplayable for a whole revision
+		// refresh, which can take minutes for large packages.
 		return {ready:true, state:'unmanaged', reason:''};
 	}
 

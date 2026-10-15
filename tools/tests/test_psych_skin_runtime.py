@@ -106,6 +106,8 @@ class FNFAssets {
       : StringTools.endsWith(path,"WideENDS.png") ? new Bitmap(36,16)
       : new Bitmap(StringTools.endsWith(path,"ENDS.png")?28:40, StringTools.endsWith(path, "ENDS.png") ? 12 : 50);
   public static function getText(path:String):String return sys.io.File.getContent(path);
+  public static var epoch:Int = 0;
+  public static function pathEpoch():Int return epoch;
 }''', newline='\n')
             (work / 'PlayState.hx').write_text('class PlayState {public static var daPixelZoom:Float = 6;}', newline='\n')
             (work / 'RuntimeSmokeHarness.hx').write_text('''class RuntimeSmokeHarness {
@@ -208,8 +210,12 @@ class StrumNote extends Sprite {
 ''' + strum_methods + '\n}', newline='\n')
             owner = work / 'assets/imported_mods/one/images'
             owner.mkdir(parents=True)
-            for key in ('Later', 'Receptor', 'Receptor2'):
+            for key in ('Later', 'Receptor', 'Receptor2', 'Gone'):
                 (owner / (key + '.png')).write_bytes(b'png')
+            (owner / 'Gone.xml').write_text('<TextureAtlas><SubTexture name="purple0"/></TextureAtlas>', newline='\n')
+            # A note-type sheet with only its own prefixes, no color animations.
+            (owner / 'Space.png').write_bytes(b'png')
+            (owner / 'Space.xml').write_text('<TextureAtlas><SubTexture name="spacebar0000"/><SubTexture name="spacebar hold piece0000"/><SubTexture name="spacebar hold end0000"/></TextureAtlas>', newline='\n')
             (owner / 'Later.xml').write_text('<TextureAtlas><SubTexture name="purple0"/><SubTexture name="purple hold piece"/><SubTexture name="purple hold end"/><SubTexture name="red0"/><SubTexture name="red hold piece"/><SubTexture name="red hold end"/></TextureAtlas>', newline='\n')
             for key in ('Receptor', 'Receptor2'):
                 (owner / (key + '.xml')).write_text('<TextureAtlas><SubTexture name="arrowLEFT"/><SubTexture name="left press"/><SubTexture name="left confirm"/></TextureAtlas>', newline='\n')
@@ -218,6 +224,8 @@ class StrumNote extends Sprite {
             for key in ('Pixel', 'Wide', 'Bad'):
                 (pixel_skin / (key + '.png')).write_bytes(b'png')
                 (pixel_skin / (key + 'ENDS.png')).write_bytes(b'png')
+            # A tap-note pixel texture shipped without an ENDS half.
+            (pixel_skin / 'Solo.png').write_bytes(b'png')
             native_skin = work / 'assets/images/custom_ui/ui_packs/normal'
             native_skin.mkdir(parents=True)
             (native_skin / 'NOTE_assets.png').write_bytes(b'png')
@@ -242,6 +250,20 @@ class StrumNote extends Sprite {
       'note palette must be applied after shader construction');
     check(note.offset.x == 5 && note.originCentered, 'note skin recenters relative to receptor');
     note.texture='Missing'; check(note.texture == 'Later', 'failed write rollback');
+    // Psych installs a loadable atlas even without the lane's color animation,
+    // so a script can add its own prefixes to the note next.
+    var space=new Note(); space.noteData=1;
+    check(space.configurePsychSkin(owner,'Later',false,false), 'space base configure');
+    var laterFrames=space.frames;
+    space.texture='Space';
+    check(space.texture == 'Space' && space.frames != laterFrames && space.frames.frames[0].name == 'spacebar0000',
+      'partial note atlas is installed');
+    space.animation.addByPrefix('spaceScroll','spacebar0'); space.animation.play('spaceScroll',true);
+    check(space.animation.curAnim.name == 'spaceScroll', 'script animation on the partial atlas');
+    var spaceHold=new Note(true); spaceHold.noteData=2;
+    check(spaceHold.configurePsychSkin(owner,'Later',false,false), 'space hold base configure');
+    spaceHold.texture='Space';
+    check(spaceHold.texture == 'Space' && spaceHold.frames.frames[0].name == 'spacebar0000', 'partial hold atlas is installed');
     RuntimeSmokeHarness.steps=[];
     var sampled=new Note(); sampled.noteData=0;
     check(sampled.configurePsychSkin(owner,'Later',false,false,'',7,true), 'sampled skin configure');
@@ -312,6 +334,12 @@ class StrumNote extends Sprite {
     pixelHold.texture='Missing';
     check(pixelHold.texture=='Pixel' && pixelHold.originalHeight==6 && pixelHold.offsetX==17,
       'missing pixel reload preserves source geometry');
+    pixelHold.texture='Solo';
+    check(pixelHold.texture=='Pixel' && pixelHold.frames==stableFrames, 'a sustain keeps its sheet when the texture has no ENDS');
+    var pixelTap=new Note();pixelTap.noteData=1;
+    check(pixelTap.configurePsychSkin(owner,'Pixel',false,true),'pixel tap configure');
+    pixelTap.texture='Solo';
+    check(pixelTap.texture=='Solo','a tap note takes a pixel texture without ENDS');
     var strum=new Strumline.StrumNote();
     check(!strum.configurePsychSkin(owner,'Missing',false,false), 'strum missing default');
     strum.texture='Receptor'; check(strum.texture == 'Receptor', 'strum retry');
@@ -329,6 +357,16 @@ class StrumNote extends Sprite {
     disabled.texture='Receptor2';
     check(disabled.texture == 'Receptor2' && disabled.useRGBShader && disabled.shader != null,
       'texture swap preserves explicit rgb enable');
+    // Every note of a chart resolves the same skin; the file checks run once
+    // per asset epoch, and a moved epoch (import refresh, disk change) checks again.
+    var first=new Note(); first.noteData=0;
+    check(first.configurePsychSkin(owner,'Gone',false,false), 'cached skin first configure');
+    sys.FileSystem.deleteFile(owner + '/images/Gone.png');
+    var second=new Note(); second.noteData=0;
+    check(second.configurePsychSkin(owner,'Gone',false,false), 'same epoch reuses the resolution');
+    FNFAssets.epoch++;
+    var third=new Note(); third.noteData=0;
+    check(!third.configurePsychSkin(owner,'Gone',false,false), 'a new epoch resolves the files again');
   }
 }''', newline='\n')
             result = subprocess.run([*HAXE_COMMAND, '-cp', str(work),

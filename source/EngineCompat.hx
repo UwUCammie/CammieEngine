@@ -2488,6 +2488,23 @@ class EngineCompat {
 	}
 
 	/**
+		Psych 0.7 and later call onEvent(eventName, value1, value2, strumTime)
+		for both HScript and Lua, and hscript refuses a call that passes fewer
+		arguments than the function declares, so a Psych HScript file with the
+		strumTime parameter failed on every event, and a Lua one saw nil. The
+		native event row carries the event time in its fifth slot; this appends
+		it to the three-value event ABI. A script that declares only three
+		parameters ignores the extra value.
+	**/
+	public static function psychHscriptEventArguments(callArgs:Array<Dynamic>, rowArgs:Array<Dynamic>):Array<Dynamic> {
+		if (callArgs == null || rowArgs == null || callArgs.length != 3 || rowArgs.length < 5)
+			return callArgs;
+		var result = callArgs.copy();
+		result.push(rowArgs[4]);
+		return result;
+	}
+
+	/**
 		Adapt callback arguments where a donor lifecycle hook has no parameters.
 		HScript currently tolerates extra arguments for ordinary functions, but
 		trimming these two creation hooks also makes this safe for strict Lua/HXC
@@ -2529,7 +2546,8 @@ class EngineCompat {
 		// Psych custom-event scripts use a three-value event ABI.  The native
 		// event row keeps a fourth slot for HXC/extended charts, but ordinary Lua
 		// callbacks must not receive that extra value (all mounted donor scripts
-		// declare exactly name, value1, value2).
+		// declare exactly name, value1, value2). Psych scripts get strumTime added
+		// back afterwards by psychHscriptEventArguments, never value3.
 		if (selectedLower == 'onevent') {
 			var eventArgs:Array<Dynamic> = args == null ? [] : args.copy();
 			if (eventArgs.length > 3)
@@ -4137,7 +4155,9 @@ public static function lyricActor(value:Dynamic):String {
 				| 'gf-pixel' | 'gf-tankmen' | 'girlfriend' | 'mom' | 'mom-car'
 				| 'monster' | 'monster-christmas' | 'parents' | 'parents-christmas'
 				| 'pico' | 'pico-christmas' | 'pico-dark' | 'pico-pixel' | 'pico-speaker'
-				| 'senpai' | 'senpai-angry' | 'spirit' | 'tankman' | 'tankman-bloody': true;
+				| 'senpai' | 'senpai-angry' | 'spirit' | 'tankman' | 'tankman-bloody'
+				// Weekend 1 and the 2024 holiday update made these base-game ids.
+				| 'darnell' | 'nene' | 'nene-christmas': true;
 			default: false;
 		};
 	}

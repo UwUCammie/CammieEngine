@@ -19,6 +19,11 @@ class PsychPublicReflectionTest(unittest.TestCase):
   lookup=lookup[:lookup.index('if(obj != null)')]+'return obj;}'
   callbacks.append('public static var object='+lookup.replace('obj:FlxText','obj:Dynamic')+';')
   methods='\n'.join('public static '+extract_method(utils,'function '+name+'(') for name in ['getVarInArray','setVarInArray','getPropertyLoop','getObjectDirectly','getTargetInstance','isMap'])
+  # Psych release builds define HXCPP_CHECK_POINTER, so isMap(null) throws there.
+  # The interpreter running the donor here reads null fields as null instead,
+  # so add the check the native donor has before comparing.
+  body=methods.index('{',methods.index('function isMap('))+1
+  methods=methods[:body]+'if(variable==null)throw "Null Object Reference";'+methods[body:]
   call='public static '+extract_method(reflect,'function callMethodFromObject(')
   fixture=r'''import haxe.Constraints.Function;
 using StringTools;

@@ -13,6 +13,11 @@ MAIN = r'''class Main {
    sourceEngine: 'V-Slice', engineRevision: 3};
   var status = ImportRevision.assess(before, 'V-Slice').status;
   if (status != ImportRevision.OUTDATED) throw 'a revision 3 V-Slice receipt must be outdated, got ' + status;
+  // Revision 4 imports skipped Animate atlas characters and props.
+  var beforeAtlas = {schemaVersion: ImportRevision.SCHEMA_VERSION, commonRevision: ImportRevision.COMMON_REVISION,
+   sourceEngine: 'V-Slice', engineRevision: 4};
+  if (ImportRevision.assess(beforeAtlas, 'V-Slice').status != ImportRevision.OUTDATED)
+   throw 'a revision 4 V-Slice receipt must be outdated';
   var now = ImportRevision.current('V-Slice');
   if (ImportRevision.assess(now, 'V-Slice').status != ImportRevision.CURRENT) throw 'the current stamp must be current';
  }

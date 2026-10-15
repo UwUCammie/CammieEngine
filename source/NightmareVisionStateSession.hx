@@ -422,6 +422,11 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 
 	public function resetState():Void {
 		ensureAlive();
+		// Resetting the song being played is a retry, shared with every engine.
+		if (PlayState.instance != null && FlxG.state == PlayState.instance) {
+			PlayState.resetCurrentState();
+			return;
+		}
 		if (factory.lastConstructor == null) {
 			// Initial gameplay was entered by the host rather than a source request.
 			if (Std.isOfType(FlxG.state, PlayState)) {switchState(createStateFactory('PlayState')); return;}

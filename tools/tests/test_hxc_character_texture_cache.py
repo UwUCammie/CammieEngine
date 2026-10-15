@@ -60,10 +60,10 @@ class Main {{
       || HxcCompatRuntime.gameOverBlueBallSuffix != "-sign")
       throw "character warm-up or suffix behavior did not execute";
     var unsafe = HxcCompat.analyze(
-      'class Example extends Character {{ function onCreate() {{ Paths.image("donor-only"); }} }}',
+      'class Example extends Character {{ function onCreate() {{ Paths.animateAtlas("donor-only"); }} }}',
       'scripts/characters/example.hxc');
     if (unsafe.characterHookGaps.indexOf("onCreate") < 0)
-      throw "unbounded Paths.image was incorrectly accepted";
+      throw "a Paths member the scoped proxy lacks was incorrectly accepted";
     Sys.println("hxc-character-texture-cache-ok");
   }}
 }}

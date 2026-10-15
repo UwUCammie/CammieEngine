@@ -88,6 +88,39 @@ class VideoCutscene extends FlxBasic {
 		}
 	}
 
+	/** End the clip now. The normal completion runs on the next update (after a resume if paused). */
+	public function finish():Void {
+		if (disposed || finished) return;
+		finished = true;
+		skipPending = false;
+	}
+
+	/** Play the clip again from its first frame, keeping the paused or playing state. */
+	public function restart():Void {
+		if (disposed || finished || video == null) return;
+		video.time = 0;
+		skipped = false;
+		unwatchedMs = 0;
+	}
+
+	/** Show or hide the clip without pausing it; a paused clip keeps the choice for its resume. */
+	public function setShown(shown:Bool):Void {
+		if (disposed) return;
+		if (suspended) {
+			suspendedVideoVisible = shown;
+			suspendedBackgroundVisible = shown;
+			return;
+		}
+		if (video != null) video.visible = shown;
+		if (background != null) background.visible = shown;
+	}
+
+	public var isPaused(get, never):Bool;
+	function get_isPaused():Bool return suspended;
+
+	public var isFinished(get, never):Bool;
+	function get_isFinished():Bool return finished || disposed;
+
 	/** VLC may resume on OS focus gain even while the native pause menu is open. */
 	function onFocusGained():Void {
 		if (suspended && video != null)

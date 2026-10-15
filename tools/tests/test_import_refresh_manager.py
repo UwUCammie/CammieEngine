@@ -197,6 +197,8 @@ class CompatScriptManifest {
   }
   return StringTools.replace(engine.toLowerCase()," ","-")+"-"+Md5.encode(Path.normalize(source)).substr(0,12);
  }
+ public static function namespaceLabel(source:String,engine:String):String
+  return StringTools.replace(engine.toLowerCase()," ","-")+"-"+Path.withoutDirectory(Path.normalize(source)).toLowerCase();
  public static function parse(raw:String):CompatScriptManifestData return cast Json.parse(raw);
  public static function selectedRoot(data:CompatScriptManifestData):String
   return data==null||data.selectedRoot==null?"":data.selectedRoot;

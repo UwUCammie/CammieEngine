@@ -134,6 +134,12 @@ class StageImportFixture {{
     if (File.getContent(Path.join([destination, '__nmv_core/images/collision.png'])) != 'core image'
         || File.getContent(Path.join([destination, '__nmv_core/images/core-only.png'])) != 'core only')
       throw 'engine core images were not kept in the explicit core layer';
+    // A program and Python runtime bundled in the game's assets are never loaded.
+    for (skipped in ['tool/tool.exe', 'tool/runtime.dll', 'tool/python/lib/os.py', 'tool/python/lib/os.pyc'])
+      if (FileSystem.exists(Path.join([destination, '__nmv_core', skipped])))
+        throw 'bundled program file was copied into the core layer: ' + skipped;
+    if (File.getContent(Path.join([destination, '__nmv_core/tool/readme.txt'])) != 'tool notes')
+      throw 'ordinary text next to a bundled program must stay readable by scripts';
     if (File.getContent(Path.join([destination, 'data/stages/deep/' + [for (i in 0...12) 'd' + i].join('/') + '/data.json'])) != '{{"deep":12}}')
       throw 'deep nested StageData file was omitted';
     if (File.getContent(Path.join([destination, 'data/stages/nope.jsonc'])) != 'ignored JSONC'
@@ -188,6 +194,8 @@ class ImportRootScanner {
     scanner_stub.write_text(scanner_stub.read_text().replace("class ImportRootScanner {", "class ImportRootScanner {\n" + proof), newline="\n")
     (temp / "StageImportFixture.hx").write_text(fixture_source(), newline='\n')
     (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text(), newline='\n')
+    (temp / "ImportRuntimeFileFilter.hx").write_text(
+        (ROOT / "source/ImportRuntimeFileFilter.hx").read_text(), newline='\n')
     (temp / "NightmareVisionAssetCollector.hx").write_text(
         (ROOT / "source/NightmareVisionAssetCollector.hx").read_text()
     , newline='\n')
@@ -230,6 +238,10 @@ class NightmareVisionStageImportTest(unittest.TestCase):
             (core / "images").mkdir(parents=True)
             (core / "images/collision.png").write_bytes(b"core image")
             (core / "images/core-only.png").write_bytes(b"core only")
+            (core / "tool/python/lib").mkdir(parents=True)
+            for name in ("tool/tool.exe", "tool/runtime.dll", "tool/python/lib/os.py", "tool/python/lib/os.pyc"):
+                (core / name).write_bytes(b"never loaded")
+            (core / "tool/readme.txt").write_bytes(b"tool notes")
             (core.parent / "Project.xml").write_text(
                 '<project><app package="com.nmvTeam.nightmareEngine" /></project>', newline='\n')
             destination.mkdir(parents=True)

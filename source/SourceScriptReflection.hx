@@ -321,6 +321,16 @@ class SourceScriptReflection {
 		}
 		return value;
 	}
+	/**
+		Psych is built with null pointer checks, so indexing a missing array or
+		asking whether null is a map throws an error the Lua call reports. This
+		build has no such checks and the same access is a native crash, which a
+		game over hit on its first frame: Psych reads properties from the
+		game-over substate then, and it has no opponentCameraOffset. Throw the
+		same error Psych would instead.
+	**/
+	static inline var NULL_REFERENCE:String = 'Null Object Reference';
+
 	/** Source raw field/index reads, shared by argument parsing and public reflection. */
 	public static function readPsychInstancePart(instance:Dynamic, variable:String,
 		isState:Dynamic->Bool, registry:()->Dynamic, readProperty:(Dynamic,String)->Dynamic, allowMaps:Bool = false):Dynamic {
@@ -329,6 +339,7 @@ class SourceScriptReflection {
 			var parts = variable.split('[');
 			var target:Dynamic = psychArrayTarget(instance,parts[0],registry,readProperty);
 			for (i in 1...parts.length) {
+				if (target == null) throw NULL_REFERENCE;
 				var index:Dynamic = parts[i].substr(0, parts[i].length - 1);
 				target = target[index];
 			}
@@ -351,6 +362,7 @@ class SourceScriptReflection {
 		return readProperty(instance,name);
 	}
 	public static function isPsychMap(value:Dynamic):Bool {
+		if (value == null) throw NULL_REFERENCE;
 		return value.exists != null && value.keyValueIterator != null;
 	}
 	public static function writePsychPathPart(instance:Dynamic, variable:String, value:Dynamic,
@@ -360,6 +372,7 @@ class SourceScriptReflection {
 			var parts = variable.split('[');
 			var target:Dynamic = psychArrayTarget(instance,parts[0],registry,readProperty);
 			for (i in 1...parts.length) {
+				if (target == null) throw NULL_REFERENCE;
 				var index:Dynamic = parts[i].substr(0, parts[i].length - 1);
 				if (i >= parts.length - 1) target[index] = value; else target = target[index];
 			}

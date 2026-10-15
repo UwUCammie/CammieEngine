@@ -889,6 +889,8 @@ class RuntimeSmokeHarness {
 			installNoteRenderReadback();
 		if (config().gameOverAfterMs >= 0)
 			installGameOverClock();
+		// Opt-in retry timing (--smoke-retry-after-ms); see RuntimeRetryProbe.
+		RuntimeRetryProbe.install();
 		if (config().requireSongEnd || config().requireEndHandoff)
 			installSongEndCompletionWatch();
 		var name = song == null ? '' : Std.string(Reflect.field(song, 'song'));

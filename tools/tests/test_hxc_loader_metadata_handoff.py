@@ -30,7 +30,11 @@ class HxcLoaderMetadataHandoffTest(unittest.TestCase):
             play_state.index("\n\tfunction hxcModuleProxy", play_state.index("function registerHxcCompanionModules("))
         ]
 
-        self.assertIn("HxcCompat.translate(FNFAssets.getText(normalized), normalized)", compatible)
+        # The text is read once and translated (or reused by a fast retry).
+        self.assertIn("var converted = SongRetry.translation('hxc|' + normalized, text,\n"
+            "\t\t\t\tfunction() return HxcCompat.translate(text, normalized),\n"
+            "\t\t\t\tfunction(result:Dynamic):Bool return result == null || result.kind != 'character');", compatible)
+        self.assertIn("var text = FNFAssets.getText(normalized);", compatible)
         self.assertIn("Reflect.setField(metadataSink, 'result', converted)", compatible)
         self.assertIn("return converted.generatedHscript", compatible)
         self.assertIn("var metadataSink:Dynamic = {result: null};", loader)

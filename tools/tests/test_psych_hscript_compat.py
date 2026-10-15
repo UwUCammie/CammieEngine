@@ -166,6 +166,11 @@ class HxcCompat {
     return {generatedHscript:'', diagnostics:[]};
 }
 
+// Outside a retry every translation runs, which is all this fixture loads.
+class SongRetry {
+  public static function translation<T>(_key:String, _source:String, translate:Void->T, ?_keep:Dynamic->Bool):T return translate();
+}
+
 class StageFallbackFixture {
   public var SONG:Dynamic;
   var root:String;

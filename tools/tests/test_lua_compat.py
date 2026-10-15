@@ -905,7 +905,8 @@ class LuaCompatTest {
         self.assertIn("LuaCompat.translate", module)
         self.assertIn("generatedModchart", module)
         self.assertIn("getCompatibleHscript", play_state)
-        self.assertIn("LuaCompat.translate(FNFAssets.getText(luaPath), luaPath, compatPsychOwnerForScript(luaPath) != null)", play_state)
+        self.assertIn("var luaText = FNFAssets.getText(luaPath);\n\t\tvar luaPsychOwned = compatPsychOwnerForScript(luaPath) != null;", play_state)
+        self.assertIn("function() return LuaCompat.translate(luaText, luaPath, luaPsychOwned));", play_state)
         self.assertIn("difficultyModchart + '.lua'", play_state)
 
 

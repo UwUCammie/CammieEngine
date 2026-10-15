@@ -98,6 +98,32 @@ class Main {
     check(vsliceKeep.join(',') == 'true,true,false', 'stems with a format-given side were dropped: ' + vsliceKeep.join(','));
     check(SourceVocalRole.keepStems(['bf-alt', 'choir'], 'bf-alt', null, ['shared', 'shared']).join(',') == 'true,false',
       'shared stems still follow the Psych rule');
+    // with the combined file as the player's fallback the source rule is exact:
+    // the player's own stem or the combined file, the opponent's own stem, and
+    // no character-named stem nobody asks for
+    function withFallback(ids:Array<Dynamic>, player:String, opponent:String):String {
+      var roles:Array<Dynamic> = [for (id in ids) id == 'Voices' ? 'player' : 'shared'];
+      var keep = SourceVocalRole.keepStems(ids, player, opponent, roles);
+      return [for (index in 0...ids.length) if (keep[index]) Std.string(ids[index])].join(',');
+    }
+    check(withFallback(['Voices', 'pico', 'tankman'], 'bf', 'pico') == 'Voices,pico',
+      'opponent file beside the combined file: ' + withFallback(['Voices', 'pico', 'tankman'], 'bf', 'pico'));
+    check(withFallback(['Voices', 'bf-alt', 'pico'], 'bf-alt', 'pico') == 'bf-alt,pico',
+      'player file replaces the combined file: ' + withFallback(['Voices', 'bf-alt', 'pico'], 'bf-alt', 'pico'));
+    check(withFallback(['Voices', 'alto', 'bass'], null, null) == 'Voices',
+      'unasked character stems must not double the combined file: ' + withFallback(['Voices', 'alto', 'bass'], null, null));
+    check(withFallback(['Voices', 'Opponent', 'alto'], null, '') == 'Voices,Opponent',
+      'side stem beside the combined file: ' + withFallback(['Voices', 'Opponent', 'alto'], null, ''));
+    check(withFallback(['Voices', 'Opponent', 'rival'], null, 'rival') == 'Voices,rival',
+      'opponent file replaces Voices-Opponent beside the combined file');
+    // the old import id for the fallback still reads as a plain player stem
+    check(withFallback(['Player', 'Opponent'], null, null) == 'Player,Opponent', 'older fallback id changed');
+    // only the importer's player-role fallback switches the exact rule on, and
+    // never beside stems whose format already gave them a side
+    check(SourceVocalRole.keepStems(['Voices', 'alto'], null, null, ['shared', 'shared']).join(',') == 'true,true',
+      'a shared stem named Voices is not the combined fallback');
+    check(SourceVocalRole.keepStems(['Voices', 'bf', 'dad'], 'bf', 'dad', ['player', 'player', 'opponent']).join(',')
+      == 'true,true,true', 'format-given sides were dropped by the combined fallback rule');
 
     // the player stem leads even though the files sort opponent first
     check(SourceVocalRole.primaryIndex(['opponent', 'player']) == 1, 'player stem should lead');
@@ -158,8 +184,9 @@ typedef SongImport = { @:optional var vocalStems:Array<SongImportVocalStem>; }
 class Main {
   METHODS
   static function check(ok:Bool, message:String):Void if (!ok) throw message;
-  static function describe(folder:String, combinedPlaysAsPlayer:Bool = true):String {
-    var song:SongImport = {vocalStems: findImportVocalStems(Path.join([Sys.args()[0], folder]), combinedPlaysAsPlayer)};
+  static function describe(folder:String, combinedPlaysAsPlayer:Bool = true, followCharacters:Bool = true):String {
+    var song:SongImport = {vocalStems: findImportVocalStems(Path.join([Sys.args()[0], folder]), combinedPlaysAsPlayer,
+      followCharacters)};
     normalizeSourceVocalRoles(song);
     return [for (stem in song.vocalStems) stem.destination + '=' + stem.role].join(',');
   }
@@ -179,10 +206,25 @@ class Main {
     // stays out for them; their other layouts read the same as before
     check(describe('opponent-and-combined', false) == '',
       'opponent beside combined without the fallback: ' + describe('opponent-and-combined', false));
-    for (folder in ['pair-and-combined', 'pair', 'player-and-combined', 'named-and-combined', 'mixed-and-combined', 'named', 'combined'])
+    for (folder in ['pair-and-combined', 'pair', 'player-and-combined', 'mixed-and-combined', 'named', 'combined'])
       check(describe(folder, false) == describe(folder), 'fallback flag changed ' + folder);
-    // other stems beside a combined file stay out, as before
-    check(describe('named-and-combined') == '', 'named beside combined: ' + describe('named-and-combined'));
+    // character-named stems beside a combined file come along with the
+    // fallback; which one plays is decided at load from the characters
+    check(describe('named-and-combined') == 'Voices.ogg=player,Voices-alto.ogg=shared',
+      'named beside combined: ' + describe('named-and-combined'));
+    check(describe('named-and-combined', false) == '',
+      'named beside combined without the fallback: ' + describe('named-and-combined', false));
+    // Nightmare Vision never reads vocals_file: it keeps the opponent stem
+    // beside the combined file but never a character-named one
+    check(describe('named-and-combined', true, false) == '',
+      'named beside combined for an engine without vocals_file: ' + describe('named-and-combined', true, false));
+    check(describe('opponent-and-combined', true, false) == describe('opponent-and-combined'),
+      'opponent fallback must not depend on vocals_file support');
+    check(describe('mixed-and-combined', true, false) == describe('mixed-and-combined'),
+      'mixed layout changed without vocals_file support');
+    var fallbackIds = [for (stem in findImportVocalStems(Path.join([Sys.args()[0], 'opponent-and-combined']), true)) stem.id];
+    check(fallbackIds.join(',') == SourceVocalRole.COMBINED_FALLBACK_ID + ',Opponent',
+      'combined fallback id: ' + fallbackIds.join(','));
     check(describe('mixed-and-combined') == 'Voices-Opponent.ogg=opponent,Voices-Player.ogg=player',
       'mixed beside combined: ' + describe('mixed-and-combined'));
     // packs with their own stem names keep every stem on the shared bus
@@ -222,9 +264,12 @@ class SourceVocalRolesTest(unittest.TestCase):
         self.assertIn("engine == ImportEngine.NIGHTMARE_VISION || engine == ImportEngine.PSYCH", importer)
         # Only the Psych-family discovery asks for the combined-file fallback; the
         # shared song builder keeps the default for every other engine.
-        self.assertEqual(importer.count("findImportVocalStems(songFolder, true)"), 1)
+        # Character-named stems follow vocals_file, which only Psych reads.
+        call = "findImportVocalStems(songFolder, true, engine == ImportEngine.PSYCH)"
+        self.assertEqual(importer.count("findImportVocalStems(songFolder, true"), 1)
+        self.assertEqual(importer.count(call), 1)
         gate = importer.index("if (songData != null && (engine == ImportEngine.NIGHTMARE_VISION || engine == ImportEngine.PSYCH)) {")
-        fallback = importer.index("findImportVocalStems(songFolder, true)")
+        fallback = importer.index(call)
         self.assertLess(gate, fallback)
         self.assertLess(fallback, importer.index("normalizeSourceVocalRoles(songData);", gate))
         self.assertIn("var splitVocalStems = findImportVocalStems(audioRoot);", importer)

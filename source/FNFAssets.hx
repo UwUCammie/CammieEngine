@@ -86,7 +86,9 @@ class FNFAssets {
 	 */
 	public static function resolveCaseInsensitivePath(id:String):Null<String> {
 		#if sys
-		var diskPath = resolveDiskPath(id);
+		// Owner lookups probe several folders per asset and most probes miss; a
+		// recent miss skips the directory walk (see DiskPathMissCache).
+		var diskPath = resolveProbedDiskPath(id);
 		if (diskPath != null)
 			return diskPath;
 		// Preserve the old allowance for packaged assets whose ids are outside

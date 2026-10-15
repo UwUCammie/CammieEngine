@@ -187,6 +187,12 @@ class HxcStateFactory {
 			fail('unsupported-hxc-state-factory', 'HXC ' + kind + ' factory name ' + name + ' is not a valid identifier.');
 			return null;
 		}
+		// V-Slice registers scripted classes under their package-qualified name
+		// ('pack.sub.ClassName'). The classifier knows the class by its own name,
+		// so a qualified request also matches that last segment; two classes with
+		// the same name in one root still resolve as ambiguous below.
+		var separator = name.lastIndexOf('.');
+		var wantedClass = separator >= 0 ? HxcScriptDiscovery.normalizeToken(name.substr(separator + 1)) : wanted;
 		var key = cacheKey(cleanRoot, kind, wanted);
 		if (lookupCache.exists(key)) {
 			var cached = lookupCache.get(key);
@@ -220,9 +226,11 @@ class HxcStateFactory {
 				continue;
 			var names:Array<String> = [HxcScriptDiscovery.stem(path), result.className, result.identifier];
 			var matched = false;
-			for (candidate in names)
-				if (candidate != null && HxcScriptDiscovery.normalizeToken(candidate) == wanted)
+			for (candidate in names) {
+				var token = candidate == null ? '' : HxcScriptDiscovery.normalizeToken(candidate);
+				if (token != '' && (token == wanted || token == wantedClass))
 					matched = true;
+			}
 			if (!matched)
 				continue;
 			var relative = relativeTo(path, cleanRoot);
@@ -417,7 +425,8 @@ class HxcStateFactory {
 	public static function resetState():Bool {
 		if (FlxG.state == null)
 			return fail('unsupported-hxc-state-reset', 'Cannot reset HXC state without an active FlxState.');
-		FlxG.resetState();
+		// Resetting a song is a retry; PlayState routes that, other states reset.
+		PlayState.resetCurrentState();
 		return true;
 	}
 

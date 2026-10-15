@@ -12,6 +12,8 @@ typedef NightmareVisionModifierExecution = {
 		(the engine's own formula modifiers). Lets the position pass skip
 		re-reading a sprite nothing has written to since the last read. */
 	@:optional var positionReadsOnly:Bool;
+	/** Typed route to the same getPosition, updateObject, value and subValue. */
+	@:optional var calls:NightmareVisionModifierCalls;
 }
 
 /** Public metadata for one source ModManager modifier or submodifier. */

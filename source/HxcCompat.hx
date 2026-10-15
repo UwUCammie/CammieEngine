@@ -202,6 +202,9 @@ typedef HxcCompatResult = {
 	@:optional var customEventKind:String;
 	/** Raw handleEvent body of that custom SongEvent subclass. */
 	@:optional var customEventBody:String;
+	/** Kind a SongEvent subclass passes to its constructor (its V-Slice `id`),
+	    for custom and natively routed events alike. */
+	@:optional var songEventId:String;
 	/** True only when a module's constructor/state setup is fully represented. */
 	var moduleInitializationSafe:Bool;
 	/** True only when all routed module behavior has a native semantic path. */
@@ -263,12 +266,24 @@ class HxcCompat {
 
 	/** Analyze one HXC source file without modifying it or its donor tree. */
 	public static function analyze(source:String, ?path:String):HxcCompatResult {
+		// A song load analyzes the same script at several sites and again on
+		// every restart; a repeat gets its own copy of the earlier result.
+		var remembered:HxcCompatResult = TranslationMemo.lookup(source, memoKey(path));
+		if (remembered != null)
+			return remembered;
 		var result = analyzeSource(source, path);
+		// Character wrappers also read their base classes from other files,
+		// which can change while this file does not, so they are not remembered.
+		if (result != null && result.kind != 'character')
+			TranslationMemo.store(source, memoKey(path), result);
 		// The passes leave thousands of dead regular expressions per file; see
 		// EngineMemory.scriptTranslated for why they are collected a few files at a time.
 		EngineMemory.scriptTranslated(source == null ? 0 : source.length);
 		return result;
 	}
+
+	static inline function memoKey(path:String):String
+		return 'hxc:' + (path == null ? '' : path);
 
 	static function analyzeSource(source:String, ?path:String):HxcCompatResult {
 		// `import ... as Alias` names are spelled out first, so every later pass sees real class names.
@@ -369,6 +384,16 @@ class HxcCompat {
 		var stateFields:Array<String> = [];
 		var stateInitializers:Array<HxcCompatStateInitializer> = [];
 		var stateInitializerSafe = true;
+		// Names a later field initializer may read: script enums (declared first,
+		// below) and every earlier field that received an initializer.
+		var knownStateNames = new Map<String, Bool>();
+		var scriptEnumNames:Array<String> = [];
+		for (scriptEnum in collectScriptEnums(mixedSource)) {
+			scriptEnumNames.push(scriptEnum.name);
+			setStateInitializer(stateInitializers, scriptEnum.name, scriptEnum.value);
+			appendUnique(stateFields, scriptEnum.name);
+			knownStateNames.set(scriptEnum.name, true);
+		}
 		// A detected runtime-shader descriptor owns its shader/filter fields
 		// outright: the generated handle aliases replace the donor constructor,
 		// so those fields must not also carry the bounded initializer.
@@ -393,12 +418,20 @@ class HxcCompat {
 			// literal gate.  The generated adapter seeds those values explicitly; the
 			// donor singleton itself is never evaluated.
 			var translatedInitializer = translateBody(initializer);
-			if (isSimpleLiteral(translatedInitializer))
+			if (isSimpleLiteral(translatedInitializer)
+				|| stateInitializerFromKnownNames(translatedInitializer, knownStateNames)) {
 				setStateInitializer(stateInitializers, declaration.name, translatedInitializer);
+				knownStateNames.set(declaration.name, true);
+			}
 			else if (boundedPointInitializer(translatedInitializer) != null)
 				setStateInitializer(stateInitializers, declaration.name,
 					boundedPointInitializer(translatedInitializer));
 			else if (isBoundedNoteStyleInitializer(translatedInitializer))
+				setStateInitializer(stateInitializers, declaration.name, translatedInitializer);
+			else if (RegexCache.get('^new\\s+FlxTweenManager\\s*\\(\\s*\\)$', '').match(translatedInitializer))
+				// A private tween clock (ScriptNativeClasses binds the class) that
+				// the script advances itself; without it the field stays null and
+				// every tween the stage starts on it is lost.
 				setStateInitializer(stateInitializers, declaration.name, translatedInitializer);
 			else if (descriptorShaderFields.exists(declaration.name)
 				|| descriptorFilterFields.exists(declaration.name)) {
@@ -601,7 +634,7 @@ class HxcCompat {
 		for (method in functions)
 			if (method != null && method.name != null
 				&& method.name.toLowerCase() == 'oncountdownstart'
-				&& new EReg('new\\s+FlxRuntimeShader|new\\s+ShaderFilter|\\.filters\\b', 'm').match(method.body)
+				&& RegexCache.get('new\\s+FlxRuntimeShader|new\\s+ShaderFilter|\\.filters\\b', 'm').match(method.body)
 				&& coveredRuntimeShaderCallbacks.indexOf(method.name) < 0)
 				for (callback in callbackAdapters)
 					if (callback != null && callback.sourceName == method.name)
@@ -643,16 +676,26 @@ class HxcCompat {
 		// same-name initializer (and a declaration without an initializer clearing
 		// the inherited value rather than silently retaining it).
 		if (kind == 'character' && stateDeclarations != null) {
+			// Rebuilt as the declarations are replayed: initializers are emitted in
+			// this order, so a field may only read enums and fields set before it.
+			// Reusing the main pass's full set would accept `a = b` ahead of `b`,
+			// which fails with an unknown variable when the script loads.
+			var wrapperKnownNames = new Map<String, Bool>();
+			for (name in scriptEnumNames)
+				wrapperKnownNames.set(name, true);
 			for (declaration in stateDeclarations) {
 				if (declaration == null || declaration.name == null || declaration.name == '')
 					continue;
 				clearStateInitializer(stateInitializers, declaration.name);
+				wrapperKnownNames.remove(declaration.name);
 				if (declaration.initializer == null || StringTools.trim(declaration.initializer) == '')
 					continue;
 				var wrapperInitializer = StringTools.trim(translateBody(declaration.initializer));
-				if (isSimpleLiteral(wrapperInitializer))
+				if (isSimpleLiteral(wrapperInitializer)
+					|| stateInitializerFromKnownNames(wrapperInitializer, wrapperKnownNames)) {
 					setStateInitializer(stateInitializers, declaration.name, wrapperInitializer);
-				else
+					wrapperKnownNames.set(declaration.name, true);
+				} else
 					stateInitializerSafe = false;
 			}
 		}
@@ -955,7 +998,7 @@ class HxcCompat {
 					continue;
 				var lifecycleName = lifecycleCallback(method.name);
 				if ((lifecycleName == 'onCountdownStart' || method.name.toLowerCase() == 'oncountdownstart')
-					&& new EReg('new\\s+FlxRuntimeShader|new\\s+ShaderFilter|\\.filters\\b', 'm').match(method.body)
+					&& RegexCache.get('new\\s+FlxRuntimeShader|new\\s+ShaderFilter|\\.filters\\b', 'm').match(method.body)
 					&& coveredRuntimeShaderCallbacks.indexOf(method.name) < 0)
 					diagnostics.push(makeDiagnostic('warning', 'unsupported-hxc-shader-callback',
 						'HXC callback ' + method.name
@@ -971,9 +1014,9 @@ class HxcCompat {
 		}
 		if (menuSpec != null) {
 			var menuFallbacks:Array<String> = [];
-			if (new EReg('\\bApplication\\s*\\.\\s*current\\s*\\.\\s*window\\s*\\.\\s*close\\s*\\(', 'm').match(clean))
+			if (RegexCache.get('\\bApplication\\s*\\.\\s*current\\s*\\.\\s*window\\s*\\.\\s*close\\s*\\(', 'm').match(clean))
 				menuFallbacks.push('window-close');
-			if (new EReg('\\b(?:SongRegistry|PlayState)\\s*\\.\\s*(?:instance\\s*\\.\\s*)?(?:fetchEntry|load|loadFromJson|startSong)\\s*\\(', 'm').match(clean))
+			if (RegexCache.get('\\b(?:SongRegistry|PlayState)\\s*\\.\\s*(?:instance\\s*\\.\\s*)?(?:fetchEntry|load|loadFromJson|startSong)\\s*\\(', 'm').match(clean))
 				menuFallbacks.push('chart-launch');
 			if (menuFallbacks.length > 0)
 				diagnostics.push(makeDiagnostic('info', 'hxc-menu-bounded-fallback',
@@ -1028,7 +1071,7 @@ class HxcCompat {
 			'\\bScriptedMusicBeat(?:State|SubState)\\s*\\.\\s*init\\s*\\(\\s*["\\\']([A-Za-z_][A-Za-z0-9_]*)["\\\']\\s*\\)', 1);
 		var dynamicFactoryNames = collectMatches(clean,
 			'\\bScriptedMusicBeat(?:State|SubState)\\s*\\.\\s*init\\s*\\(\\s*([A-Za-z_][A-Za-z0-9_.]*)\\s*\\)', 1);
-		var dynamicFactory = new EReg('\\bScriptedMusicBeat(?:State|SubState)\\s*\\.\\s*init\\s*\\(\\s*new\\s+', 'm').match(clean);
+		var dynamicFactory = RegexCache.get('\\bScriptedMusicBeat(?:State|SubState)\\s*\\.\\s*init\\s*\\(\\s*new\\s+', 'm').match(clean);
 		if (literalFactories.length > 0)
 			diagnostics.push(makeDiagnostic('info', 'hxc-state-factory',
 				'Literal HXC state factory target(s) routed through the selected manifest root: '
@@ -1049,11 +1092,11 @@ class HxcCompat {
 		// qualified one; only the two aliases lowered above may pass this gate.
 		var qualifiedClosureVariables = collectMatches(clean,
 			'\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?::\\s*[A-Za-z_][A-Za-z0-9_.]*)?\\s*=\\s*\\(\\s*\\)\\s*->\\s*new\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\.[A-Za-z_][A-Za-z0-9_.]*\\s*\\(', 1);
-		var qualifiedClosure = new EReg('new[ \\t\\r\\n]+[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*[ \\t\\r\\n]*\\(', 'm').match(clean);
+		var qualifiedClosure = RegexCache.get('new[ \\t\\r\\n]+[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*[ \\t\\r\\n]*\\(', 'm').match(clean);
 		var switchVariables = collectMatches(clean,
 			'\\bFlxG\\s*\\.\\s*switchState\\s*\\(\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\)', 1);
-		var switched = new EReg('\\bFlxG\\s*\\.\\s*switchState\\s*\\(', 'm').match(clean);
-		var directSafeSwitch = new EReg('\\bFlxG\\s*\\.\\s*switchState\\s*\\(\\s*(?:ScriptedMusicBeat(?:State|SubState)\\s*\\.\\s*init\\s*\\(\\s*(?:["\\\'][A-Za-z_][A-Za-z0-9_]*["\\\']|[A-Za-z_][A-Za-z0-9_.]*)\\s*\\)|new\\s+(?:MainMenuState|StoryMenuState|FreeplayState|TitleState|CreditsState|SaveDataState|PlayState)\\b|\\(\\s*\\)\\s*->\\s*new\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\()', 'm').match(clean);
+		var switched = RegexCache.get('\\bFlxG\\s*\\.\\s*switchState\\s*\\(', 'm').match(clean);
+		var directSafeSwitch = RegexCache.get('\\bFlxG\\s*\\.\\s*switchState\\s*\\(\\s*(?:ScriptedMusicBeat(?:State|SubState)\\s*\\.\\s*init\\s*\\(\\s*(?:["\\\'][A-Za-z_][A-Za-z0-9_]*["\\\']|[A-Za-z_][A-Za-z0-9_.]*)\\s*\\)|new\\s+(?:MainMenuState|StoryMenuState|FreeplayState|TitleState|CreditsState|SaveDataState|PlayState)\\b|\\(\\s*\\)\\s*->\\s*new\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\()', 'm').match(clean);
 		var unsafeSwitch = switched && !directSafeSwitch;
 		if (unsafeSwitch && switchVariables.length > 0) {
 			unsafeSwitch = false;
@@ -1068,8 +1111,8 @@ class HxcCompat {
 		else if (menuSpec == null && qualifiedClosure && switched)
 			diagnostics.push(makeDiagnostic('warning', 'unsupported-hxc-state-switch',
 				'Qualified donor state closures are not resolved by name; only native aliases or an unqualified state found in the selected manifest root are allowed.'));
-		if (new EReg('\\bFlxG\\s*\\.\\s*state\\s*\\.(?:subState\\s*\\.\\s*)?openSubState\\s*\\(', 'm').match(clean)
-			|| new EReg('(^|[;{}])\\s*openSubState\\s*\\(', 'm').match(clean))
+		if (RegexCache.get('\\bFlxG\\s*\\.\\s*state\\s*\\.(?:subState\\s*\\.\\s*)?openSubState\\s*\\(', 'm').match(clean)
+			|| RegexCache.get('(^|[;{}])\\s*openSubState\\s*\\(', 'm').match(clean))
 			diagnostics.push(makeDiagnostic('info', 'hxc-substate-route',
 				'HXC openSubState calls are routed through the selected manifest root; non-HXC substate objects remain rejected.'));
 		var adaptedApis = EngineCompat.hxcApiNames(clean);
@@ -1081,7 +1124,7 @@ class HxcCompat {
 		// score UI can still render, but the mounted donor tree does not include
 		// V-Slice's threshold implementation. Keep the semantic gap visible even
 		// when the surrounding callback has otherwise safe roots.
-		if (new EReg('\\bScoring\\s*\\.\\s*calculateRank\\s*\\(', 'm').match(clean))
+		if (RegexCache.get('\\bScoring\\s*\\.\\s*calculateRank\\s*\\(', 'm').match(clean))
 			diagnostics.push(makeDiagnostic('info', 'hxc-rank-adapter',
 			'Scoring.calculateRank uses the native V-Slice threshold adapter; empty charts return no rank and donor-specific weighting remains outside this data-only route.'));
 		if (lowerHxcApiAliases(clean) != clean)
@@ -1144,6 +1187,7 @@ class HxcCompat {
 			stateInitializers: stateInitializers,
 			constructorStatements: constructorStatements,
 			stageConstructorBody: stageConstructorBody,
+			songEventId: kind == 'song-event' ? identifier : '',
 			customEventKind: customEventKind,
 			customEventBody: customEventBody,
 			moduleInitializationSafe: moduleInitializationSafe,
@@ -1171,8 +1215,230 @@ class HxcCompat {
 		};
 		// The game's HScript parser has no cast keyword, type checks or quoted object keys.
 		result.generatedHscript = HxcScriptSyntaxLowering.lower(generateHscript(result));
+		// One callback whose translation does not parse must not take the whole
+		// script with it, the same rule the Lua translator applies per unit.
+		if (disableUnparseableUnits(result))
+			result.generatedHscript = HxcScriptSyntaxLowering.lower(generateHscript(result));
+		// The translator already lowers some enums to native values (character
+		// roles, for one); their constant object would be dead code.
+		if (pruneUnusedScriptEnums(result, scriptEnumNames))
+			result.generatedHscript = HxcScriptSyntaxLowering.lower(generateHscript(result));
 		result.nativeNoteDefinitions = nativeNoteDefinitions(result);
 		return result;
+	}
+
+	/**
+		Whether a field initializer is a literal expression once the names in
+		`known` are treated as values: earlier fields (`blinkCountdown =
+		MIN_BLINK_DELAY`) and script enum constructors (`NeneState.DEFAULT`).
+		The generated script declares fields in authored order, so those names
+		already hold their values when this one is evaluated.  Calls on a known
+		name stay rejected by the literal check.
+	**/
+	static function stateInitializerFromKnownNames(value:String, known:Map<String, Bool>):Bool {
+		if (value == null || known == null)
+			return false;
+		var masked = new StringBuf();
+		var replaced = false;
+		var quote = '';
+		var escaped = false;
+		var index = 0;
+		while (index < value.length) {
+			var current = value.charAt(index);
+			if (quote != '') {
+				if (escaped)
+					escaped = false;
+				else if (current == '\\')
+					escaped = true;
+				else if (current == quote)
+					quote = '';
+				masked.add(current);
+				index++;
+				continue;
+			}
+			if (current == '"' || current == "'") {
+				quote = current;
+				masked.add(current);
+				index++;
+				continue;
+			}
+			if (isIdentifierStart(current)) {
+				var start = index;
+				while (index < value.length && isIdentifierPart(value.charAt(index)))
+					index++;
+				var token = value.substr(start, index - start);
+				var afterDot = start > 0 && value.charAt(start - 1) == '.';
+				var next = skipWhitespaceForward(value, index);
+				var objectKey = next < value.length && value.charAt(next) == ':';
+				if (!afterDot && !objectKey && known.exists(token)) {
+					masked.add('null');
+					replaced = true;
+				} else
+					masked.add(token);
+				continue;
+			}
+			masked.add(current);
+			index++;
+		}
+		return replaced && isSimpleLiteral(masked.toString());
+	}
+
+	/**
+		Script enums whose constructors carry no arguments, as constant objects
+		mapping each constructor to its own name (the text Std.string gives for a
+		Haxe enum value).  Equality and `switch` cases keep working, and two
+		scripts that share an enum agree on its values without sharing state.
+
+		Covers `enum Name { A; B; }` declared in the file, and an enum imported
+		from another script that the engine does not bind: the file annotates a
+		variable with the type and only reads ALL_CAPS constructors from it.
+	**/
+	static function collectScriptEnums(source:String):Array<HxcCompatStateInitializer> {
+		var result:Array<HxcCompatStateInitializer> = [];
+		if (source == null || source.indexOf('enum') < 0 && source.indexOf('import') < 0)
+			return result;
+		var seen = new Map<String, Bool>();
+		var declared = ~/\benum\s+([A-Z][A-Za-z0-9_]*)\s*\{([^{}]*)\}/;
+		var rest = source;
+		while (declared.match(rest)) {
+			var name = declared.matched(1);
+			var constructors:Array<String> = [];
+			var plain = true;
+			for (part in declared.matched(2).split(';')) {
+				var constructor = StringTools.trim(part);
+				if (constructor == '')
+					continue;
+				if (!isIdentifier(constructor)) {
+					plain = false;
+					break;
+				}
+				appendUnique(constructors, constructor);
+			}
+			if (plain && constructors.length > 0 && !seen.exists(name)) {
+				seen.set(name, true);
+				result.push({name: name, value: enumConstantObject(constructors)});
+			}
+			rest = declared.matchedRight();
+		}
+		var imported = ~/^[ \t]*import[ \t]+[A-Za-z0-9_.]*\.([A-Z][A-Za-z0-9_]*)[ \t]*;/m;
+		rest = source;
+		while (imported.match(rest)) {
+			var name = imported.matched(1);
+			rest = imported.matchedRight();
+			if (seen.exists(name) || moduleKnownRoot(name)
+				|| RegexCache.get('\\b(?:class|typedef|abstract|enum|interface)\\s+' + name + '\\b', '').match(source)
+				// A real type annotation (`var s:Name`, `(s:Name)`), never the
+				// `: Name.X` of a ternary branch or a constants class.
+				|| !RegexCache.get('\\b[A-Za-z_][A-Za-z0-9_]*\\s*:\\s*' + name + '\\b(?!\\s*\\.)', '').match(source))
+				continue;
+			var access = new EReg('(?:^|[^A-Za-z0-9_.])' + name + '\\s*\\.\\s*([A-Za-z_][A-Za-z0-9_]*)(\\s*\\()?', '');
+			var constructors:Array<String> = [];
+			var plain = true;
+			var scan = source;
+			while (access.match(scan)) {
+				var constructor = access.matched(1);
+				if (access.matched(2) != null || !~/^[A-Z][A-Z0-9_]*$/.match(constructor)) {
+					plain = false;
+					break;
+				}
+				appendUnique(constructors, constructor);
+				scan = access.matchedRight();
+			}
+			if (plain && constructors.length > 0) {
+				seen.set(name, true);
+				result.push({name: name, value: enumConstantObject(constructors)});
+			}
+		}
+		return result;
+	}
+
+	static function pruneUnusedScriptEnums(result:HxcCompatResult, names:Array<String>):Bool {
+		if (result == null || names == null || names.length == 0 || result.stateInitializers == null)
+			return false;
+		var pruned = false;
+		for (name in names) {
+			var uses = new EReg('(?:^|[^A-Za-z0-9_.])' + name + '\\s*\\.', 'g');
+			var count = 0;
+			var scan = result.generatedHscript;
+			while (scan != null && uses.match(scan)) {
+				count++;
+				scan = uses.matchedRight();
+			}
+			if (count > 0)
+				continue;
+			for (initializer in result.stateInitializers.copy())
+				if (initializer != null && initializer.name == name)
+					result.stateInitializers.remove(initializer);
+			result.stateFields.remove(name);
+			pruned = true;
+		}
+		return pruned;
+	}
+
+	static function enumConstantObject(constructors:Array<String>):String {
+		var pairs:Array<String> = [];
+		for (constructor in constructors)
+			pairs.push(constructor + ': "' + constructor + '"');
+		return '{' + pairs.join(', ') + '}';
+	}
+
+	/** The analyzer also runs in tools that do not link the script parser; with
+	 * no parser there is nothing to check against, so treat the code as fine. */
+	static function hscriptParses(code:String):Bool {
+		var parserClass = Type.resolveClass('hscript.Parser');
+		if (parserClass == null)
+			return true;
+		try {
+			var parser:Dynamic = Type.createInstance(parserClass, []);
+			parser.parseString(code);
+			return true;
+		} catch (_:Dynamic) {
+			return false;
+		}
+	}
+
+	/**
+		When the generated script does not parse, find the units that break it and
+		take only those out: a callback is no longer emitted (the native hook then
+		runs without it), a helper keeps its name but returns null so callers do
+		not hit an unknown function, and a field initializer starts as null.  Each
+		unit is checked alone, wrapped the way it is emitted.  Returns whether
+		anything changed, so the caller regenerates once.
+	**/
+	static function disableUnparseableUnits(result:HxcCompatResult):Bool {
+		if (result == null || hscriptParses(result.generatedHscript))
+			return false;
+		var changed = false;
+		for (helper in [false, true]) {
+			var adapters = helper ? result.helperAdapters : result.callbackAdapters;
+			if (adapters == null)
+				continue;
+			for (adapter in adapters) {
+				if (adapter == null || !adapter.safe || adapter.body == null)
+					continue;
+				if (hscriptParses(HxcScriptSyntaxLowering.lower('function __hxcUnit() {\n' + adapter.body + '\n}')))
+					continue;
+				changed = true;
+				if (helper)
+					adapter.body = 'return null;';
+				else
+					adapter.safe = false;
+				result.diagnostics.push(makeDiagnostic('warning', 'hxc-generated-syntax',
+					'HXC ' + (helper ? 'helper ' : 'callback ') + adapter.sourceName
+					+ ' was left out because its translated HScript does not parse; the rest of the script still runs.'));
+			}
+		}
+		if (result.stateInitializers != null)
+			for (initializer in result.stateInitializers) {
+				if (initializer == null || initializer.value == null
+					|| hscriptParses(HxcScriptSyntaxLowering.lower('var __hxcUnit = ' + initializer.value + ';')))
+					continue;
+				changed = true;
+				result.diagnostics.push(makeDiagnostic('warning', 'hxc-generated-syntax',
+					'HXC field ' + initializer.name + ' starts as null because its translated initializer does not parse.'));
+				initializer.value = 'null';
+			}
+		return changed;
 	}
 
 	/** Collect donor payload type names from callback signatures/import aliases. */
@@ -1191,17 +1457,17 @@ class HxcCompat {
 		var result:Array<String> = [];
 		if (source == null || source == '')
 			return result;
-		if (new EReg('\\.(?:getFloat|getBool|getInt|getString)\\s*\\(', 'm').match(source))
+		if (RegexCache.get('\\.(?:getFloat|getBool|getInt|getString)\\s*\\(', 'm').match(source))
 			result.push('typed-getters');
-		if (new EReg('\\b(?:event|data|scriptEvent|callback)\\s*\\.\\s*note\\b', 'm').match(source))
+		if (RegexCache.get('\\b(?:event|data|scriptEvent|callback)\\s*\\.\\s*note\\b', 'm').match(source))
 			result.push('note');
-		if (new EReg('\\.eventData\\s*(?:\\.value)?\\b', 'm').match(source))
+		if (RegexCache.get('\\.eventData\\s*(?:\\.value)?\\b', 'm').match(source))
 			result.push('eventData/value');
-		if (new EReg('\\.(?:cancel|cancelEvent)\\s*\\(', 'm').match(source))
+		if (RegexCache.get('\\.(?:cancel|cancelEvent)\\s*\\(', 'm').match(source))
 			result.push('cancel');
-		if (new EReg('\\.(?:eventCanceled|canceled|cancelled)\\b', 'm').match(source))
+		if (RegexCache.get('\\.(?:eventCanceled|canceled|cancelled)\\b', 'm').match(source))
 			result.push('cancellation-state');
-		if (new EReg('\\.(?:step|beat|elapsed)\\b', 'm').match(source))
+		if (RegexCache.get('\\.(?:step|beat|elapsed)\\b', 'm').match(source))
 			result.push('time');
 		return result;
 	}
@@ -1219,20 +1485,20 @@ class HxcCompat {
 			return result;
 		if (noteKindAvoidsHits(source))
 			result.push('avoid-auto-hit');
-		if (new EReg('(?:noteData|note)\\s*\\.\\s*kind', 'm').match(source))
+		if (RegexCache.get('(?:noteData|note)\\s*\\.\\s*kind', 'm').match(source))
 			result.push('kind-routing');
-		if (new EReg('\\.(?:cancel|cancelEvent)\\s*\\(', 'm').match(source))
+		if (RegexCache.get('\\.(?:cancel|cancelEvent)\\s*\\(', 'm').match(source))
 			result.push('cancellation');
-		if (new EReg('PlayState\\s*\\.\\s*instance\\s*\\.\\s*health\\s*(?:=|\\+=|-=)', 'm').match(source))
+		if (RegexCache.get('PlayState\\s*\\.\\s*instance\\s*\\.\\s*health\\s*(?:=|\\+=|-=)', 'm').match(source))
 			result.push('health');
-		if (new EReg('\\.frames\\s*=|\\.animation\\s*\\.|\\.holdNoteSprite\\s*\\.|\\.(?:loadGraphic|updateHitbox)\\s*\\(', 'm').match(source))
+		if (RegexCache.get('\\.frames\\s*=|\\.animation\\s*\\.|\\.holdNoteSprite\\s*\\.|\\.(?:loadGraphic|updateHitbox)\\s*\\(', 'm').match(source))
 			result.push('graphics');
-		if (new EReg('\\.(?:kill|destroy)\\s*\\(', 'm').match(source))
+		if (RegexCache.get('\\.(?:kill|destroy)\\s*\\(', 'm').match(source))
 			result.push('lifecycle');
-		if (new EReg('\\.lowPriority\\b', 'm').match(source))
+		if (RegexCache.get('\\.lowPriority\\b', 'm').match(source))
 			result.push('priority');
-		var hasNamespacedStore = new EReg('[A-Za-z_][A-Za-z0-9_]*Preferences\\s*\\.\\s*get[A-Za-z_][A-Za-z0-9_]*Save|Save\\s*\\.\\s*instance', 'm').match(source);
-		if (hasNamespacedStore || new EReg('\\bsave\\s*\\.', 'm').match(source))
+		var hasNamespacedStore = RegexCache.get('[A-Za-z_][A-Za-z0-9_]*Preferences\\s*\\.\\s*get[A-Za-z_][A-Za-z0-9_]*Save|Save\\s*\\.\\s*instance', 'm').match(source);
+		if (hasNamespacedStore || RegexCache.get('\\bsave\\s*\\.', 'm').match(source))
 			if (hasNamespacedStore)
 				result.push('state-store');
 			else
@@ -1248,7 +1514,7 @@ class HxcCompat {
 				result.push('tally-adapter');
 			else
 				result.push('tally-state');
-		} else if (new EReg('\\bHighscore\\s*\\.\\s*tallies\\b', 'm').match(source))
+		} else if (RegexCache.get('\\bHighscore\\s*\\.\\s*tallies\\b', 'm').match(source))
 			// A bare tally root (or a computed member) cannot be proven to stay on
 			// the narrow explicit per-song counter view. Keep it diagnosed instead of
 			// silently exposing an arbitrary donor state object.
@@ -1346,11 +1612,11 @@ class HxcCompat {
 	static function methodHasPayloadArgument(source:String, name:String):Bool {
 		if (source == null || name == null || name == '')
 			return false;
-		var expression = new EReg('\\bfunction\\s+' + name + '\\s*\\(([^)]*)\\)', 'm');
+		var expression = RegexCache.get('\\bfunction\\s+' + name + '\\s*\\(([^)]*)\\)', 'm');
 		if (!expression.match(source))
 			return false;
 		var arguments = expression.matched(1);
-		return new EReg('(?:ScriptEvent|SongEventScriptEvent|CountdownScriptEvent)', 'm').match(arguments);
+		return RegexCache.get('(?:ScriptEvent|SongEventScriptEvent|CountdownScriptEvent)', 'm').match(arguments);
 	}
 
 	static function payloadBodyUses(source:String, arguments:Array<String>):Bool {
@@ -1359,7 +1625,7 @@ class HxcCompat {
 		if (arguments != null)
 			for (argument in arguments)
 				if (argument != null && argument != ''
-					&& new EReg('\\b' + argument + '\\s*\\.', 'm').match(source))
+					&& RegexCache.get('\\b' + argument + '\\s*\\.', 'm').match(source))
 					return true;
 		return false;
 	}
@@ -1378,7 +1644,7 @@ class HxcCompat {
 		// state below them is still rejected by the chain allow-list.
 		for (field in ['events', 'targetState', 'capsule', 'freeplayState', 'difficulty',
 			'variation', 'character'])
-			if (new EReg('\\b' + root + '\\s*\\.\\s*' + field + '\\b', 'm').match(source)) {
+			if (RegexCache.get('\\b' + root + '\\s*\\.\\s*' + field + '\\b', 'm').match(source)) {
 				var fieldAllowed = switch (field) {
 					case 'events': callbackName == 'songLoaded';
 					case 'targetState': callbackName == 'stateChangeBegin'
@@ -1399,7 +1665,7 @@ class HxcCompat {
 			}
 		// Unknown direct event objects are not manufactured by the bridge.
 		for (field in ['stage', 'event', 'SongEvent'])
-			if (new EReg('\\b' + root + '\\s*\\.\\s*' + field + '\\b', 'm').match(source)) {
+			if (RegexCache.get('\\b' + root + '\\s*\\.\\s*' + field + '\\b', 'm').match(source)) {
 				return false;
 			}
 		var calls = collectMatches(source,
@@ -1748,6 +2014,23 @@ class HxcCompat {
 	static function lifecycleCallback(name:String):String
 		return ScriptLifecycleNames.vsliceCanonical(name);
 
+	/** Every hook V-Slice's IScriptedClass family dispatches (IScriptedClass.hx).
+		One of these the engine does not route keeps a module from running, since its
+		behaviour would be lost. Any other `on*` name is a plain method V-Slice never calls. */
+	static final vsliceDispatchedHooks:Array<String> = [
+		'onadd', 'onbeathit', 'oncapsuleselected', 'oncharacterconfirm', 'oncharacterdeselect', 'oncharacterselect',
+		'oncountdownend', 'oncountdownstart', 'oncountdownstep', 'oncreate', 'ondestroy', 'ondialoguecompleteline',
+		'ondialogueend', 'ondialogueline', 'ondialogueskip', 'ondialoguestart', 'ondifficultyswitch',
+		'onfocusgained', 'onfocuslost', 'onfreeplayclose', 'onfreeplayintrodone', 'onfreeplayoutro', 'ongameover',
+		'onnoteghostmiss', 'onnotehit', 'onnoteholddrop', 'onnoteincoming', 'onnotemiss', 'onpause', 'onresume',
+		'onscriptevent', 'onsongend', 'onsongevent', 'onsongloaded', 'onsongretry', 'onsongselected', 'onsongstart',
+		'onstatechangebegin', 'onstatechangeend', 'onstephit', 'onsubstateclosebegin', 'onsubstatecloseend',
+		'onsubstateopenbegin', 'onsubstateopenend', 'onupdate'
+	];
+
+	static function isVSliceDispatchedHookName(name:String):Bool
+		return name != null && vsliceDispatchedHooks.indexOf(name.toLowerCase()) >= 0;
+
 	/**
 		The priority a Module passes as the second `super(...)` argument. V-Slice
 		sorts modules by it (lower first) before every event, so it decides which
@@ -1970,7 +2253,7 @@ class HxcCompat {
 				|| declaration.initializer == null || declaration.initializer == '')
 				continue;
 			var initializer = declaration.initializer;
-			if (!new EReg('(?:new\\s+FlxRuntimeShader|createRuntimeShader)\\s*\\(', 'm').match(initializer))
+			if (!RegexCache.get('(?:new\\s+FlxRuntimeShader|createRuntimeShader)\\s*\\(', 'm').match(initializer))
 				continue;
 			var fragment = firstString(initializer,
 				'Paths\\s*\\.\\s*frag\\s*\\(\\s*["\\\']([^"\\\']+)["\\\']');
@@ -2014,7 +2297,7 @@ class HxcCompat {
 				if (declaration == null || !isIdentifier(declaration.name)
 					|| declaration.initializer == null)
 					continue;
-				if (new EReg('^new\\s+ShaderFilter\\s*\\(\\s*'
+				if (RegexCache.get('^new\\s+ShaderFilter\\s*\\(\\s*'
 					+ EReg.escape(shader.name) + '\\s*\\)$', 'm').match(StringTools.trim(declaration.initializer))) {
 					filterField = declaration.name;
 					filterMatches++;
@@ -2880,7 +3163,8 @@ class HxcCompat {
 		if (source == null || source == '')
 			return source == null ? '' : source;
 		var output = new StringBuf();
-		var call = new EReg('\\btweenCameraToPosition\\s*\\(', 'g');
+		// Cached: matchedPos is read right after each match.
+		var call = RegexCache.get('\\btweenCameraToPosition\\s*\\(', 'g');
 		var offset = 0;
 		while (offset < source.length && call.match(source.substr(offset))) {
 			var position = call.matchedPos();
@@ -2893,7 +3177,7 @@ class HxcCompat {
 			}
 			var arguments = splitTopLevel(source.substr(open + 1, close - open - 1), ',');
 			if (arguments.length == 4
-				&& new EReg('^\\+?0(?:\\.0*)?(?:[eE][+-]?[0-9]+)?$', 'm')
+				&& RegexCache.get('^\\+?0(?:\\.0*)?(?:[eE][+-]?[0-9]+)?$', 'm')
 					.match(StringTools.trim(arguments[2]))
 				&& (StringTools.trim(arguments[3]) == 'FlxEase.instant'
 					|| StringTools.trim(arguments[3]) == 'flixel.tweens.FlxEase.instant')) {
@@ -3313,15 +3597,15 @@ class HxcCompat {
 		var actorSource = source;
 		for (field in ['x', 'y', 'idleSuffix', 'isPixel', 'originalPosition', 'characterOrigin', 'zIndex',
 			'offset', 'shader', 'antialiasing'])
-			actorSource = new EReg('\\bthis\\s*\\.\\s*' + field + '\\b', 'g')
+			actorSource = RegexCache.get('\\bthis\\s*\\.\\s*' + field + '\\b', 'g')
 				.replace(actorSource, 'hxcCharacter().' + field);
 		for (method in ['resetPosition', 'playAnimation', 'playSingAnimation'])
-			actorSource = new EReg('\\bthis\\s*\\.\\s*' + method + '\\s*\\(', 'g')
+			actorSource = RegexCache.get('\\bthis\\s*\\.\\s*' + method + '\\s*\\(', 'g')
 				.replace(actorSource, 'hxcCharacter().' + method + '(');
 		var output = translateBody(actorSource, methodName, arguments, true, true);
 		// CharacterType is a donor enum; the native bridge exposes the live slot as
 		// a stable string and never fabricates a foreign enum object.
-		output = new EReg('\\bcharacterType\\b', 'g')
+		output = RegexCache.get('\\bcharacterType\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.characterType(hxcCharacter())');
 		// `this.animation` loses its qualifier in translateBody; bare reads route
 		// back to the actor. The field pattern excludes dot-prefixed uses, so
@@ -3331,32 +3615,56 @@ class HxcCompat {
 		// declaration shadows it, so leave that spelling alone when present.
 		for (field in ['originalPosition', 'characterOrigin', 'zIndex'])
 			if ((arguments == null || arguments.indexOf(field) < 0)
-				&& !new EReg('\\b(?:var|final)\\s+' + field + '\\b', 'm').match(stripComments(source)))
+				&& !RegexCache.get('\\b(?:var|final)\\s+' + field + '\\b', 'm').match(stripComments(source)))
 				actorFields.push(field);
 		if ((arguments == null || arguments.indexOf('isPixel') < 0)
-			&& !new EReg('\\b(?:var|final)\\s+isPixel\\b', 'm').match(stripComments(source)))
+			&& !RegexCache.get('\\b(?:var|final)\\s+isPixel\\b', 'm').match(stripComments(source)))
 			actorFields.push('isPixel');
 		if (loweredName == 'getscreenposition')
 			for (field in ['flipY', 'width', 'height', 'frameWidth', 'frameHeight', 'scale'])
 				actorFields.push(field);
 		for (field in actorFields) {
-			var fieldPattern = new EReg('(^|[^A-Za-z0-9_.])' + field + '\\b', 'gm');
-			output = fieldPattern.replace(output, '$1hxcCharacter().' + field);
+			var fieldPattern = RegexCache.get('(^|[^A-Za-z0-9_.])' + field + '\\b', 'gm');
+			var text = output;
+			// An object literal key (`{alpha: 0}` in a tween) names a property, not
+			// the actor's field, and `{hxcCharacter().alpha: 0}` would not parse.
+			output = fieldPattern.map(text, function(match) {
+				var position = match.matchedPos();
+				var nameStart = position.pos + match.matched(1).length;
+				if (isObjectLiteralKey(text, nameStart, position.pos + position.len))
+					return match.matched(0);
+				return match.matched(1) + 'hxcCharacter().' + field;
+			});
 		}
 		// HXC exposes the active animation's offsets as a two-element array.  The
 		// native Character keeps a name-keyed map, so route only the two indexed
 		// reads used by the donor screen-position convention through its adapter.
-		output = new EReg('\\banimOffsets\\s*\\[\\s*0\\s*\\]', 'g')
+		output = RegexCache.get('\\banimOffsets\\s*\\[\\s*0\\s*\\]', 'g')
 			.replace(output, 'HxcCompatRuntime.characterAnimationOffset(hxcCharacter(), 0)');
-		output = new EReg('\\banimOffsets\\s*\\[\\s*1\\s*\\]', 'g')
+		output = RegexCache.get('\\banimOffsets\\s*\\[\\s*1\\s*\\]', 'g')
 			.replace(output, 'HxcCompatRuntime.characterAnimationOffset(hxcCharacter(), 1)');
-		output = new EReg('\\bglobalOffsets\\s*\\[\\s*0\\s*\\]', 'g')
+		output = RegexCache.get('\\bglobalOffsets\\s*\\[\\s*0\\s*\\]', 'g')
 			.replace(output, 'HxcCompatRuntime.characterGlobalOffset(hxcCharacter(), 0)');
-		output = new EReg('\\bglobalOffsets\\s*\\[\\s*1\\s*\\]', 'g')
+		output = RegexCache.get('\\bglobalOffsets\\s*\\[\\s*1\\s*\\]', 'g')
 			.replace(output, 'HxcCompatRuntime.characterGlobalOffset(hxcCharacter(), 1)');
 		output = translateCharacterDeathOverlay(output);
 		output = lowerHxcNativeObjects(output);
 		return output;
+	}
+
+	/** Whether text[start, end) is a key in an object literal: preceded by `{` or
+		`,` and followed by a single `:`. A ternary branch (`c ? alpha : 1`) is not. */
+	static function isObjectLiteralKey(text:String, start:Int, end:Int):Bool {
+		var after = end;
+		while (after < text.length && isWhitespace(text.charAt(after)))
+			after++;
+		if (after >= text.length || text.charAt(after) != ':'
+			|| (after + 1 < text.length && text.charAt(after + 1) == ':'))
+			return false;
+		var before = start - 1;
+		while (before >= 0 && isWhitespace(text.charAt(before)))
+			before--;
+		return before >= 0 && (text.charAt(before) == '{' || text.charAt(before) == ',');
 	}
 
 	/**
@@ -3376,61 +3684,61 @@ class HxcCompat {
 		// handle when the assigned variable itself has an overlay/death role;
 		// ordinary character sprites must flow to lowerHxcNativeObjects below.
 		var overlay = '([A-Za-z_][A-Za-z0-9_]*(?:death[A-Za-z0-9_]*|overlay[A-Za-z0-9_]*)|(?:death|overlay)[A-Za-z0-9_]*)';
-		output = new EReg('((?:var\\s+)?' + overlay + ')'
+		output = RegexCache.get('((?:var\\s+)?' + overlay + ')'
 			+ '(?:\\s*:\\s*[^=;\\n]+)?\\s*=\\s*'
 			+ '(?:[A-Za-z_][A-Za-z0-9_]*\\.)?createSparrow\\s*'
 			+ '\\([^,]+,\\s*[^,]+,\\s*([^,)]+)\\)', 'gi')
 			.replace(output, '$1 = HxcCompatRuntime.gameOverCreateOverlay(hxcAssetRoot, $3)');
-		output = new EReg('\\bApplication\\s*\\.\\s*current\\s*\\.\\s*window\\s*'
+		output = RegexCache.get('\\bApplication\\s*\\.\\s*current\\s*\\.\\s*window\\s*'
 			+ '\\s*\\.\\s*close\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.gameOverCloseWindow()');
-		output = new EReg('\\bGameOverSubState\\s*\\.\\s*instance\\s*'
+		output = RegexCache.get('\\bGameOverSubState\\s*\\.\\s*instance\\s*'
 			+ '\\s*\\.\\s*resetCameraZoom\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.gameOverResetCameraZoom()');
-		output = new EReg('\\bGameOverSubstate\\s*\\.\\s*instance\\s*'
+		output = RegexCache.get('\\bGameOverSubstate\\s*\\.\\s*instance\\s*'
 			+ '\\s*\\.\\s*resetCameraZoom\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.gameOverResetCameraZoom()');
-		output = new EReg('\\bGameOverSubState\\s*\\.\\s*instance\\s*'
+		output = RegexCache.get('\\bGameOverSubState\\s*\\.\\s*instance\\s*'
 			+ '\\s*\\.\\s*add\\s*\\(\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.gameOverAddOverlay($1)');
-		output = new EReg('\\bGameOverSubstate\\s*\\.\\s*instance\\s*'
+		output = RegexCache.get('\\bGameOverSubstate\\s*\\.\\s*instance\\s*'
 			+ '\\s*\\.\\s*add\\s*\\(\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.gameOverAddOverlay($1)');
-		output = new EReg('\\bFlxG\\s*\\.\\s*state\\s*\\.\\s*subState\\s*\\.\\s*mustNotExit\\s*'
+		output = RegexCache.get('\\bFlxG\\s*\\.\\s*state\\s*\\.\\s*subState\\s*\\.\\s*mustNotExit\\s*'
 			+ '=\\s*([^;\\n]+)', 'g')
 			.replace(output, 'HxcCompatRuntime.gameOverSetMustNotExit($1)');
-		output = new EReg('\\bPlayState\\s*\\.\\s*instance\\s*\\.\\s*tweenCameraToPosition\\s*'
+		output = RegexCache.get('\\bPlayState\\s*\\.\\s*instance\\s*\\.\\s*tweenCameraToPosition\\s*'
 			+ '\\(\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*getGraphicMidpoint\\s*\\(\\s*\\)\\s*\\.\\s*x\\s*,'
 			+ '\\s*\\1\\s*\\.\\s*getGraphicMidpoint\\s*\\(\\s*\\)\\s*\\.\\s*y\\s*,'
 			+ '\\s*([^,)]+)\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.gameOverTweenCameraToOverlay($1, $2)');
 		// HXC's Position object is donor-only; the overlay needs the live native
 		// actor position with the same visual meaning.
-		output = new EReg('\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*originalPosition\\s*\\.\\s*([xy])\\b', 'g')
+		output = RegexCache.get('\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*originalPosition\\s*\\.\\s*([xy])\\b', 'g')
 			.replace(output, '$1.$2');
-		output = new EReg('\\b' + overlay + '\\s*\\.\\s*screenCenter\\s*\\(\\s*\\)', 'gi')
+		output = RegexCache.get('\\b' + overlay + '\\s*\\.\\s*screenCenter\\s*\\(\\s*\\)', 'gi')
 			.replace(output, 'HxcCompatRuntime.gameOverCenterOverlay($1)');
-		output = new EReg('\\b' + overlay + '\\s*\\.\\s*animation\\s*\\.\\s*addByPrefix\\s*'
+		output = RegexCache.get('\\b' + overlay + '\\s*\\.\\s*animation\\s*\\.\\s*addByPrefix\\s*'
 			+ '\\(\\s*([^,]+),\\s*([^,]+),\\s*([^,]+),\\s*([^,)]+)\\s*\\)', 'gi')
 			.replace(output, 'HxcCompatRuntime.gameOverAddOverlayAnimation($1, $2, $3, $4, $5)');
-		output = new EReg('\\b' + overlay + '\\s*\\.\\s*animation\\s*\\.\\s*play\\s*'
+		output = RegexCache.get('\\b' + overlay + '\\s*\\.\\s*animation\\s*\\.\\s*play\\s*'
 			+ '\\(\\s*([^,)]+)(?:,\\s*[^)]*)?\\)', 'gi')
 			.replace(output, 'HxcCompatRuntime.gameOverPlayOverlayAnimation($1, $2)');
-		output = new EReg('\\b' + overlay + '\\s*\\.\\s*alpha\\s*=\\s*([^;\\n]+)', 'gi')
+		output = RegexCache.get('\\b' + overlay + '\\s*\\.\\s*alpha\\s*=\\s*([^;\\n]+)', 'gi')
 			.replace(output, 'HxcCompatRuntime.gameOverSetOverlayAlpha($1, $2)');
-		output = new EReg('\\b' + overlay + '\\s*\\.\\s*visible\\s*=\\s*([^;\\n]+)', 'gi')
+		output = RegexCache.get('\\b' + overlay + '\\s*\\.\\s*visible\\s*=\\s*([^;\\n]+)', 'gi')
 			.replace(output, 'HxcCompatRuntime.gameOverSetOverlayVisible($1, $2)');
-		output = new EReg('\\b' + overlay + '\\s*\\.\\s*x\\s*\\+=\\s*([^;\\n]+)', 'gi')
+		output = RegexCache.get('\\b' + overlay + '\\s*\\.\\s*x\\s*\\+=\\s*([^;\\n]+)', 'gi')
 			.replace(output, 'HxcCompatRuntime.gameOverOffsetOverlay($1, $2, 0)');
-		output = new EReg('\\b' + overlay + '\\s*\\.\\s*x\\s*-=\\s*([^;\\n]+)', 'gi')
+		output = RegexCache.get('\\b' + overlay + '\\s*\\.\\s*x\\s*-=\\s*([^;\\n]+)', 'gi')
 			.replace(output, 'HxcCompatRuntime.gameOverOffsetOverlay($1, -($2), 0)');
-		output = new EReg('\\b' + overlay + '\\s*\\.\\s*y\\s*\\+=\\s*([^;\\n]+)', 'gi')
+		output = RegexCache.get('\\b' + overlay + '\\s*\\.\\s*y\\s*\\+=\\s*([^;\\n]+)', 'gi')
 			.replace(output, 'HxcCompatRuntime.gameOverOffsetOverlay($1, 0, $2)');
-		output = new EReg('\\b' + overlay + '\\s*\\.\\s*y\\s*-=\\s*([^;\\n]+)', 'gi')
+		output = RegexCache.get('\\b' + overlay + '\\s*\\.\\s*y\\s*-=\\s*([^;\\n]+)', 'gi')
 			.replace(output, 'HxcCompatRuntime.gameOverOffsetOverlay($1, 0, -($2))');
-		output = new EReg('\\b' + overlay + '\\s*\\.\\s*x\\s*=\\s*([^;\\n]+)', 'gi')
+		output = RegexCache.get('\\b' + overlay + '\\s*\\.\\s*x\\s*=\\s*([^;\\n]+)', 'gi')
 			.replace(output, 'HxcCompatRuntime.gameOverSetOverlayX($1, $2)');
-		output = new EReg('\\b' + overlay + '\\s*\\.\\s*y\\s*=\\s*([^;\\n]+)', 'gi')
+		output = RegexCache.get('\\b' + overlay + '\\s*\\.\\s*y\\s*=\\s*([^;\\n]+)', 'gi')
 			.replace(output, 'HxcCompatRuntime.gameOverSetOverlayY($1, $2)');
 		return output;
 	}
@@ -3545,6 +3853,37 @@ class HxcCompat {
 		return sign + number;
 	}
 
+	/**
+		Members the owner-scoped Paths proxy implements in every PlayState script
+		interpreter (PlayState.makeHxcPathsProxy). A character hook may call these.
+	**/
+	static final CHARACTER_SCOPED_PATHS_MEMBERS:Array<String> = ['image', 'getSparrowAtlas', 'getPackerAtlas',
+		'file', 'xml', 'txt', 'json', 'frag', 'sound', 'voices', 'music', 'font', 'videos'];
+
+	/**
+		Static members of the base-game V-Slice helper classes (HapticUtil.hx,
+		TouchUtil.hx, Preferences.hx, ReflectUtil.hx, RetroCameraFade.hx).
+		Sequence and AtlasText are only constructed, so they have none.
+	**/
+	static final BASE_HELPER_STATIC_MEMBERS:Map<String, Array<String>> = [
+		'HapticUtil' => ['amplitudeTween', 'hapticsAvailable', 'defaultVibrationPreset', 'vibrate', 'vibrateByPreset',
+			'increasingVibrate'],
+		'TouchUtil' => ['pressed', 'justPressed', 'justReleased', 'released', 'justMoved', 'touch', 'overlaps',
+			'overlapsComplex', 'overlapsComplexPoint', 'pressAction'],
+		'Preferences' => ['naughtyness', 'downscroll', 'flashingLights', 'zoomCamera', 'autoPause', 'subtitles',
+			'globalOffset', 'framerate', 'strumlineBackgroundOpacity', 'hapticsMode', 'hapticsIntensityMultiplier',
+			'controlsScheme', 'screenTimeout', 'autoFullscreen', 'unlockedFramerate', 'enabledDiscordRPC',
+			'shouldHideMouse', 'debugDisplay', 'debugDisplayBGOpacity'],
+		'ReflectUtil' => ['compatClassName', 'getClassNameOf', 'getClassName', 'getAnonymousField', 'field', 'getField',
+			'setAnonymousField', 'setField', 'getProperty', 'setProperty', 'hasAnonymousField', 'hasField',
+			'deleteAnonymousField', 'delete', 'getAnonymousFieldsOf', 'fields', 'getFieldsOf', 'copyAnonymousFieldsOf',
+			'copy', 'callMethod', 'compare', 'compareValues', 'compareMethods', 'isEnumValue', 'isFunction', 'isObject',
+			'getClassFields', 'getClassFieldsOf', 'getInstanceFields', 'getInstanceFieldsOf', 'makeVarArgs'],
+		'RetroCameraFade' => ['fadeWhite', 'fadeFromWhite', 'fadeToBlack', 'fadeBlack', 'stepMatrix'],
+		'Sequence' => [],
+		'AtlasText' => []
+	];
+
 	/** Reject donor-only roots while allowing the narrow actor surface above. */
 	static function isSafeCharacterBody(source:String, ?methodName:String,
 		?arguments:Array<String>):Bool {
@@ -3568,17 +3907,22 @@ class HxcCompat {
 		// manifest-scoped Paths proxy. Evaluating Paths.image decodes and caches
 		// the owner's BitmapData before hxcCacheTexture receives it. Keep other
 		// FunkinMemory/Paths operations behind the ordinary donor-root warning.
-		var boundedTextureCache = new EReg('\\bFunkinMemory\\s*\\.\\s*cacheTexture\\s*\\(\\s*'
+		var boundedTextureCache = RegexCache.get('\\bFunkinMemory\\s*\\.\\s*cacheTexture\\s*\\(\\s*'
 			+ 'Paths\\s*\\.\\s*image\\s*\\(\\s*["\\\'][^"\\\']+["\\\']\\s*'
 			+ '(?:,\\s*["\\\'][^"\\\']+["\\\']\\s*)?\\)\\s*\\)', 'g');
 		var otherDonorCalls = boundedTextureCache.replace(source, '');
-		// A death quote returns a sound path through the owner-scoped proxy.
-		// Other Paths operations retain their existing explicit diagnostics.
-		if (methodName != null && methodName.toLowerCase() == 'getdeathquote')
-			otherDonorCalls = new EReg('\\bPaths\\s*\\.\\s*sound\\b', 'g')
-				.replace(otherDonorCalls, 'hxcPaths.sound');
+		// Every `Paths.` in a script PlayState runs is rewritten to the owner's
+		// scoped proxy (EngineCompat.rewriteScopedAssetPaths), so a call to a
+		// member that proxy implements loads from the character's own import,
+		// exactly as song and stage scripts do. Members the proxy lacks
+		// (spritesheet, animateAtlas, currentLevel) stay rejected.
+		otherDonorCalls = RegexCache.get('\\bPaths\\s*\\.\\s*(' + CHARACTER_SCOPED_PATHS_MEMBERS.join('|') + ')\\s*\\(', 'g')
+			.replace(otherDonorCalls, 'hxcPaths.$1(');
+		// Cache warm-ups are lowered to the engine precache (lowerHxcApiAliases).
+		otherDonorCalls = RegexCache.get('\\bFunkinMemory\\s*\\.\\s*(?:cacheTexture|cacheSound|permanentCacheTexture|permanentCacheSound)\\s*\\(', 'g')
+			.replace(otherDonorCalls, 'hxcCacheWarmup(');
 		for (root in ['FunkinMemory', 'FlxAnimationUtil', 'Paths'])
-			if (new EReg('\\b' + root + '\\b', 'm').match(otherDonorCalls) && !gameOverAssetsSafe)
+			if (RegexCache.get('\\b' + root + '\\b', 'm').match(otherDonorCalls) && !gameOverAssetsSafe)
 				return false;
 		var donorSubstateMembers = new EReg('\\b(GameOverSubState|PauseSubState)\\s*\\.\\s*([A-Za-z_][A-Za-z0-9_]*)\\b', 'g');
 		var offset = 0;
@@ -3689,7 +4033,7 @@ class HxcCompat {
 					if (nested != null) return nested;
 				} else if (entry.toLowerCase().endsWith('.hxc')) {
 					var content = File.getContent(child);
-					if (new EReg('\\bclass\\s+' + className + '\\b', 'm').match(stripComments(content)))
+					if (RegexCache.get('\\bclass\\s+' + className + '\\b', 'm').match(stripComments(content)))
 						return {path: child, source: content};
 				}
 			} catch (_:Dynamic) {}
@@ -4367,7 +4711,7 @@ class HxcCompat {
 			var translatedConstructor = StringTools.trim(translateBody(method.body, method.name, method.arguments));
 			if (translatedConstructor.indexOf('HxcCompatRuntime.onMobile') >= 0
 				&& unsupportedConstructs(translatedConstructor).length == 0
-				&& new EReg('\\b(?:var\\s+)?[A-Za-z_][A-Za-z0-9_]*\\s*=|\\bif\\s*\\(', 'm').match(translatedConstructor)) {
+				&& RegexCache.get('\\b(?:var\\s+)?[A-Za-z_][A-Za-z0-9_]*\\s*=|\\bif\\s*\\(', 'm').match(translatedConstructor)) {
 				if (constructorStatements != null)
 					constructorStatements.push(translatedConstructor);
 				continue;
@@ -4976,13 +5320,13 @@ class HxcCompat {
 		// Haxe uses hexadecimal integer literals for colors and bit masks. Keep
 		// this exact scalar form in the same literal-only boundary as decimal
 		// numbers; a wider expression still goes through the normal token gate.
-		if (new EReg('^0[xX][0-9A-Fa-f]+$', 'm').match(value))
+		if (RegexCache.get('^0[xX][0-9A-Fa-f]+$', 'm').match(value))
 			return true;
 		// A zero-argument native container has no donor side effects and is safe
 		// to materialize in the generated HScript state.  Keep this deliberately
 		// narrow: arbitrary `new` expressions may run foreign constructors or
 		// capture donor-only registries and therefore remain unsupported.
-		if (new EReg('^new\\s+(?:FlxTypedGroup|StringMap)\\s*\\(\\s*\\)$', 'm').match(value))
+		if (RegexCache.get('^new\\s+(?:FlxTypedGroup|StringMap)\\s*\\(\\s*\\)$', 'm').match(value))
 			return true;
 		// These are interpreter-seeded compatibility values, not donor-side
 		// constructors.  They are safe to capture in a module's initial state.
@@ -4995,10 +5339,10 @@ class HxcCompat {
 		// Constants is lowered to this owner-scoped mutable facade.  Only its
 		// declared fields may seed module state; arbitrary runtime calls and
 		// foreign object reads remain outside the initializer boundary.
-		if (new EReg('^HxcCompatRuntime\\s*\\.\\s*constantsForRoot\\s*\\(\\s*hxcAssetRoot\\s*\\)\\s*\\.\\s*(?:TITLE|VERSION|COLOR_HEALTH_BAR_GREEN|COLOR_HEALTH_BAR_RED|COUNTDOWN_VOLUME|HEALTH_MAX|HEALTH_MIN|HEALTH_STARTING|HEALTH_SICK_BONUS|HEALTH_GOOD_BONUS|HEALTH_BAD_BONUS|HEALTH_SHIT_BONUS|HEALTH_MISS_PENALTY|HEALTH_GHOST_MISS_PENALTY|MS_PER_SEC|SECS_PER_MIN|STEPS_PER_BEAT|DEFAULT_CAMERA_FOLLOW_RATE|DEFAULT_VARIATION|PIXELS_PER_MS|PIXEL_ART_SCALE|STRUMLINE_X_OFFSET|STRUMLINE_Y_OFFSET|DEFAULT_DIFFICULTY_LIST_FULL)$', 'm')
+		if (RegexCache.get('^HxcCompatRuntime\\s*\\.\\s*constantsForRoot\\s*\\(\\s*hxcAssetRoot\\s*\\)\\s*\\.\\s*(?:TITLE|VERSION|COLOR_HEALTH_BAR_GREEN|COLOR_HEALTH_BAR_RED|COUNTDOWN_VOLUME|HEALTH_MAX|HEALTH_MIN|HEALTH_STARTING|HEALTH_SICK_BONUS|HEALTH_GOOD_BONUS|HEALTH_BAD_BONUS|HEALTH_SHIT_BONUS|HEALTH_MISS_PENALTY|HEALTH_GHOST_MISS_PENALTY|MS_PER_SEC|SECS_PER_MIN|STEPS_PER_BEAT|DEFAULT_CAMERA_FOLLOW_RATE|DEFAULT_VARIATION|PIXELS_PER_MS|PIXEL_ART_SCALE|STRUMLINE_X_OFFSET|STRUMLINE_Y_OFFSET|DEFAULT_DIFFICULTY_LIST_FULL)$', 'm')
 			.match(value))
 			return true;
-		if (new EReg('^__hxcStore\\.getSave\\(\\s*\\)$', 'm').match(value))
+		if (RegexCache.get('^__hxcStore\\.getSave\\(\\s*\\)$', 'm').match(value))
 			return true;
 		// lowerMapLiterals emits hxcMap for HXC's literal map syntax. The
 		// adapter is a pure native container, so permit it as module state only
@@ -5176,14 +5520,17 @@ class HxcCompat {
 					appendUnique(helperNames, helper.sourceName);
 					helperMap.set(helper.sourceName, helper);
 				}
-		// Any `on*` method not in the centrally dispatched vocabulary is still a
-		// live donor hook. Treating it as an ordinary helper would silently drop
-		// state-change/substate behavior during import.
+		// The lifecycle table holds every hook V-Slice dispatches to a scripted
+		// class (IScriptedClass and its sub-interfaces). An `on*` method outside it
+		// is never called by V-Slice either, often a module's own cleanup named
+		// like a hook (onSongDestroy). It stays an ordinary method; rejecting the
+		// whole module for it dropped every working callback the module had.
 		if (functions != null)
 			for (method in functions)
 				if (method != null && method.name != null
 					&& method.name.toLowerCase().startsWith('on')
-					&& lifecycleCallback(method.name) == '') {
+					&& lifecycleCallback(method.name) == ''
+					&& isVSliceDispatchedHookName(method.name)) {
 					appendUnique(reasons, 'unrouted lifecycle ' + method.name);
 				}
 
@@ -5376,6 +5723,14 @@ class HxcCompat {
 			if (!allowed.exists(callName) && !moduleKnownCall(callName)) {
 				return false;
 			}
+		// A class named only as a type test (`Std.isOfType(x, OptionsState)`) is a
+		// bare identifier the dotted-root scan never sees; when the interpreter does
+		// not bind it, the callback throws on every dispatch.
+		for (typeName in collectMatches(translated,
+			'\\bStd\\s*\\.\\s*(?:isOfType|is)\\s*\\([^,()]*(?:\\([^()]*\\)[^,()]*)*,\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\)', 1))
+			if (!allowed.exists(typeName) && !moduleKnownRoot(typeName)) {
+				return false;
+			}
 		if (!modulePlayStateMembersSafe(translated, playStateAliases))
 			return false;
 		if (!moduleFreeplayMembersSafe(translated, arguments))
@@ -5508,9 +5863,9 @@ class HxcCompat {
 			if (safeMapFields != null && safeMapFields.indexOf(root) >= 0)
 				continue;
 			var escapedRoot = root;
-			if (new EReg('\\b' + escapedRoot + '\\s*(?:\\.\\s*modOptions)?\\s*\\.\\s*hasBeatenSong\\s*\\(', 'm').match(source))
+			if (RegexCache.get('\\b' + escapedRoot + '\\s*(?:\\.\\s*modOptions)?\\s*\\.\\s*hasBeatenSong\\s*\\(', 'm').match(source))
 				return false;
-			if (new EReg('\\b' + escapedRoot + '\\s*(?:\\.\\s*modOptions)?\\s*\\.\\s*get\\s*\\([^)]*\\)\\s*\\.', 'm').match(source))
+			if (RegexCache.get('\\b' + escapedRoot + '\\s*(?:\\.\\s*modOptions)?\\s*\\.\\s*get\\s*\\([^)]*\\)\\s*\\.', 'm').match(source))
 				return false;
 		}
 		return true;
@@ -5610,13 +5965,41 @@ class HxcCompat {
 		return result;
 	}
 
+	static var modulePlayStateMembers:Map<String, Bool> = null;
+
+	/**
+		Every public instance member PlayState (or its superclasses in this tree)
+		declares is a real member, so it comes from the PlayState source at compile
+		time. A hand-kept copy drifted and dropped HUD modules that used members
+		PlayState had gained. Only names a public scan cannot see are listed here.
+	**/
+	static function modulePlayStateAllowedMembers():Map<String, Bool> {
+		if (modulePlayStateMembers != null)
+			return modulePlayStateMembers;
+		var members = new Map<String, Bool>();
+		for (name in PlayStateMemberNames.collect())
+			members.set(name, true);
+		for (name in [
+			// Private PlayState fields modules historically read; hscript reaches them by reflection.
+			'playerStrums', 'enemyStrums', 'songScore',
+			// Statics and alias owners scripts reach through the instance.
+			'SONG', 'instance', 'currentState', 'cameraFocusPoint',
+			// FlxState group members inherited from Flixel.
+			'members', 'add', 'remove', 'insert',
+			// Helpers the HXC lowering itself emits on PlayState.
+			'hxcGetCharacterData', 'hxcChangeCharacter', 'hxcOptionalField', 'hxcOptionalCall', 'hxcOptionalSet',
+			'hxcCoalesce', 'hxcMap'
+		])
+			members.set(name, true);
+		return modulePlayStateMembers = members;
+	}
+
 	/** Reject donor-only PlayState members even when the root class itself exists. */
 	static function modulePlayStateMembersSafe(source:String,
 		?aliases:Array<String>):Bool {
 		if (source == null || source == '')
 			return true;
-		var forbidden = new EReg('\\.(?:currentChart)\\b', 'm');
-		if (forbidden.match(source))
+		if (!moduleChartMembersSafe(source))
 			return false;
 		var owners:Array<String> = ['PlayState\\s*\\.\\s*instance', 'currentPlayState'];
 		if (aliases != null)
@@ -5626,20 +6009,7 @@ class HxcCompat {
 		var expression = new EReg('\\b(?:' + owners.join('|')
 			+ ')\\s*((?:\\s*\\.\\s*[A-Za-z_][A-Za-z0-9_]*)+)', 'gm');
 		var offset = 0;
-		var allowedFirst = [
-			'currentStageId', 'curStage', 'currentStage', 'camHUD', 'camGame', 'boyfriend',
-			'dad', 'gf', 'notes', 'currentKey', 'strumLine', 'camFollow', 'songEvents',
-			'iconP1', 'iconP2', 'health', 'defaultCamZoom', 'forceCamera', 'playerStrums',
-			'enemyStrums', 'playerStrumline', 'opponentStrumline', 'songPositionBar', 'timeBar', 'timeBarBG', 'songPosBar',
-			'healthBar', 'healthBarBG', 'timeTxt', 'members', 'needsReset', 'SONG', 'instance', 'currentState',
-			'currentSong', 'hxcCurrentChartNotes', 'currentCameraZoom', 'cameraFollowPoint', 'cameraFocusPoint', 'cameraZoomRate',
-			'isMinimalMode', 'playbackRate', 'scoreText', 'songScore', 'camCutscene', 'song',
-			'startTimestamp',
-			'camZoomRate', 'cancelCameraFollowTween', 'tweenCameraToPosition',
-			'isInCountdown',
-			'add', 'remove', 'insert', 'refresh', 'swapStage', 'hxcGetCharacterData', 'hxcChangeCharacter',
-				'hxcOptionalField', 'hxcOptionalCall', 'hxcOptionalSet', 'hxcCoalesce', 'hxcMap'
-		];
+		var allowed = modulePlayStateAllowedMembers();
 		while (offset < source.length) {
 			var remaining = source.substr(offset);
 			if (!expression.match(remaining))
@@ -5649,12 +6019,34 @@ class HxcCompat {
 			if (chain.startsWith('.'))
 				chain = chain.substr(1);
 			var first = chain.indexOf('.') < 0 ? chain : chain.substr(0, chain.indexOf('.'));
-			if (allowedFirst.indexOf(first) < 0) {
+			if (!allowed.exists(first)) {
 				return false;
 			}
 			var position = expression.matchedPos();
 			offset += position.pos + (position.len > 0 ? position.len : 1);
 		}
+		return true;
+	}
+
+	/**
+		PlayState.currentChart is a VSliceChartView. Only the fields that view
+		really carries may be read; anything else (noteStyle, buildVocals, ...)
+		keeps the callback out of execution instead of reading a wrong value.
+	*/
+	static function moduleChartMembersSafe(source:String):Bool {
+		var fields = [
+			'songName', 'songArtist', 'charter', 'album', 'stage', 'scrollSpeed', 'difficulty', 'variation',
+			'stickerPack', 'characters', 'timeChanges', 'song', 'notes', 'events', 'getEvents', 'getStartingBPM',
+			'looped', 'difficultyRating'
+		];
+		for (member in collectMatches(source, '\\.\\s*currentChart\\s*\\.\\s*([A-Za-z_][A-Za-z0-9_]*)', 1))
+			if (fields.indexOf(member) < 0)
+				return false;
+		var characterFields = ['player', 'opponent', 'girlfriend', 'instrumental', 'altInstrumentals'];
+		for (member in collectMatches(source,
+			'\\.\\s*currentChart\\s*\\.\\s*characters\\s*\\.\\s*([A-Za-z_][A-Za-z0-9_]*)', 1))
+			if (characterFields.indexOf(member) < 0)
+				return false;
 		return true;
 	}
 
@@ -5760,19 +6152,19 @@ class HxcCompat {
 			for (argument in arguments) {
 				if (argument == null || argument == '')
 					continue;
-				if (new EReg('\\b' + argument
+				if (RegexCache.get('\\b' + argument
 					+ '\\s*\\.\\s*(?:grpCapsules|currentVariation|curSelected|curDifficulty|curCategory|controls|persistentUpdate|persistentDraw)\\b', 'm').match(source))
 					appendUnique(stateRoots, argument);
-				if (new EReg('\\b' + argument
+				if (RegexCache.get('\\b' + argument
 					+ '\\s*\\.\\s*(?:freeplayData|pixelIcon|weekType|alive|onConfirm)\\b', 'm').match(source))
 					appendUnique(capsuleRoots, argument);
-				if (new EReg('\\b' + argument + '\\s*\\.\\s*capsule\\s*\\.', 'm').match(source))
+				if (RegexCache.get('\\b' + argument + '\\s*\\.\\s*capsule\\s*\\.', 'm').match(source))
 					appendUnique(capsuleRoots, argument + '.capsule');
 			}
-		var sensitive = new EReg('(?:grpCapsules|weekType|currentVariation|freeplayData|pixelIcon|'
+		var sensitive = RegexCache.get('(?:grpCapsules|weekType|currentVariation|freeplayData|pixelIcon|'
 			+ 'exitMovers|backingCard|_parentState|capsuleOnConfirmDefault|onConfirm|members|setCharacter|offset|alive|'
 			+ 'curSelected|curDifficulty|curCategory|controls|persistentUpdate|persistentDraw|subState|openSubState|busy|selectedLevel|exitingMenu)', 'm');
-		var unsupportedUnscopedGraph = new EReg('(?:grpCapsules|weekType|pixelIcon|exitMovers|backingCard|'
+		var unsupportedUnscopedGraph = RegexCache.get('(?:grpCapsules|weekType|pixelIcon|exitMovers|backingCard|'
 			+ '_parentState|capsuleOnConfirmDefault|onConfirm)', 'm');
 		var chainPattern = new EReg('\\b([A-Za-z_][A-Za-z0-9_]*)((?:\\s*\\.\\s*[A-Za-z_][A-Za-z0-9_]*)+)', 'gm');
 		var offset = 0;
@@ -7046,6 +7438,15 @@ class HxcCompat {
 				| 'FlxButton' | 'FlxTextBorderStyle'
 				// Every script interpreter binds these base-game shaders (PluginManager), so modules may construct them.
 				| 'AdjustColorShader' | 'DropShadowShader' | 'IntervalShake'
+				// Base-game V-Slice helpers every interpreter binds (PluginManager, ScriptNativeClasses).
+				| 'HapticUtil' | 'TouchUtil' | 'ReflectUtil' | 'Preferences' | 'Sequence' | 'RetroCameraFade'
+				| 'AtlasText' | 'FunkinTiledSprite' | 'FunkinBackdrop'
+				| 'FlxTransitionableState' | 'FlxGradient' | 'FlxGraphic' | 'FlxBitmapFont'
+				// V-Slice registries, playlist and song launch (PluginManager binds the base-game facades).
+				| 'SongRegistry' | 'LevelRegistry' | 'PlayerRegistry' | 'LoadingState' | 'Type' | 'FunkinSound'
+				// Plain classes every interpreter receives from ScriptNativeClasses.
+				| 'FlxBarFillDirection' | 'FlxRect' | 'FlxSort' | 'FlxSpriteUtil' | 'FlxEmitter' | 'IntMap' | 'ObjectMap'
+				| 'AnimateAtlasUtil'
 				| 'Math' | 'Std' | 'String' | 'StringTools' | 'Array' | 'Map' | 'Reflect'
 				| 'Paths' | 'CoolUtil' | 'FNFAssets' | 'File' | 'FileSystem' | 'System'
 				| 'TitleState' | 'MainMenuState' | 'CreditsState' | 'SaveDataState' | 'FreeplayState' | 'Character' | 'OptionsHandler' | 'DifficultyManager'
@@ -7075,7 +7476,7 @@ class HxcCompat {
 					| 'hxcOptionalCall' | 'hxcOptionalSet' | 'hxcCoalesce' | 'hxcMap'
 				| 'hxcFreeplayPlaySound' | 'hxcFreeplayPlayMusic'
 				| 'freeplayReturnToMenu' | 'reorderFreeplayDifficulties'
-				| 'hxcPrepareCharacter' | 'hxcCacheTexture' | 'cast'
+				| 'hxcPrepareCharacter' | 'hxcCacheTexture' | 'hxcCacheSound' | 'cast'
 				| 'hxcStateInit' | 'hxcSubStateInit' | 'hxcStateFactory' | 'hxcSwitchState' | 'hxcStartExitState' | 'hxcOpenSubState'
 				| 'hxcOpenSubStateOn'
 				| 'openSubState' | 'hxcBack' | 'hxcResetState' | 'hxcFreeplayState'
@@ -7861,7 +8262,7 @@ class HxcCompat {
 		// packs which provide a two-line lyric module with different class names.
 		if (isLyricHelperBody(source)) {
 			var lyricArgs = callbackArgumentList(arguments);
-			var second = new EReg('\\blyricObj2nd\\s*=\\s*new\\s+FlxText', 'm').match(source);
+			var second = RegexCache.get('\\blyricObj2nd\\s*=\\s*new\\s+FlxText', 'm').match(source);
 			return 'HxcCompatRuntime.setLyricText(PlayState.instance, [' + lyricArgs
 				+ '], ' + (second ? 'true' : 'false') + ');';
 		}
@@ -7931,11 +8332,11 @@ class HxcCompat {
 					+ ', ' + quote(gameOverData.replacement) + ');';
 		}
 		if (methodName != null && methodName.toLowerCase() == 'onstatechangeend'
-			&& new EReg('\\bcreateMenuItem\\s*\\(', 'm').match(source)
-			&& new EReg('\\brepositionMenuItems\\s*\\(', 'm').match(source)
-			&& new EReg('["\\\']costumes["\\\']', 'm').match(source)
-			&& new EReg('\\bcurrentState\\s*\\.\\s*menuItems\\s*\\.\\s*addItem\\s*\\(', 'm').match(source)
-			&& new EReg('\\bScriptedMusicBeatState\\s*\\.\\s*init\\s*\\(\\s*["\\\']Costumes["\\\']\\s*\\)', 'm').match(source))
+			&& RegexCache.get('\\bcreateMenuItem\\s*\\(', 'm').match(source)
+			&& RegexCache.get('\\brepositionMenuItems\\s*\\(', 'm').match(source)
+			&& RegexCache.get('["\\\']costumes["\\\']', 'm').match(source)
+			&& RegexCache.get('\\bcurrentState\\s*\\.\\s*menuItems\\s*\\.\\s*addItem\\s*\\(', 'm').match(source)
+			&& RegexCache.get('\\bScriptedMusicBeatState\\s*\\.\\s*init\\s*\\(\\s*["\\\']Costumes["\\\']\\s*\\)', 'm').match(source))
 			return 'HxcCompatRuntime.addCostumeMenuItem(' + firstArgument
 				+ '.targetState, hxcStateInit("Costumes"));';
 		// A complete authored capsule filter/icon/atlas operation is lowered from
@@ -7959,38 +8360,36 @@ class HxcCompat {
 		// module/state callbacks keep FlxG.state so a generic state hook does not
 		// accidentally acquire Freeplay-only semantics.
 		if (isFreeplayModuleBody(source, methodName)) {
-			output = new EReg('\\bFlxG\\s*\\.\\s*state\\s*\\.\\s*subState\\b', 'g')
+			output = RegexCache.get('\\bFlxG\\s*\\.\\s*state\\s*\\.\\s*subState\\b', 'g')
 				.replace(output, 'currentFreeplayState');
-			output = new EReg('\\bFlxG\\s*\\.\\s*state\\b', 'g')
+			output = RegexCache.get('\\bFlxG\\s*\\.\\s*state\\b', 'g')
 				.replace(output, 'currentFreeplayState');
 			// The donor keeps these values on its FreeplayState instance, while
 			// this fork stores them as statics. HScript reflection on an instance
 			// cannot see Haxe static fields, so route the donor-shaped API through
 			// explicit native getters/setters.
-			output = new EReg('\\bcurrentFreeplayState\\s*\\.\\s*curSelected\\b', 'g')
+			output = RegexCache.get('\\bcurrentFreeplayState\\s*\\.\\s*curSelected\\b', 'g')
 				.replace(output, 'currentFreeplayState.hxcSelectedIndex');
-			output = new EReg('\\bcurrentFreeplayState\\s*\\.\\s*curDifficulty\\b', 'g')
+			output = RegexCache.get('\\bcurrentFreeplayState\\s*\\.\\s*curDifficulty\\b', 'g')
 				.replace(output, 'currentFreeplayState.hxcDifficultyIndex');
-			output = new EReg('\\bcurrentFreeplayState\\s*\\.\\s*curCategory\\b', 'g')
+			output = RegexCache.get('\\bcurrentFreeplayState\\s*\\.\\s*curCategory\\b', 'g')
 				.replace(output, 'currentFreeplayState.hxcCategoryId');
 		}
 		// HXC modules use FunkinSound as a process-global wrapper.  Keep the
 		// operation inside the native compatibility host; arbitrary donor sound
 		// singletons are never exposed to an imported interpreter.
-		output = new EReg('\\bFunkinSound\\s*\\.\\s*playOnce\\s*\\(', 'g')
+		output = RegexCache.get('\\bFunkinSound\\s*\\.\\s*playOnce\\s*\\(', 'g')
 			.replace(output, 'hxcFreeplayPlaySound(');
-		output = new EReg('\\bFunkinSound\\s*\\.\\s*playMusic\\s*\\(', 'g')
+		output = RegexCache.get('\\bFunkinSound\\s*\\.\\s*playMusic\\s*\\(', 'g')
 			.replace(output, 'hxcFreeplayPlayMusic(');
-		output = new EReg('\\bFlxTransitionableState\\s*\\.\\s*skipNextTransIn\\b', 'g')
-			.replace(output, 'HxcCompatRuntime.skipNextTransIn');
-		output = new EReg('\\bFlxTransitionableState\\s*\\.\\s*skipNextTransOut\\b', 'g')
-			.replace(output, 'HxcCompatRuntime.skipNextTransOut');
+		// FlxTransitionableState.skipNextTransIn/Out stay as written: every
+		// interpreter binds the real Flixel class, which the engine's states read.
 		// DifficultyOrderFix rebuilds donor-only DifficultyDot objects.  The
 		// semantic boundary that survives this port is the authored difficulty
 		// ordering; FreeplayState applies it to its native selector.  Do not copy
 		// donor UI objects or DotType enum values into HScript.
 		if (methodName != null && methodName.toLowerCase() != 'new'
-			&& new EReg('\\bdifficultyDots\\b|\\bDifficultyDot\\b|\\bDotType\\b', 'm').match(source)) {
+			&& RegexCache.get('\\bdifficultyDots\\b|\\bDifficultyDot\\b|\\bDotType\\b', 'm').match(source)) {
 			var first = arguments == null || arguments.length == 0 ? 'currentFreeplayState' : arguments[0];
 			return 'HxcCompatRuntime.reorderFreeplayDifficulties(' + first + ', ["easy", "normal", "hard", "erect", "nightmare"]);';
 		}
@@ -7998,7 +8397,7 @@ class HxcCompat {
 		// closing.  The native host owns the same transition boundary but not those
 		// V-Slice movers; route the close through one bounded native operation.
 		if (methodName != null && methodName.toLowerCase() != 'new'
-			&& new EReg('\\bexitMovers\\b|\\bbackingCard\\b|\\b_parentState\\b', 'm').match(source))
+			&& RegexCache.get('\\bexitMovers\\b|\\bbackingCard\\b|\\b_parentState\\b', 'm').match(source))
 			return 'HxcCompatRuntime.freeplayReturnToMenu(currentFreeplayState);';
 		return output;
 	}
@@ -8013,11 +8412,11 @@ class HxcCompat {
 		var output = source;
 		var receiver = '([A-Za-z_][A-Za-z0-9_]*(?:\\s*\\.\\s*[A-Za-z_][A-Za-z0-9_]*)*)';
 		for (index in [0, 1]) {
-			var animation = new EReg(receiver + '\\s*\\.\\s*animOffsets\\s*\\[\\s*'
+			var animation = RegexCache.get(receiver + '\\s*\\.\\s*animOffsets\\s*\\[\\s*'
 				+ index + '\\s*\\]', 'g');
 			output = animation.replace(output,
 				'HxcCompatRuntime.characterAnimationOffset($1, ' + index + ')');
-			var global = new EReg(receiver + '\\s*\\.\\s*globalOffsets\\s*\\[\\s*'
+			var global = RegexCache.get(receiver + '\\s*\\.\\s*globalOffsets\\s*\\[\\s*'
 				+ index + '\\s*\\]', 'g');
 			output = global.replace(output,
 				'HxcCompatRuntime.characterGlobalOffset($1, ' + index + ')');
@@ -8151,6 +8550,182 @@ class HxcCompat {
 		return output.toString();
 	}
 
+	/**
+		The base behaviour a `super.<hook>(...)` call stands for when its value is
+		used.  The native engine runs every base hook itself (it dances props,
+		plays the character, preloads its own assets), so the call only has to
+		produce the value the base class would return: no death quote, the
+		default sticker pack, no extra asset paths, and an uncancelled beat or
+		step.  Null means there is no known base value and the call stays.
+	**/
+	static function superHookDefault(name:String, characterBody:Bool):Null<String> {
+		return switch (name) {
+			case 'getDeathQuote': characterBody ? 'null' : null;
+			case 'getStickerPackId': 'null';
+			case 'queryAssets' | 'fetchAssetPaths': '[]';
+			case 'beatHit' | 'stepHit': 'true';
+			default: null;
+		};
+	}
+
+	/**
+		Lower `super.<hook>(...)` calls that the statement-level strip below
+		cannot see.  A call whose value is used becomes the base value from
+		superHookDefault.  A call standing alone after `if (...)`, `else`, `do`
+		or a `case x:` label becomes `null`, an empty statement, for the same
+		reason the statement-level strip removes it: the engine already runs the
+		base hook.  Any other use is left alone so the safety check still sees it.
+		Strings and comments are never touched.
+	**/
+	static function lowerRemainingSuperCalls(source:String, characterBody:Bool):String {
+		if (source == null || source.indexOf('super') < 0)
+			return source == null ? '' : source;
+		var output = new StringBuf();
+		var index = 0;
+		var copied = 0;
+		var quote = '';
+		var escaped = false;
+		var lineComment = false;
+		var blockComment = false;
+		while (index < source.length) {
+			var current = source.charAt(index);
+			var next = index + 1 < source.length ? source.charAt(index + 1) : '';
+			if (lineComment) {
+				if (current == '\n')
+					lineComment = false;
+				index++;
+				continue;
+			}
+			if (blockComment) {
+				if (current == '*' && next == '/') {
+					blockComment = false;
+					index += 2;
+				} else
+					index++;
+				continue;
+			}
+			if (quote != '') {
+				if (escaped)
+					escaped = false;
+				else if (current == '\\')
+					escaped = true;
+				else if (current == quote)
+					quote = '';
+				index++;
+				continue;
+			}
+			if (current == '/' && next == '/') {
+				lineComment = true;
+				index += 2;
+				continue;
+			}
+			if (current == '/' && next == '*') {
+				blockComment = true;
+				index += 2;
+				continue;
+			}
+			if (current == '"' || current == "'") {
+				quote = current;
+				index++;
+				continue;
+			}
+			if (current != 's' || source.substr(index, 5) != 'super'
+				|| (index > 0 && (isIdentifierPart(source.charAt(index - 1)) || source.charAt(index - 1) == '.'))) {
+				index++;
+				continue;
+			}
+			var cursor = index + 5;
+			while (cursor < source.length && isWhitespace(source.charAt(cursor)))
+				cursor++;
+			if (cursor >= source.length || source.charAt(cursor) != '.') {
+				index++;
+				continue;
+			}
+			cursor++;
+			while (cursor < source.length && isWhitespace(source.charAt(cursor)))
+				cursor++;
+			var nameStart = cursor;
+			while (cursor < source.length && isIdentifierPart(source.charAt(cursor)))
+				cursor++;
+			var name = source.substr(nameStart, cursor - nameStart);
+			while (cursor < source.length && isWhitespace(source.charAt(cursor)))
+				cursor++;
+			if (name == '' || cursor >= source.length || source.charAt(cursor) != '(') {
+				index++;
+				continue;
+			}
+			var close = matchingDelimiter(source, cursor, '(', ')');
+			if (close < 0)
+				break;
+			var replacement = superHookDefault(name, characterBody);
+			if (replacement == null && superCallStandsAlone(source, index, close))
+				replacement = 'null';
+			if (replacement == null) {
+				index = close + 1;
+				continue;
+			}
+			output.add(source.substr(copied, index - copied));
+			output.add(replacement);
+			copied = close + 1;
+			index = close + 1;
+		}
+		if (copied == 0)
+			return source;
+		output.add(source.substr(copied));
+		return output.toString();
+	}
+
+	/** Whether the call spanning start..close is a whole statement that follows a
+		control-flow head (`if (...)`, `else`, `do`) or a `case x:` label. */
+	static function superCallStandsAlone(source:String, start:Int, close:Int):Bool {
+		var after = close + 1;
+		while (after < source.length && (source.charAt(after) == ' ' || source.charAt(after) == '\t'))
+			after++;
+		var follower = after < source.length ? source.charAt(after) : '';
+		if (follower != ';' && follower != '}' && follower != '\n' && follower != '\r' && follower != '')
+			return false;
+		var before = start - 1;
+		while (before >= 0 && isWhitespace(source.charAt(before)))
+			before--;
+		if (before < 0)
+			return false;
+		var previous = source.charAt(before);
+		if (previous == ')')
+			return true;
+		// Only a real `case x:` or `default:` label.  The `:` of a ternary branch
+		// (`c ? 1 : super.f()`) or an object key (`{k: super.f()}`) is a value
+		// position, where `null` would silently change what the code computes.
+		if (previous == ':')
+			return isCaseLabelEnd(source, before);
+		var wordEnd = before + 1;
+		while (before >= 0 && isIdentifierPart(source.charAt(before)))
+			before--;
+		var word = source.substr(before + 1, wordEnd - before - 1);
+		return word == 'else' || word == 'do';
+	}
+
+	/** Whether the `:` at `colon` closes a `case ...:` or `default:` label.  The
+		label is the text back to the previous statement boundary; one holding
+		another `:` or a `?` (a ternary inside a case body, or a string key) is
+		not trusted, so the super call is left for the safety check. */
+	static function isCaseLabelEnd(source:String, colon:Int):Bool {
+		if (colon <= 0 || source.charAt(colon - 1) == ':')
+			return false;
+		var start = colon - 1;
+		while (start >= 0) {
+			var current = source.charAt(start);
+			if (current == ';' || current == '{' || current == '}' || current == '\n' || current == '\r')
+				break;
+			start--;
+		}
+		var label = StringTools.trim(source.substr(start + 1, colon - start - 1));
+		if (label == 'default')
+			return true;
+		if (label.length < 5 || label.substr(0, 4) != 'case' || isIdentifierPart(label.charAt(4)))
+			return false;
+		return label.indexOf(':') < 0 && label.indexOf('?') < 0;
+	}
+
 	/** Translate only syntax whose semantics are unambiguous in HScript. */
 	static function translateBody(source:String, ?methodName:String, ?arguments:Array<String>,
 		keepCharacterSuper:Bool = false, skipNativeObjectLowering:Bool = false):String {
@@ -8165,13 +8740,13 @@ class HxcCompat {
 			output = lowerHxcNativeObjects(output);
 		output = lowerQualifiedStateAliases(output);
 		if (keepCharacterSuper) {
-			output = new EReg('\\bsuper\\s*\\.\\s*playAnimation\\s*\\(', 'g')
+			output = RegexCache.get('\\bsuper\\s*\\.\\s*playAnimation\\s*\\(', 'g')
 				.replace(output, 'HxcCompatRuntime.playAnimation(hxcCharacter(),');
-			output = new EReg('\\bsuper\\s*\\.\\s*playSingAnimation\\s*\\(', 'g')
+			output = RegexCache.get('\\bsuper\\s*\\.\\s*playSingAnimation\\s*\\(', 'g')
 				.replace(output, 'HxcCompatRuntime.playSingAnimation(hxcCharacter(),');
-			output = new EReg('\\bsuper\\s*\\.\\s*dance\\s*\\(', 'g')
+			output = RegexCache.get('\\bsuper\\s*\\.\\s*dance\\s*\\(', 'g')
 				.replace(output, 'HxcCompatRuntime.dance(hxcCharacter(),');
-			output = new EReg('\\bsuper\\s*\\.\\s*getScreenPosition\\s*\\(', 'g')
+			output = RegexCache.get('\\bsuper\\s*\\.\\s*getScreenPosition\\s*\\(', 'g')
 				.replace(output, 'HxcCompatRuntime.characterBaseScreenPosition(hxcCharacter(),');
 			// Character onNoteHit overrides are dispatched through the shared HXC
 			// note payload before PlayState's native singer. Mark the callback as
@@ -8181,7 +8756,7 @@ class HxcCompat {
 				&& arguments != null && arguments.length > 0
 				&& isIdentifier(arguments[0])) {
 				var noteEventArgument = arguments[0];
-				output = new EReg('\\bsuper\\s*\\.\\s*onNoteHit\\s*\\(\\s*'
+				output = RegexCache.get('\\bsuper\\s*\\.\\s*onNoteHit\\s*\\(\\s*'
 					+ noteEventArgument + '\\s*\\)', 'g')
 					.replace(output, 'HxcCompatRuntime.characterDefaultNoteHit(hxcCharacter(), '
 						+ noteEventArgument + ')');
@@ -8196,24 +8771,25 @@ class HxcCompat {
 				&& arguments != null && arguments.length > 0
 				&& isIdentifier(arguments[0])) {
 				var missEventArgument = arguments[0];
-				output = new EReg('\\bsuper\\s*\\.\\s*onNoteMiss\\s*\\(\\s*'
+				output = RegexCache.get('\\bsuper\\s*\\.\\s*onNoteMiss\\s*\\(\\s*'
 					+ missEventArgument + '\\s*\\)', 'g')
 					.replace(output, 'HxcCompatRuntime.characterDefaultNoteMiss(hxcCharacter(), '
 						+ missEventArgument + ')');
 			}
 		}
-		var parentCall = new EReg('(^|[\\n;{}])[ \\t]*super\\.[A-Za-z_][A-Za-z0-9_]*\\s*\\([^;{}]*\\)\\s*;?', 'gm');
+		output = lowerRemainingSuperCalls(output, keepCharacterSuper);
+		var parentCall = RegexCache.get('(^|[\\n;{}])[ \\t]*super\\.[A-Za-z_][A-Za-z0-9_]*\\s*\\([^;{}]*\\)\\s*;?', 'gm');
 		output = parentCall.replace(output, '$1');
-		var superCall = new EReg('(^|[\\n;{}])[ \\t]*super\\s*\\([^;{}]*\\)\\s*;?', 'gm');
+		var superCall = RegexCache.get('(^|[\\n;{}])[ \\t]*super\\s*\\([^;{}]*\\)\\s*;?', 'gm');
 		output = superCall.replace(output, '$1');
 		output = StringTools.replace(output, 'this.', '');
 		// Haxe local annotations are not part of HScript's expression grammar.
 		// Keep the declaration/value while removing both simple and generic map
 		// annotations.  This also removes function-type annotations such as
 		// `Void->Void` before the arrow lowering pass sees them.
-		var typedLocal = new EReg('\\b(var|final)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*[A-Za-z_][A-Za-z0-9_.]*(?:<[^;=\\n]+>)?(?:\\s*->\\s*[A-Za-z_][A-Za-z0-9_.]*(?:<[^;=\\n]+>)?)?', 'g');
+		var typedLocal = RegexCache.get('\\b(var|final)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*[A-Za-z_][A-Za-z0-9_.]*(?:<[^;=\\n]+>)?(?:\\s*->\\s*[A-Za-z_][A-Za-z0-9_.]*(?:<[^;=\\n]+>)?)?', 'g');
 		output = typedLocal.replace(output, 'var $2');
-		var finalLocal = new EReg('\\bfinal\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?==)', 'g');
+		var finalLocal = RegexCache.get('\\bfinal\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?==)', 'g');
 		output = finalLocal.replace(output, 'var $1 ');
 		output = lowerTypedMapSyntax(output);
 		output = lowerFunctionArgumentTypes(output);
@@ -8239,11 +8815,11 @@ class HxcCompat {
 		// not a name/song allow-list.
 		var firstArg = arguments == null || arguments.length == 0 ? '' : arguments[0];
 		if (firstArg != '' && methodName != null && methodName.toLowerCase() == 'onsongEvent'.toLowerCase()) {
-			output = new EReg('\\bFlxG\\s*\\.\\s*camera\\s*\\.\\s*flash\\s*\\(', 'g')
+			output = RegexCache.get('\\bFlxG\\s*\\.\\s*camera\\s*\\.\\s*flash\\s*\\(', 'g')
 				.replace(output, 'HxcCompatRuntime.hxcCameraFlash(' + firstArg + ', FlxG.camera, ');
-			output = new EReg('\\bgame\\s*\\.\\s*camGame\\s*\\.\\s*flash\\s*\\(', 'g')
+			output = RegexCache.get('\\bgame\\s*\\.\\s*camGame\\s*\\.\\s*flash\\s*\\(', 'g')
 				.replace(output, 'HxcCompatRuntime.hxcCameraFlash(' + firstArg + ', game.camGame, ');
-			output = new EReg('\\bgame\\s*\\.\\s*camHUD\\s*\\.\\s*flash\\s*\\(', 'g')
+			output = RegexCache.get('\\bgame\\s*\\.\\s*camHUD\\s*\\.\\s*flash\\s*\\(', 'g')
 				.replace(output, 'HxcCompatRuntime.hxcCameraFlash(' + firstArg + ', game.camHUD, ');
 		}
 		// V-Slice passes wrapper objects to these hooks while PlayState passes the
@@ -8284,14 +8860,14 @@ class HxcCompat {
 	static function repairEmptyControlBodies(output:String):String {
 		if (output == null || output == '')
 			return output;
-		var withHeader = new EReg('(^|[^\\}])\\b(if|for|while|catch)\\s*\\(([^{}]*)\\)((?:[ \\t]*\\r?\\n)+[ \\t]*|[ \\t]+)\\}', 'g');
+		var withHeader = RegexCache.get('(^|[^\\}])\\b(if|for|while|catch)\\s*\\(([^{}]*)\\)((?:[ \\t]*\\r?\\n)+[ \\t]*|[ \\t]+)\\}', 'g');
 		output = withHeader.replace(output, '$1$2($3)$4{}$4}');
-		var bareElse = new EReg('\\belse((?:[ \\t]*\\r?\\n)+[ \\t]*|[ \\t]+)\\}', 'g');
+		var bareElse = RegexCache.get('\\belse((?:[ \\t]*\\r?\\n)+[ \\t]*|[ \\t]+)\\}', 'g');
 		output = bareElse.replace(output, 'else$1{}$1}');
-		var trailing = new EReg('\\b(if|for|catch)\\s*\\(([^{}]*)\\)[ \\t]*(\\r?\\n[ \\t]*)*$', '');
+		var trailing = RegexCache.get('\\b(if|for|catch)\\s*\\(([^{}]*)\\)[ \\t]*(\\r?\\n[ \\t]*)*$', '');
 		if (trailing.match(output))
 			output += ' {}';
-		var trailingElse = new EReg('\\belse[ \\t]*(\\r?\\n[ \\t]*)*$', '');
+		var trailingElse = RegexCache.get('\\belse[ \\t]*(\\r?\\n[ \\t]*)*$', '');
 		if (trailingElse.match(output))
 			output += ' {}';
 		return output;
@@ -8313,7 +8889,7 @@ class HxcCompat {
 			var canonical = lifecycleCallback(name);
 			if (canonical == '' || canonical == name)
 				continue;
-			output = new EReg('\\b' + name + '\\s*\\(', 'g').replace(output, canonical + '(');
+			output = RegexCache.get('\\b' + name + '\\s*\\(', 'g').replace(output, canonical + '(');
 		}
 		return output;
 	}
@@ -8340,84 +8916,84 @@ class HxcCompat {
 		// donor's (noteStyle, botplay) arguments. Keep the native player/opponent
 		// assignment rewrite above, then route remaining donor constructors by
 		// explicit class name.
-		output = new EReg('\\bnew\\s+Strumline\\s*\\(', 'g')
+		output = RegexCache.get('\\bnew\\s+Strumline\\s*\\(', 'g')
 			.replace(output, 'new ExtraStrumlineAdapter(');
 		// HXC health icons are configured after construction. Their first id can
 		// be a logical HUD slot, and a configured icon should not report that
 		// short-lived placeholder as a missing source visual.
-		output = new EReg('\\bnew\\s+HealthIcon\\s*\\(', 'g')
+		output = RegexCache.get('\\bnew\\s+HealthIcon\\s*\\(', 'g')
 			.replace(output, 'new HxcHealthIconAdapter(');
 		// Donor Strumline.add accepts any sprite. The native receptor group's
 		// typed add(StrumNote) can erase a splash before its own runtime check.
 		// Route only the known native PlayState strumline slots through the
 		// explicitly FlxSprite-typed entry point.
-		output = new EReg('\\b((?:(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*)?(?:playerStrumline|opponentStrumline|playerStrums|enemyStrums))\\s*\\.\\s*add\\s*\\(', 'g')
+		output = RegexCache.get('\\b((?:(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*)?(?:playerStrumline|opponentStrumline|playerStrums|enemyStrums))\\s*\\.\\s*add\\s*\\(', 'g')
 			.replace(output, '$1.addScriptSprite(');
 		// A literal style lookup is resolved inside the caller's manifest root.
 		// Dynamic registry expressions retain the existing bounded alias.
-		output = new EReg('\\bNoteStyleRegistry\\s*\\.\\s*instance\\s*\\.\\s*fetchEntry\\s*\\(\\s*(["\\\'][A-Za-z0-9_-]+["\\\'])\\s*\\)', 'g')
+		output = RegexCache.get('\\bNoteStyleRegistry\\s*\\.\\s*instance\\s*\\.\\s*fetchEntry\\s*\\(\\s*(["\\\'][A-Za-z0-9_-]+["\\\'])\\s*\\)', 'g')
 			.replace(output, 'HxcNoteStyleCompat.fetchEntry(hxcAssetRoot, $1)');
-		output = new EReg('\\bnew\\s+NoteSplash\\s*\\(', 'g')
+		output = RegexCache.get('\\bnew\\s+NoteSplash\\s*\\(', 'g')
 			.replace(output, 'new HxcNoteSplashCompat(');
 		// The native fork's DynamicSprite is the bounded equivalent of the
 		// V-Slice FunkinSprite constructor.  Asset-bearing static constructors use
 		// dedicated paths so Sparrow and Animate atlases cannot be mistaken for a
 		// single PNG.
-		output = new EReg('\\bFunkinSprite\\s*\\.\\s*createTextureAtlas\\s*\\(', 'g')
+		output = RegexCache.get('\\bFunkinSprite\\s*\\.\\s*createTextureAtlas\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.createFunkinSpriteTextureAtlas(hxcAssetRoot, ');
-		output = new EReg('\\bFunkinSprite\\s*\\.\\s*createSparrow\\s*\\(', 'g')
+		output = RegexCache.get('\\bFunkinSprite\\s*\\.\\s*createSparrow\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.createFunkinSpriteSparrow(hxcAssetRoot, ');
-		output = new EReg('\\bFunkinSprite\\s*\\.\\s*create\\s*\\(', 'g')
+		output = RegexCache.get('\\bFunkinSprite\\s*\\.\\s*create\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.createFunkinSprite(hxcAssetRoot, ');
 		// Match the zero-argument constructor first; inserting a positional root
 		// comma into `new FunkinSprite()` would emit `(..., )`, which HScript
 		// rejects before the native fallback can run.
-		output = new EReg('\\bnew\\s+FunkinSprite\\s*\\(\\s*\\)', 'g')
+		output = RegexCache.get('\\bnew\\s+FunkinSprite\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.createFunkinSprite(hxcAssetRoot)');
-		output = new EReg('\\bnew\\s+FunkinSprite\\s*\\(', 'g')
+		output = RegexCache.get('\\bnew\\s+FunkinSprite\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.createFunkinSprite(hxcAssetRoot, ');
 		output = lowerFunkinSpriteLoads(output);
 		// In-stage FunkinVideoSprite instances must remain ordinary sprites so
 		// source cameras, z-order, seeking, looping and end callbacks keep control.
 		// The native adapter bounds their media to this script's package owner.
-		output = new EReg('\\bnew\\s+FunkinVideoSprite\\s*\\(\\s*\\)', 'g')
+		output = RegexCache.get('\\bnew\\s+FunkinVideoSprite\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.createFunkinVideoSprite(PlayState.instance, hxcAssetRoot)');
-		output = new EReg('\\bnew\\s+FunkinVideoSprite\\s*\\(', 'g')
+		output = RegexCache.get('\\bnew\\s+FunkinVideoSprite\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.createFunkinVideoSprite(PlayState.instance, hxcAssetRoot, ');
-		output = new EReg('\\bFunkinSprite\\s*\\.\\s*cacheTexture\\s*\\(', 'g')
+		output = RegexCache.get('\\bFunkinSprite\\s*\\.\\s*cacheTexture\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.cacheFunkinTexture(hxcAssetRoot, ');
 		// FunkinSprite.makeSolidColor is a convenience alias for the native
 		// FlxSprite graphic builder.  Lower only that exact method name.
-		output = new EReg('\\.\\s*makeSolidColor\\s*\\(', 'g')
+		output = RegexCache.get('\\.\\s*makeSolidColor\\s*\\(', 'g')
 			.replace(output, '.makeGraphic(');
 
-		output = new EReg('\\bnew\\s+FunkinCamera\\s*\\(\\s*\\)', 'g')
+		output = RegexCache.get('\\bnew\\s+FunkinCamera\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.createFunkinCamera(PlayState.instance)');
-		output = new EReg('\\bnew\\s+FunkinCamera\\s*\\(', 'g')
+		output = RegexCache.get('\\bnew\\s+FunkinCamera\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.createFunkinCamera(PlayState.instance, ');
 		// HXC TouchUtil's desktop predicate has no touch source in this native
 		// build. Lower it to the compatibility facade so keyboard alternatives
 		// remain available without leaving a donor class unresolved.
-		output = new EReg('\\bTouchUtil\\s*\\.\\s*pressAction\\s*\\(', 'g')
+		output = RegexCache.get('\\bTouchUtil\\s*\\.\\s*pressAction\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.touchPressAction(');
-		output = new EReg('\\bFunkinSound\\s*\\.\\s*playOnce\\s*\\(', 'g')
+		output = RegexCache.get('\\bFunkinSound\\s*\\.\\s*playOnce\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.freeplayPlaySound(');
-		output = new EReg('\\bFunkinSound\\s*\\.\\s*playMusic\\s*\\(', 'g')
+		output = RegexCache.get('\\bFunkinSound\\s*\\.\\s*playMusic\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.freeplayPlayMusic(');
-		output = new EReg('\\bFunkinSound\\s*\\.\\s*stopAllAudio\\s*\\(\\s*\\)', 'g')
+		output = RegexCache.get('\\bFunkinSound\\s*\\.\\s*stopAllAudio\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.stopAllAudio()');
-		output = new EReg('\\bFunkinSound\\s*\\.\\s*load\\s*\\(', 'g')
+		output = RegexCache.get('\\bFunkinSound\\s*\\.\\s*load\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.loadFunkinSound(hxcAssetRoot, ');
 
 		// Native WiggleEffect owns the shader and has the same update contract. The
 		// generated object therefore remains updateable, while assignments to a
 		// FlxSprite.shader receive only its engine-owned shader field.
-		output = new EReg('\\bnew\\s+WiggleEffectRuntime\\s*\\(', 'g')
+		output = RegexCache.get('\\bnew\\s+WiggleEffectRuntime\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.createWiggleEffect(');
 		for (kind in ['DREAMY', 'WAVY', 'HEAT_WAVE_HORIZONTAL', 'HEAT_WAVE_VERTICAL', 'FLAG'])
-			output = new EReg('\\bWiggleEffectType\\s*\\.\\s*' + kind + '\\b', 'g')
+			output = RegexCache.get('\\bWiggleEffectType\\s*\\.\\s*' + kind + '\\b', 'g')
 				.replace(output, '"' + kind + '"');
-		output = new EReg('(\\.\\s*shader\\s*=\\s*)(wiggle[A-Za-z0-9_]*)\\b', 'g')
+		output = RegexCache.get('(\\.\\s*shader\\s*=\\s*)(wiggle[A-Za-z0-9_]*)\\b', 'g')
 			.replace(output, '$1$2.shader');
 		// A donor filter array may name a field whose initializer was not portable;
 		// OpenFL dereferences every entry while rendering, so route the write
@@ -8425,7 +9001,7 @@ class HxcCompat {
 		output = lowerFilterAssignments(output);
 		// Donor tweens may target fields the native fork does not carry; the
 		// native tween manager would throw outside every script try/catch.
-		output = new EReg('\\bFlxTween\\s*\\.\\s*tween\\s*\\(', 'g')
+		output = RegexCache.get('\\bFlxTween\\s*\\.\\s*tween\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.safeTween(');
 		return output;
 	}
@@ -8528,9 +9104,10 @@ class HxcCompat {
 		for (side in ['player', 'opponent']) {
 			var search = 0;
 			var attempts = 0;
+			// Cached: its match state is read right after match, before any other pattern runs.
+			var pattern = RegexCache.get('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)'
+				+ '\\s*\\.\\s*' + side + 'Strumline\\s*=\\s*new\\s+Strumline\\s*\\(', 'm');
 			while (attempts++ < 128 && search < output.length) {
-				var pattern = new EReg('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)'
-					+ '\\s*\\.\\s*' + side + 'Strumline\\s*=\\s*new\\s+Strumline\\s*\\(', 'm');
 				var remaining = output.substr(search);
 				if (!pattern.match(remaining))
 					break;
@@ -8561,15 +9138,15 @@ class HxcCompat {
 		// The donor calls this after replacing both views to rebuild their receptors.
 		// Reconfiguration already rebuilds the native group, but keep the lifecycle
 		// boundary explicit so a future native host can refresh cameras/visibility.
-		output = new EReg('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)'
+		output = RegexCache.get('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)'
 			+ '\\s*\\.\\s*initStrumlines\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.refreshNativeStrumlines(PlayState.instance)');
 		// DDTO restores these donor static dimensions during teardown. They are
 		// process-local compatibility values, not assignable fields on the native
 		// Strumline class; keep the values bounded and isolated from normal groups.
-		output = new EReg('\\bStrumline\\s*\\.\\s*STRUMLINE_SIZE\\b', 'g')
+		output = RegexCache.get('\\bStrumline\\s*\\.\\s*STRUMLINE_SIZE\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.strumlineSize');
-		output = new EReg('\\bStrumline\\s*\\.\\s*NOTE_SPACING\\b', 'g')
+		output = RegexCache.get('\\bStrumline\\s*\\.\\s*NOTE_SPACING\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.noteSpacing');
 		return output;
 	}
@@ -8587,12 +9164,12 @@ class HxcCompat {
 			return source;
 		var output = source;
 		for (method in ['Sparrow', 'Texture']) {
-			output = new EReg('HxcCompatRuntime\\.createFunkinSprite\\(hxcAssetRoot((?:\\s*,[^()]*)?)\\)\\s*\\.\\s*load'
+			output = RegexCache.get('HxcCompatRuntime\\.createFunkinSprite\\(hxcAssetRoot((?:\\s*,[^()]*)?)\\)\\s*\\.\\s*load'
 				+ method + '\\s*\\(', 'g')
 				.replace(output, 'HxcCompatRuntime.funkinLoad' + method
 					+ '(HxcCompatRuntime.createFunkinSprite(hxcAssetRoot$1), hxcAssetRoot, ');
 			// `super.loadX(...)` inside a FunkinSprite subclass stays a plain call.
-			output = new EReg('(^|[^A-Za-z0-9_.])((?:this\\s*\\.\\s*)?(?!super\\b)[A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*load'
+			output = RegexCache.get('(^|[^A-Za-z0-9_.])((?:this\\s*\\.\\s*)?(?!super\\b)[A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*load'
 				+ method + '\\s*\\(', 'gm')
 				.replace(output, '$1HxcCompatRuntime.funkinLoad' + method + '($2, hxcAssetRoot, ');
 		}
@@ -8612,34 +9189,34 @@ class HxcCompat {
 		// Imported modules use ModuleHandler as a process-global registry. Route
 		// calls through the PlayState-owned scope proxy instead; the proxy only
 		// exposes generated HScript callbacks and cannot instantiate donor classes.
-		output = new EReg('\\bModuleHandler\\s*\\.\\s*getModule\\s*\\(', 'g')
+		output = RegexCache.get('\\bModuleHandler\\s*\\.\\s*getModule\\s*\\(', 'g')
 			.replace(output, 'hxcGetModule(');
 		// HXC's ModStore facade is a process-global singleton in the donor. Each
 		// generated module already receives its manifest-scoped key/value store as
 		// `__hxcStore`, so preserve the API while keeping writes in that scope.
-		output = new EReg('\\bModStore\\s*\\.\\s*stores\\b', 'g')
+		output = RegexCache.get('\\bModStore\\s*\\.\\s*stores\\b', 'g')
 			.replace(output, '__hxcStore');
-		output = new EReg('\\bModStore\\s*\\.\\s*(get|set)\\s*\\(', 'g')
+		output = RegexCache.get('\\bModStore\\s*\\.\\s*(get|set)\\s*\\(', 'g')
 			.replace(output, '__hxcStore.$1(');
 		// Namespaced preference singletons expose a Save-like object. Preserve the
 		// getter ABI over the selected HXC root's isolated key/value store without
 		// naming a donor's module or static function.
-		output = new EReg('\\b[A-Za-z_][A-Za-z0-9_]*Preferences\\s*\\.\\s*get[A-Za-z_][A-Za-z0-9_]*Save\\s*\\(\\s*\\)', 'g')
+		output = RegexCache.get('\\b[A-Za-z_][A-Za-z0-9_]*Preferences\\s*\\.\\s*get[A-Za-z_][A-Za-z0-9_]*Save\\s*\\(\\s*\\)', 'g')
 			.replace(output, '__hxcStore.getSave()');
-		output = new EReg('\\bSave\\s*\\.\\s*instance\\b', 'g')
+		output = RegexCache.get('\\bSave\\s*\\.\\s*instance\\b', 'g')
 			.replace(output, '__hxcStore');
 		// Imported event modules use one namespaced extra-events preference bag.
 		// Expose only the two native gates owned by this fork; unknown donor option
 		// fields remain ordinary store data and therefore stay behind the safety
 		// boundary.
-		output = new EReg('__hxcStore\\s*\\?\\.\\s*modOptions\\s*\\?\\.\\s*get\\s*\\(\\s*["\\\']extra-events["\\\']\\s*\\)\\s*\\?\\.\\s*isLyricsEnabled\\b', 'g')
+		output = RegexCache.get('__hxcStore\\s*\\?\\.\\s*modOptions\\s*\\?\\.\\s*get\\s*\\(\\s*["\\\']extra-events["\\\']\\s*\\)\\s*\\?\\.\\s*isLyricsEnabled\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.lyricsEnabled');
-		output = new EReg('__hxcStore\\s*\\?\\.\\s*modOptions\\s*\\?\\.\\s*get\\s*\\(\\s*["\\\']extra-events["\\\']\\s*\\)\\s*\\?\\.\\s*isVignEnabled\\b', 'g')
+		output = RegexCache.get('__hxcStore\\s*\\?\\.\\s*modOptions\\s*\\?\\.\\s*get\\s*\\(\\s*["\\\']extra-events["\\\']\\s*\\)\\s*\\?\\.\\s*isVignEnabled\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.vignetteEffects');
 		// Highscore.tallies is a per-song donor view, not persistent score data.
 		// Bind only the native per-song counters exposed by HxcCompatRuntime;
 		// unknown tally members remain visible to the safety audit.
-		output = new EReg('\\bHighscore\\s*\\.\\s*tallies\\b', 'g')
+		output = RegexCache.get('\\bHighscore\\s*\\.\\s*tallies\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.tallies');
 		// V-Slice character scripts select game-over/pause audio by assigning
 		// static suffix fields on donor substates.  Those classes do not exist in
@@ -8651,7 +9228,8 @@ class HxcCompat {
 			{owner: 'GameOverSubState', member: 'blueBallSuffix', setter: 'setGameOverBlueBallSuffix', getter: 'gameOverBlueBallSuffix'},
 			{owner: 'PauseSubState', member: 'musicSuffix', setter: 'setPauseMusicSuffix', getter: 'pauseMusicSuffix'}
 		]) {
-			var assignment = new EReg('\\b' + field.owner + '\\s*\\.\\s*' + field.member
+			// Cached: its match state is read right after matchSub, before any other pattern runs.
+			var assignment = RegexCache.get('\\b' + field.owner + '\\s*\\.\\s*' + field.member
 				+ '\\s*=(?!=)\\s*', 'g');
 			var assignmentOffset = 0;
 			while (assignment.matchSub(output, assignmentOffset)) {
@@ -8667,82 +9245,82 @@ class HxcCompat {
 					+ output.substr(expressionStart + expressionLength);
 				assignmentOffset = span.pos + replacement.length;
 			}
-			output = new EReg('\\b' + field.owner + '\\s*\\.\\s*' + field.member + '\\b', 'g')
+			output = RegexCache.get('\\b' + field.owner + '\\s*\\.\\s*' + field.member + '\\b', 'g')
 				.replace(output, 'HxcCompatRuntime.' + field.getter);
 		}
 		// The native PlayState seeds downscroll directly. This is the one preference
 		// whose value is live and unambiguous here; controls/visual preferences are
 		// intentionally left as donor-only diagnostics.
-		output = new EReg('\\bPreferences\\s*\\.\\s*downscroll\\b', 'g')
+		output = RegexCache.get('\\bPreferences\\s*\\.\\s*downscroll\\b', 'g')
 			.replace(output, 'downscroll');
 		// The native fork keeps strumline backgrounds fully opaque and does not
 		// persist the donor's visual preference object. Expose that explicit
 		// fallback through the isolated compatibility bag.
-		output = new EReg('\\bPreferences\\s*\\.\\s*strumlineBackgroundOpacity\\b', 'g')
+		output = RegexCache.get('\\bPreferences\\s*\\.\\s*strumlineBackgroundOpacity\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.preferences.strumlineBackgroundOpacity');
 		// V-Slice's rank helper consumes only the plain tally object assembled by
 		// imported score modules. Route this one named operation to the bounded
 		// native adapter; other Scoring methods stay unsupported.
-		output = new EReg('\\bScoring\\s*\\.\\s*calculateRank\\s*\\(', 'g')
+		output = RegexCache.get('\\bScoring\\s*\\.\\s*calculateRank\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.calculateRank(');
 		// WindowUtil/Application are donor process globals. Keep title/icon writes
 		// on the explicit native host bridge instead of exposing a mutable window.
-		output = new EReg('\\bWindowUtil\\s*\\.\\s*setWindowTitle\\s*\\(', 'g')
+		output = RegexCache.get('\\bWindowUtil\\s*\\.\\s*setWindowTitle\\s*\\(', 'g')
 			.replace(output, 'hxcSetWindowTitle(');
 		// Focus listeners (pausing a video while the window is unfocused) go on
 		// engine-owned events that are cleared with the state, never on lime's own.
-		output = new EReg('\\bApplication\\s*\\.\\s*current\\s*\\.\\s*window\\s*\\.\\s*onFocusOut\\b', 'g')
+		output = RegexCache.get('\\bApplication\\s*\\.\\s*current\\s*\\.\\s*window\\s*\\.\\s*onFocusOut\\b', 'g')
 			.replace(output, "HxcCompatRuntime.windowFocusEvent('out')");
-		output = new EReg('\\bApplication\\s*\\.\\s*current\\s*\\.\\s*window\\s*\\.\\s*onFocusIn\\b', 'g')
+		output = RegexCache.get('\\bApplication\\s*\\.\\s*current\\s*\\.\\s*window\\s*\\.\\s*onFocusIn\\b', 'g')
 			.replace(output, "HxcCompatRuntime.windowFocusEvent('in')");
 		output = lowerBareSetIconCalls(output);
 		// CreditsDataHandler is a donor-side singleton.  The native CreditsState
 		// consumes the same plain entry shape through this isolated process-local
 		// list; no donor class or file path is resolved by imported HXC.
-		output = new EReg('\\bCreditsDataHandler\\s*\\.\\s*CREDITS_DATA\\s*\\.\\s*entries\\b', 'g')
+		output = RegexCache.get('\\bCreditsDataHandler\\s*\\.\\s*CREDITS_DATA\\s*\\.\\s*entries\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.creditsEntries');
 		// DDTO's RPC module writes only the two mutable presence strings. Keep those
 		// writes on an engine-owned view while exposing the live native chart album.
-		output = new EReg('\\bPlayState\\s*\\.\\s*instance\\s*\\.\\s*discordRPCIcon\\b', 'g')
+		output = RegexCache.get('\\bPlayState\\s*\\.\\s*instance\\s*\\.\\s*discordRPCIcon\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.discordRPCIcon');
-		output = new EReg('\\bPlayState\\s*\\.\\s*instance\\s*\\.\\s*discordRPCAlbum\\b', 'g')
+		output = RegexCache.get('\\bPlayState\\s*\\.\\s*instance\\s*\\.\\s*discordRPCAlbum\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.discordRPCAlbum');
-		output = new EReg('\\bPlayState\\s*\\.\\s*instance\\s*\\.\\s*currentChart\\s*\\.\\s*album\\b', 'g')
+		output = RegexCache.get('\\bPlayState\\s*\\.\\s*instance\\s*\\.\\s*currentChart\\s*\\.\\s*album\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.currentChartAlbum');
 		// Character hooks may branch on the active variation.  The native chart
 		// has no required variation field, so the runtime exposes a safe empty
 		// string by default and a host-provided value when one exists.
-		output = new EReg('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*currentVariation\\b', 'g')
+		output = RegexCache.get('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*currentVariation\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.currentVariation');
 		// Keep this read on the donor-facing FlxG surface.  The generated stage
 		// can be executed by a small isolated interpreter (which supplies FlxG
 		// directly) as well as the game interpreter; routing a constant constructor
 		// guard through HxcCompatRuntime would make the former depend on a global
 		// runtime object unrelated to the event handler.
-		output = new EReg('\\bFlxG\\s*\\.\\s*onMobile\\b', 'g')
+		output = RegexCache.get('\\bFlxG\\s*\\.\\s*onMobile\\b', 'g')
 			.replace(output, 'FlxG.onMobile');
 		// Date.now().getTime() is used only for cache-busting RPC URLs. Keep the
 		// timestamp read on the native process boundary; the imported interpreter
 		// never receives a Date singleton or arbitrary time API.
-		output = new EReg('\\bDate\\s*\\.\\s*now\\s*\\(\\s*\\)\\s*\\.\\s*getTime\\s*\\(\\s*\\)', 'g')
+		output = RegexCache.get('\\bDate\\s*\\.\\s*now\\s*\\(\\s*\\)\\s*\\.\\s*getTime\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.timestamp()');
-		output = new EReg('\\bDate\\s*\\.\\s*now\\s*\\(\\s*\\)\\s*\\.\\s*getDay\\s*\\(\\s*\\)', 'g')
+		output = RegexCache.get('\\bDate\\s*\\.\\s*now\\s*\\(\\s*\\)\\s*\\.\\s*getDay\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.weekday()');
 		// PlayStatePlaylist and Countdown are V-Slice process facades rather than
 		// objects which can safely be reflected into imported HXC. Route the small
 		// read/control surface through the native owner, leaving any other member
 		// visible to the diagnostic pass below.
-		output = new EReg('\\bPlayStatePlaylist\\s*\\.\\s*isStoryMode\\b', 'g')
+		output = RegexCache.get('\\bPlayStatePlaylist\\s*\\.\\s*isStoryMode\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.playStatePlaylistIsStoryMode');
-		output = new EReg('\\bCountdown\\s*\\.\\s*skipCountdown\\s*\\(\\s*\\)', 'g')
+		output = RegexCache.get('\\bCountdown\\s*\\.\\s*skipCountdown\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.skipCountdown(PlayState.instance)');
-		output = new EReg('\\bCountdown\\s*\\.\\s*stopCountdown\\s*\\(\\s*\\)', 'g')
+		output = RegexCache.get('\\bCountdown\\s*\\.\\s*stopCountdown\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.stopCountdown(PlayState.instance)');
-		output = new EReg('\\bCountdown\\s*\\.\\s*pauseCountdown\\s*\\(\\s*\\)', 'g')
+		output = RegexCache.get('\\bCountdown\\s*\\.\\s*pauseCountdown\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.pauseCountdown(PlayState.instance)');
-		output = new EReg('\\bCountdown\\s*\\.\\s*resumeCountdown\\s*\\(\\s*\\)', 'g')
+		output = RegexCache.get('\\bCountdown\\s*\\.\\s*resumeCountdown\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.resumeCountdown(PlayState.instance)');
-		output = new EReg('\\bFullScreenScaleMode\\s*\\.', 'g')
+		output = RegexCache.get('\\bFullScreenScaleMode\\s*\\.', 'g')
 			.replace(output, 'HxcCompatRuntime.fullScreenScaleMode.');
 		// VideoCutscene.play is a static donor helper. Parse its balanced argument
 		// list instead of using a comma-limited regexp so Paths/Assets calls remain
@@ -8752,69 +9330,75 @@ class HxcCompat {
 		// The donor shader wrapper is a named constructor around the same runtime
 		// shader object used by the native HScript seed. Do not lower arbitrary
 		// shader classes or script methods.
-		output = new EReg('\\bScriptedFlxRuntimeShader\\s*\\.\\s*init\\s*\\(', 'g')
+		output = RegexCache.get('\\bScriptedFlxRuntimeShader\\s*\\.\\s*init\\s*\\(', 'g')
 			.replace(output, 'createRuntimeShader(');
 		// V-Slice's Constants singleton is a read/write bag of engine defaults.
 		// Keep only the generic values owned by this runtime; unknown donor classes
 		// remain visible to the safety gate instead of being instantiated.
-		output = new EReg('\\bConstants\\s*\\.', 'g')
+		output = RegexCache.get('\\bConstants\\s*\\.', 'g')
 			.replace(output, 'HxcCompatRuntime.constantsForRoot(hxcAssetRoot).');
 		// Flixel bitmap reads require integer coordinates at the native boundary.
 		// Route the common sprite pixel API through a bounded helper so imported
 		// HScript can use Float sampling expressions without invoking BitmapData
 		// methods directly or relying on interpreter-specific numeric coercion.
-		output = new EReg('\\b((?:[A-Za-z_][A-Za-z0-9_]*\\s*\\.\\s*)*[A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*pixels\\s*\\.\\s*getPixel32\\s*\\(', 'g')
+		output = RegexCache.get('\\b((?:[A-Za-z_][A-Za-z0-9_]*\\s*\\.\\s*)*[A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*pixels\\s*\\.\\s*getPixel32\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.spritePixelColor32($1, ');
-		output = new EReg('\\bStringTools\\s*\\.\\s*contains\\s*\\(', 'g')
+		output = RegexCache.get('\\bStringTools\\s*\\.\\s*contains\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.stringContains(');
-		output = new EReg('\\bStringTools\\s*\\.\\s*startsWith\\s*\\(', 'g')
+		output = RegexCache.get('\\bStringTools\\s*\\.\\s*startsWith\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.stringStartsWith(');
 		output = lowerHxcStringStartsWith(output);
 		// Costume modules load character JSON only to consume the preserved native
 		// costume metadata. Route that read through Character's registry-backed
 		// adapter and route swaps through PlayState's live character path.
-		output = new EReg('\\bjsonLoad\\s*\\(', 'g').replace(output, 'hxcGetCharacterData(');
-		output = new EReg('\\bchangeCharacter\\s*\\(', 'g').replace(output, 'hxcChangeCharacter(');
+		output = RegexCache.get('\\bjsonLoad\\s*\\(', 'g').replace(output, 'hxcGetCharacterData(');
+		output = RegexCache.get('\\bchangeCharacter\\s*\\(', 'g').replace(output, 'hxcChangeCharacter(');
 		// Costume modules warm a character through the donor parser before a
 		// ChangeCharacter event. The native bridge performs the same warm-load and
 		// exposes a data-only result for the donor's optional cache reads.
-		output = new EReg('\\bCharacterDataParser\\s*\\.\\s*parseCharacterData\\s*\\(', 'g')
+		output = RegexCache.get('\\bCharacterDataParser\\s*\\.\\s*parseCharacterData\\s*\\(', 'g')
 			.replace(output, 'hxcPrepareCharacter(');
-		output = new EReg('\\bCharacterDataParser\\s*\\.\\s*fetchCharacterData\\s*\\(', 'g')
+		output = RegexCache.get('\\bCharacterDataParser\\s*\\.\\s*fetchCharacterData\\s*\\(', 'g')
 			.replace(output, 'hxcPrepareCharacter(');
 		// CharacterDataParser's live registry/factory has a narrow native
 		// equivalent. Keep the existence check tied to Character.characterExists
 		// so unknown donor ids do not silently construct a fallback actor.
-		output = new EReg('\\bCharacterDataParser\\s*\\.\\s*listCharacterIds\\s*\\(\\s*\\)\\s*\\.\\s*contains\\s*\\(', 'g')
+		output = RegexCache.get('\\bCharacterDataParser\\s*\\.\\s*listCharacterIds\\s*\\(\\s*\\)\\s*\\.\\s*contains\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.characterExists(');
-		output = new EReg('\\bCharacterDataParser\\s*\\.\\s*fetchCharacter\\s*\\(', 'g')
+		output = RegexCache.get('\\bCharacterDataParser\\s*\\.\\s*fetchCharacter\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.fetchCharacter(');
-		output = new EReg('\\bCharacterDataParser\\s*\\.\\s*characterCache\\b', 'g')
+		output = RegexCache.get('\\bCharacterDataParser\\s*\\.\\s*characterCache\\b', 'g')
 			.replace(output, 'hxcCharacterCache');
 		// Native Character has no donor set_characterType/initHealthIcon methods.
 		// Their only safe mounted use is immediately around a StageHelper character
 		// replacement; carry the role hint and let the canonical PlayState bridge
 		// update the actual slot/icons. Unknown Character methods remain diagnosed.
-		output = new EReg('\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*set_characterType\\s*\\(', 'g')
+		output = RegexCache.get('\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*set_characterType\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.setCharacterType($1,');
-		output = new EReg('\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*initHealthIcon\\s*\\(', 'g')
+		output = RegexCache.get('\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*initHealthIcon\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.initHealthIcon($1,');
-		output = new EReg('\\bFunkinMemory\\s*\\.\\s*cacheTexture\\s*\\(', 'g')
+		output = RegexCache.get('\\bFunkinMemory\\s*\\.\\s*cacheTexture\\s*\\(', 'g')
 			.replace(output, 'hxcCacheTexture(');
 		// Sound pre-caching warms the same manifest-scoped loader the donor
 		// plays through; there is no separate memory surface to expose.
-		output = new EReg('\\bFunkinMemory\\s*\\.\\s*cacheSound\\s*\\(', 'g')
+		output = RegexCache.get('\\bFunkinMemory\\s*\\.\\s*cacheSound\\s*\\(', 'g')
+			.replace(output, 'hxcCacheSound(');
+		// The permanent variants only also pin the entry against cache clears;
+		// the engine precache serves both the same way.
+		output = RegexCache.get('\\bFunkinMemory\\s*\\.\\s*permanentCacheTexture\\s*\\(', 'g')
+			.replace(output, 'hxcCacheTexture(');
+		output = RegexCache.get('\\bFunkinMemory\\s*\\.\\s*permanentCacheSound\\s*\\(', 'g')
 			.replace(output, 'hxcCacheSound(');
 		// FlxSave is intentionally not instantiated from imported HXC. The
 		// constructor adapter supplies an isolated store with the same data/bind/
 		// flush surface, so no donor save file or singleton is touched.
-		output = new EReg('\\bnew\\s+FlxSave\\s*\\(\\s*\\)', 'g').replace(output, '__hxcStore');
+		output = RegexCache.get('\\bnew\\s+FlxSave\\s*\\(\\s*\\)', 'g').replace(output, '__hxcStore');
 		// StageHelper.addCharacter(Character, CharacterType) is a donor method;
 		// route only direct active-stage calls through the native PlayState-owned
 		// slot replacement. Local/foreign stage graphs remain diagnostics.
-		output = new EReg('\\bPlayState\\s*\\.\\s*instance\\s*\\.\\s*currentStage\\s*\\.\\s*addCharacter\\s*\\(', 'g')
+		output = RegexCache.get('\\bPlayState\\s*\\.\\s*instance\\s*\\.\\s*currentStage\\s*\\.\\s*addCharacter\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.stageAddCharacter(PlayState.instance.currentStage,');
-		output = new EReg('\\b(currentPlayState|game)\\s*\\.\\s*currentStage\\s*\\.\\s*addCharacter\\s*\\(', 'g')
+		output = RegexCache.get('\\b(currentPlayState|game)\\s*\\.\\s*currentStage\\s*\\.\\s*addCharacter\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.stageAddCharacter($1.currentStage,');
 		for (role in [
 			{source: 'BF', value: 'bf'},
@@ -8822,39 +9406,39 @@ class HxcCompat {
 			{source: 'GF', value: 'gf'},
 			{source: 'OTHER', value: 'other'}
 		]) {
-			output = new EReg('\\bCharacterType\\s*\\.\\s*' + role.source + '\\b', 'g')
+			output = RegexCache.get('\\bCharacterType\\s*\\.\\s*' + role.source + '\\b', 'g')
 				.replace(output, '"' + role.value + '"');
 		}
 		// The donor's Song model calls the active chart `currentSong.id`, while
 		// this engine stores that identity in SwagSong.song. Use the chart object
 		// seeded into HScript so the comparison keeps its authored value instead
 		// of reading a nonexistent `id` field from the native typedef.
-		output = new EReg('\\bPlayState\\s*\\.\\s*instance\\s*\\.\\s*currentSong\\s*\\.\\s*id\\b', 'g')
+		output = RegexCache.get('\\bPlayState\\s*\\.\\s*instance\\s*\\.\\s*currentSong\\s*\\.\\s*id\\b', 'g')
 			.replace(output, 'SONG.song');
-		output = new EReg('\\b(?:currentPlayState|game)\\s*\\.\\s*currentSong\\s*\\.\\s*id\\b', 'g')
+		output = RegexCache.get('\\b(?:currentPlayState|game)\\s*\\.\\s*currentSong\\s*\\.\\s*id\\b', 'g')
 			.replace(output, 'SONG.song');
 		// Donor FunkinSound exposes a player vocal bus, while the native chart
 		// stores role-tagged stems in VocalTracks. Preserve the bus operation
 		// without exposing the FlxSound or treating opponent stems as players.
-		output = new EReg('\\b(PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*vocals\\s*\\.\\s*set_playerVolume\\s*\\(', 'g')
+		output = RegexCache.get('\\b(PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*vocals\\s*\\.\\s*set_playerVolume\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.setPlayerVocalVolume($1, ');
-		output = new EReg('\\b(PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*vocals\\s*\\.\\s*playerVolume\\s*=\\s*(?!=)([^;\\n]+);', 'g')
+		output = RegexCache.get('\\b(PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*vocals\\s*\\.\\s*playerVolume\\s*=\\s*(?!=)([^;\\n]+);', 'g')
 			.replace(output, 'HxcCompatRuntime.setPlayerVocalVolume($1, $2);');
-		output = new EReg('\\b(PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*vocals\\s*\\.\\s*playerVolume\\b', 'g')
+		output = RegexCache.get('\\b(PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*vocals\\s*\\.\\s*playerVolume\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.getPlayerVocalVolume($1)');
-		output = new EReg('\\b(PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*vocals\\s*\\.\\s*opponentVoices\\b', 'g')
+		output = RegexCache.get('\\b(PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*vocals\\s*\\.\\s*opponentVoices\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.opponentVocalTracks($1)');
 		// V-Slice modules also spell the active chart identity as
 		// currentChart.song.id. The native SwagSong stores that identity directly
 		// in SONG.song, so lower this exact donor field chain before HScript sees
 		// the absent currentChart wrapper.
-		output = new EReg('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*currentChart\\s*\\.\\s*song\\s*\\.\\s*id\\b', 'g')
+		output = RegexCache.get('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*currentChart\\s*\\.\\s*song\\s*\\.\\s*id\\b', 'g')
 			.replace(output, 'SONG.song');
 		// Common module code stores the seeded PlayState in a short `ps` alias
 		// before reading the donor song id. This is the one additional local
 		// spelling used by the mounted corpus; no arbitrary object reflection is
 		// introduced for other aliases.
-		output = new EReg('\\bps\\s*\\.\\s*song\\s*\\.\\s*id\\b', 'g')
+		output = RegexCache.get('\\bps\\s*\\.\\s*song\\s*\\.\\s*id\\b', 'g')
 			.replace(output, 'SONG.song');
 		// Some modules first bind the seeded PlayState to a local (for example
 		// `var ps = PlayState.instance`) and then use the donor Song object's
@@ -8865,18 +9449,18 @@ class HxcCompat {
 		for (alias in localPlayStateAliases) {
 			if (!isIdentifier(alias))
 				continue;
-			output = new EReg('\\b' + alias + '\\s*\\.\\s*song\\s*\\.\\s*id\\b', 'g')
+			output = RegexCache.get('\\b' + alias + '\\s*\\.\\s*song\\s*\\.\\s*id\\b', 'g')
 				.replace(output, 'SONG.song');
 			// The mounted modules also use `ps.song == null` as a guard. Lower only
 			// that terminal comparison/read shape; deeper donor Song members remain
 			// visible to the module safety gate instead of being guessed.
-			output = new EReg('\\b' + alias + '\\s*\\.\\s*song\\s*(==|!=|&&|\\|\\||\\)|;|,)', 'g')
+			output = RegexCache.get('\\b' + alias + '\\s*\\.\\s*song\\s*(==|!=|&&|\\|\\||\\)|;|,)', 'g')
 				.replace(output, 'SONG$1');
 		}
 		// A few V-Slice modules call the generated getter spelling directly. The
 		// destination exposes the same live chart as SONG; lower only this named
 		// accessor rather than reflecting over arbitrary PlayState methods.
-		output = new EReg('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*get_currentChart\\s*\\(\\s*\\)', 'g')
+		output = RegexCache.get('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*get_currentChart\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'SONG');
 		// The native SwagSong stores the three active character ids directly. A
 		// plain object preserves the donor `currentChart.characters` shape for
@@ -8886,16 +9470,16 @@ class HxcCompat {
 			{source: 'opponent', value: 'SONG.player2'},
 			{source: 'girlfriend', value: 'SONG.gf'}
 		]) {
-			output = new EReg('\\bSONG\\s*\\.\\s*characters\\s*\\.\\s*' + role.source + '\\b', 'g')
+			output = RegexCache.get('\\bSONG\\s*\\.\\s*characters\\s*\\.\\s*' + role.source + '\\b', 'g')
 				.replace(output, role.value);
 		}
-		output = new EReg('\\bSONG\\s*\\.\\s*characters\\b', 'g')
+		output = RegexCache.get('\\bSONG\\s*\\.\\s*characters\\b', 'g')
 			.replace(output, '{player: SONG.player1, opponent: SONG.player2, girlfriend: SONG.gf}');
 		// A donor Song variation nests its character ids under two difficulty
 		// maps. Both native chart selections are already resolved in PlayState, so
 		// lower only this explicit character object to the active SwagSong fields.
 		var variationCharacters = '\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*currentSong\\s*\\.\\s*difficulties\\s*\\.\\s*get\\s*\\([^)]*\\)\\s*\\.\\s*get\\s*\\([^)]*\\)\\s*\\.\\s*characters\\b';
-		output = new EReg(variationCharacters, 'g')
+		output = RegexCache.get(variationCharacters, 'g')
 			.replace(output, '{player: SONG.player1, opponent: SONG.player2, girlfriend: SONG.gf}');
 		// Keep direct role reads equivalent when a module does not first bind the
 		// variation's character object to a local.
@@ -8905,13 +9489,13 @@ class HxcCompat {
 			{source: 'girlfriend', value: 'SONG.gf'}
 		]) {
 			var variationRole = '\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*currentSong\\s*\\.\\s*difficulties\\s*\\.\\s*get\\s*\\([^)]*\\)\\s*\\.\\s*get\\s*\\([^)]*\\)\\s*\\.\\s*characters\\s*\\.\\s*' + role.source + '\\b';
-			output = new EReg(variationRole, 'g').replace(output, role.value);
+			output = RegexCache.get(variationRole, 'g').replace(output, role.value);
 		}
 		// V-Slice names the active pause bit isGamePaused. PlayState already seeds
 		// the live native value as paused in every gameplay HScript interpreter,
 		// so this explicit alias keeps the read rooted without exposing a donor
 		// singleton or inventing a second mutable state flag.
-		output = new EReg('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*isGamePaused\\b', 'g')
+		output = RegexCache.get('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*isGamePaused\\b', 'g')
 			.replace(output, 'paused');
 		// V-Slice exposes the active chart as currentChart. These fields are the
 		// same live values already carried by SwagSong; lower only the direct
@@ -8921,89 +9505,117 @@ class HxcCompat {
 		// playbackRate is a
 		// fixed-rate host alias exposed on PlayState.
 		var chartOwner = '(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)';
-		output = new EReg('\\b(PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*currentChart\\s*\\.\\s*notes\\b', 'g')
+		output = RegexCache.get('\\b(PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*currentChart\\s*\\.\\s*notes\\b', 'g')
 			.replace(output, '$1.hxcCurrentChartNotes()');
-		output = new EReg('\\b' + chartOwner + '\\s*\\.\\s*currentChart\\s*\\.\\s*characters\\s*\\.\\s*player\\b', 'g')
+		output = RegexCache.get('\\b' + chartOwner + '\\s*\\.\\s*currentChart\\s*\\.\\s*characters\\s*\\.\\s*player\\b', 'g')
 			.replace(output, 'SONG.player1');
-		output = new EReg('\\b' + chartOwner + '\\s*\\.\\s*currentChart\\s*\\.\\s*characters\\s*\\.\\s*opponent\\b', 'g')
+		output = RegexCache.get('\\b' + chartOwner + '\\s*\\.\\s*currentChart\\s*\\.\\s*characters\\s*\\.\\s*opponent\\b', 'g')
 			.replace(output, 'SONG.player2');
-		output = new EReg('\\b' + chartOwner + '\\s*\\.\\s*currentChart\\s*\\.\\s*characters\\s*\\.\\s*girlfriend\\b', 'g')
+		output = RegexCache.get('\\b' + chartOwner + '\\s*\\.\\s*currentChart\\s*\\.\\s*characters\\s*\\.\\s*girlfriend\\b', 'g')
 			.replace(output, 'SONG.gf');
 		// V-Slice scripts read the donor StageData through currentStage._data
 		// (DDTO's extra-opponent setup wants _data.characters.dad.position and
 		// .cameraOffsets). StageHelper's persistent slot info already carries
 		// those numbers, so lower to the runtime snapshot instead of a null
 		// chain that later arithmetic would dereference.
-		output = new EReg('\\b' + chartOwner + '\\s*\\.\\s*currentStage\\s*\\.\\s*_data\\s*\\.\\s*characters\\s*\\.\\s*([A-Za-z0-9_\\-]+)\\b', 'g')
+		output = RegexCache.get('\\b' + chartOwner + '\\s*\\.\\s*currentStage\\s*\\.\\s*_data\\s*\\.\\s*characters\\s*\\.\\s*([A-Za-z0-9_\\-]+)\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.stageCharacterData("$1")');
-		output = new EReg('\\b' + chartOwner + '\\s*\\.\\s*currentStage\\s*\\.\\s*_data\\b(?!\\s*\\.\\s*characters)', 'g')
+		output = RegexCache.get('\\b' + chartOwner + '\\s*\\.\\s*currentStage\\s*\\.\\s*_data\\b(?!\\s*\\.\\s*characters)', 'g')
 			.replace(output, 'HxcCompatRuntime.stageDataSnapshot()');
 		for (field in ['songName', 'songArtist', 'album', 'stage', 'bpm', 'needsVoices', 'scrollSpeed', 'speed',
 			'isSpooky', 'uiType', 'cutsceneType', 'gf', 'player1', 'player2', 'offsets', 'stickerPack']) {
 			var replacement = switch (field) {
-				case 'songName': 'SONG.song';
+				// V-Slice's songName is the display name from the song metadata,
+				// which SONG.song (the chart id) is not; PlayState.currentChart
+				// keeps the recorded one.
+				case 'songName': 'HxcCompatRuntime.currentChartSongName';
 				case 'scrollSpeed' | 'speed': 'SONG.speed';
 				case 'gf': 'SONG.gf';
 				case 'player1': 'SONG.player1';
 				case 'player2': 'SONG.player2';
 				default: 'SONG.' + field;
 			};
-			output = new EReg('\\b' + chartOwner + '\\s*\\.\\s*currentChart\\s*\\.\\s*' + field + '\\b', 'g')
+			output = RegexCache.get('\\b' + chartOwner + '\\s*\\.\\s*currentChart\\s*\\.\\s*' + field + '\\b', 'g')
 				.replace(output, replacement);
 		}
+		// The native PlayState has no subtitle sprite group; the runtime shows
+		// the lines on the native lyric line instead.
+		output = RegexCache.get('\\b' + chartOwner + '\\s*\\.\\s*subtitles\\b', 'g')
+			.replace(output, 'HxcCompatRuntime.subtitlesFor(hxcAssetRoot)');
 		// V-Slice exposes timing through a Conductor singleton. This engine already
 		// seeds the live MusicBeatState step into every HScript interpreter, so
 		// route reads to the native clock and route the donor update call through a
 		// bounded numeric setter/no-op facade. Other Conductor members remain
 		// diagnosed until they have a native equivalent.
-		output = new EReg('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*currentBeat\\b', 'g')
+		output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*currentBeat\\b', 'g')
 			.replace(output, 'curBeat');
-		output = new EReg('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*stepLengthMs\\b', 'g')
+		output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*stepLengthMs\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.conductorStepLengthMs');
-		output = new EReg('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*beatLengthMs\\b', 'g')
+		output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*beatLengthMs\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.conductorBeatLengthMs');
-		output = new EReg('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*songPosition\\b', 'g')
+		output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*songPosition\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.conductorSongPosition');
-		output = new EReg('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*combinedOffset\\b', 'g')
+		output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*combinedOffset\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.conductorCombinedOffset');
-		output = new EReg('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*update\\s*\\(', 'g')
+		output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*update\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.conductorUpdate(');
-		output = new EReg('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*currentStep\\b', 'g')
+		// The song clock is mapped from the chart when the song loads; scripts
+		// call this to restore it after a private clock, so it only has to accept
+		// the call.
+		output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*mapTimeChanges\\s*\\(', 'g')
+			.replace(output, 'HxcCompatRuntime.conductorMapTimeChanges(');
+		// `new Conductor()` is a private clock that follows some other sound
+		// (cutscene music, a video). The base game's ConductorTimeline is that
+		// clock; the native Conductor is static and cannot be constructed.
+		output = RegexCache.get('\\bnew\\s+Conductor\\s*\\(\\s*\\)', 'g')
+			.replace(output, 'HxcCompatRuntime.newConductor()');
+		output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*currentStep\\b', 'g')
 			.replace(output, 'curStep');
+		// Tempo-map conversions and the remaining clock reads go to the native
+		// Conductor's own functions (beatToSeconds, stepToSeconds,
+		// getCrotchetAtTime, getBeat, getStep) through the runtime.
+		for (member in ['getBeatTimeInMs', 'getStepTimeInMs', 'getTypeLengthAtMs'])
+			output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*' + member + '\\s*\\(', 'g')
+				.replace(output, 'HxcCompatRuntime.conductor' + member.charAt(0).toUpperCase() + member.substr(1) + '(');
+		for (member in ['currentBeatTime', 'currentStepTime', 'measureLengthMs', 'bpm'])
+			output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*' + member + '\\b(?!\\s*=[^=])', 'g')
+				.replace(output, 'HxcCompatRuntime.conductor' + member.charAt(0).toUpperCase() + member.substr(1));
 		// The native state calls its active stage curStage.  Keep currentStageId
 		// unchanged because PlayState exposes that donor read-only alias too.
-		output = new EReg('\\bcurrentStage\\b', 'g').replace(output, 'curStage');
+		output = RegexCache.get('\\bcurrentStage\\b', 'g').replace(output, 'curStage');
 		// StageHelper keeps named props in its live elements map.  This preserves
 		// the donor's lookup/set behavior without inventing a detached registry.
-		output = new EReg('\\.namedProps\\b', 'g').replace(output, '.elements');
+		output = RegexCache.get('\\.namedProps\\b', 'g').replace(output, '.elements');
 		// ScriptedMusicBeatState/SubState.init are manifest-scoped donor factories.
 		// Literal names are safe to resolve through HxcStateFactory; dynamic names
 		// remain visible to the diagnostic pass and are rejected at runtime.
 		for (stateName in ['MainMenuState', 'StoryMenuState', 'FreeplayState', 'TitleState', 'CreditsState', 'SaveDataState']) {
-			var statePattern = new EReg("\\bScriptedMusicBeatState\\s*\\.\\s*init\\s*\\(\\s*[\"']"
+			var statePattern = RegexCache.get("\\bScriptedMusicBeatState\\s*\\.\\s*init\\s*\\(\\s*[\"']"
 				+ stateName + "[\"']\\s*\\)", 'g');
 			output = statePattern.replace(output, 'hxcStateInit("' + stateName + '")');
 		}
+		// V-Slice registers scripted classes under their package-qualified name
+		// too ('pack.states.MenuState'); HxcStateFactory matches its last segment.
 		for (quote in ['"', "'"]) {
-			var statePattern = new EReg('\\bScriptedMusicBeatState\\s*\\.\\s*init\\s*\\(\\s*'
-				+ quote + '([A-Za-z_][A-Za-z0-9_]*)' + quote + '\\s*\\)', 'g');
+			var statePattern = RegexCache.get('\\bScriptedMusicBeatState\\s*\\.\\s*init\\s*\\(\\s*'
+				+ quote + '([A-Za-z_][A-Za-z0-9_.]*)' + quote + '\\s*\\)', 'g');
 			output = statePattern.replace(output, 'hxcStateInit("$1")');
-			var subStatePattern = new EReg('\\bScriptedMusicBeatSubState\\s*\\.\\s*init\\s*\\(\\s*'
-				+ quote + '([A-Za-z_][A-Za-z0-9_]*)' + quote + '\\s*\\)', 'g');
+			var subStatePattern = RegexCache.get('\\bScriptedMusicBeatSubState\\s*\\.\\s*init\\s*\\(\\s*'
+				+ quote + '([A-Za-z_][A-Za-z0-9_.]*)' + quote + '\\s*\\)', 'g');
 			output = subStatePattern.replace(output, 'hxcSubStateInit("$1")');
 		}
 		// A dynamic name is still safe when it enters the manifest-owned resolver:
 		// HxcStateFactory scans only the caller's selected root and never calls
 		// Type.resolveClass on the authored value. Keep property expressions intact
 		// so menu state variables can be selected at runtime.
-		var dynamicStatePattern = new EReg('\\bScriptedMusicBeatState\\s*\\.\\s*init\\s*\\(\\s*([A-Za-z_][A-Za-z0-9_.]*)\\s*\\)', 'g');
+		var dynamicStatePattern = RegexCache.get('\\bScriptedMusicBeatState\\s*\\.\\s*init\\s*\\(\\s*([A-Za-z_][A-Za-z0-9_.]*)\\s*\\)', 'g');
 		output = dynamicStatePattern.replace(output, 'hxcStateInit($1)');
-		var dynamicSubStatePattern = new EReg('\\bScriptedMusicBeatSubState\\s*\\.\\s*init\\s*\\(\\s*([A-Za-z_][A-Za-z0-9_.]*)\\s*\\)', 'g');
+		var dynamicSubStatePattern = RegexCache.get('\\bScriptedMusicBeatSubState\\s*\\.\\s*init\\s*\\(\\s*([A-Za-z_][A-Za-z0-9_.]*)\\s*\\)', 'g');
 		output = dynamicSubStatePattern.replace(output, 'hxcSubStateInit($1)');
 		// V-Slice's transition helper is a state-owned switch boundary. Route only
 		// the engine-owned currentState spelling through the caller-root adapter;
 		// arbitrary object methods remain ordinary HScript and are not reflected.
-		output = new EReg('\\bcurrentState\\s*\\.\\s*startExitState\\s*\\(', 'g')
+		output = RegexCache.get('\\bcurrentState\\s*\\.\\s*startExitState\\s*\\(', 'g')
 			.replace(output, 'hxcStartExitState(');
 		output = lowerStateTransitionFactories(output);
 		// Route both the active native state and an already-open imported substate
@@ -9012,13 +9624,13 @@ class HxcCompat {
 		// Retain the active substate chain as an explicit host argument. This
 		// deliberately covers only engine-owned state aliases, never arbitrary
 		// object reflection.
-		var subStateHost = new EReg('\\b(FlxG\\s*\\.\\s*state|currentState|hxcState|state)\\s*\\.\\s*subState\\s*\\.\\s*openSubState\\s*\\(', 'g');
+		var subStateHost = RegexCache.get('\\b(FlxG\\s*\\.\\s*state|currentState|hxcState|state)\\s*\\.\\s*subState\\s*\\.\\s*openSubState\\s*\\(', 'g');
 		output = subStateHost.replace(output, 'hxcOpenSubStateOn($1.subState, ');
-		var stateHost = new EReg('\\bFlxG\\s*\\.\\s*state\\s*\\.\\s*openSubState\\s*\\(', 'g');
+		var stateHost = RegexCache.get('\\bFlxG\\s*\\.\\s*state\\s*\\.\\s*openSubState\\s*\\(', 'g');
 		output = stateHost.replace(output, 'hxcOpenSubStateOn(FlxG.state, ');
-		output = new EReg('\\bFlxG\\s*\\.\\s*switchState\\s*\\(', 'g')
+		output = RegexCache.get('\\bFlxG\\s*\\.\\s*switchState\\s*\\(', 'g')
 			.replace(output, 'hxcSwitchState(');
-		output = new EReg('\\bFlxG\\s*\\.\\s*resetState\\s*\\(\\s*\\)', 'g')
+		output = RegexCache.get('\\bFlxG\\s*\\.\\s*resetState\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'hxcResetState()');
 		return output;
 	}
@@ -9096,7 +9708,9 @@ class HxcCompat {
 			return source == null ? '' : source;
 		var output = source;
 		var search = 0;
-		var pattern = new EReg('\\bVideoCutscene\\s*\\.\\s*play\\s*\\(', 'g');
+		// Cached: matchedPos is read right after each match, and nothing in
+		// between runs this pattern.
+		var pattern = RegexCache.get('\\bVideoCutscene\\s*\\.\\s*play\\s*\\(', 'g');
 		var attempts = 0;
 		while (attempts++ < 128 && search < output.length) {
 			var remaining = output.substr(search);
@@ -9119,7 +9733,7 @@ class HxcCompat {
 			if (parts.length > 1) {
 				var mode = StringTools.trim(parts[1]);
 				ending = mode == 'true'
-					|| new EReg('^CutsceneType\\s*\\.\\s*ENDING$', 'm').match(mode);
+					|| RegexCache.get('^CutsceneType\\s*\\.\\s*ENDING$', 'm').match(mode);
 			}
 			var replacement = 'HxcCompatRuntime.playVideoCutscene(PlayState.instance, '
 				+ StringTools.trim(parts[0]) + ', ' + (ending ? 'true' : 'false') + ')';
@@ -9252,9 +9866,9 @@ class HxcCompat {
 		if (source == null || source.indexOf('->') < 0 && source.indexOf('function') < 0)
 			return source == null ? '' : source;
 		var output = source;
-		var closureWithArgs = new EReg('\\(\\s*\\)\\s*->\\s*new\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(\\s*([^(){};\\n]*)\\s*\\)', 'g');
+		var closureWithArgs = RegexCache.get('\\(\\s*\\)\\s*->\\s*new\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(\\s*([^(){};\\n]*)\\s*\\)', 'g');
 		output = closureWithArgs.replace(output, 'hxcStateFactory("$1", [$2])');
-		var functionWithArgs = new EReg('function\\s*\\(\\s*\\)\\s*\\{\\s*return\\s+new\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(\\s*([^(){};\\n]*)\\s*\\)\\s*;?\\s*\\}', 'g');
+		var functionWithArgs = RegexCache.get('function\\s*\\(\\s*\\)\\s*\\{\\s*return\\s+new\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(\\s*([^(){};\\n]*)\\s*\\)\\s*;?\\s*\\}', 'g');
 		output = functionWithArgs.replace(output, 'hxcStateFactory("$1", [$2])');
 		return output;
 	}
@@ -9268,9 +9882,14 @@ class HxcCompat {
 		if (source == null || source == '')
 			return source == null ? '' : source;
 		var output = source;
-		output = new EReg('\\bfunkin\\s*\\.\\s*ui\\s*\\.\\s*credits\\s*\\.\\s*CreditsState\\b', 'g')
+		// A script that imports the options menu names it bare afterwards
+		// (`Std.isOfType(FlxG.state, OptionsState)`); that bare name is the same
+		// class, so it gets the same native destination.
+		if (RegexCache.get('\\bimport\\s+funkin\\s*\\.\\s*ui\\s*\\.\\s*options\\s*\\.\\s*OptionsState\\s*;', 'm').match(output))
+			output = RegexCache.get('(?<![.\\w])OptionsState\\b', 'g').replace(output, 'SaveDataState');
+		output = RegexCache.get('\\bfunkin\\s*\\.\\s*ui\\s*\\.\\s*credits\\s*\\.\\s*CreditsState\\b', 'g')
 			.replace(output, 'CreditsState');
-		output = new EReg('\\bfunkin\\s*\\.\\s*ui\\s*\\.\\s*options\\s*\\.\\s*OptionsState\\b', 'g')
+		output = RegexCache.get('\\bfunkin\\s*\\.\\s*ui\\s*\\.\\s*options\\s*\\.\\s*OptionsState\\b', 'g')
 			.replace(output, 'SaveDataState');
 		return output;
 	}
@@ -9280,9 +9899,9 @@ class HxcCompat {
 		var result:Array<String> = [];
 		if (source == null || source == '')
 			return result;
-		if (new EReg('\\bfunkin\\s*\\.\\s*ui\\s*\\.\\s*credits\\s*\\.\\s*CreditsState\\b', 'm').match(source))
+		if (RegexCache.get('\\bfunkin\\s*\\.\\s*ui\\s*\\.\\s*credits\\s*\\.\\s*CreditsState\\b', 'm').match(source))
 			result.push('funkin.ui.credits.CreditsState -> CreditsState');
-		if (new EReg('\\bfunkin\\s*\\.\\s*ui\\s*\\.\\s*options\\s*\\.\\s*OptionsState\\b', 'm').match(source))
+		if (RegexCache.get('\\bfunkin\\s*\\.\\s*ui\\s*\\.\\s*options\\s*\\.\\s*OptionsState\\b', 'm').match(source))
 			result.push('funkin.ui.options.OptionsState -> SaveDataState');
 		return result;
 	}
@@ -9299,7 +9918,7 @@ class HxcCompat {
 		// still understands the unparameterized runtime class; removing only the
 		// type arguments preserves the declaration for the later function/field
 		// lowering pass without falsely retaining a typed-map diagnostic.
-		var annotation = new EReg('\\b(Map|StringMap|IntMap|ObjectMap)\\s*<[^>\\n]+>', 'g');
+		var annotation = RegexCache.get('\\b(Map|StringMap|IntMap|ObjectMap)\\s*<[^>\\n]+>', 'g');
 		output = annotation.replace(output, '$1');
 		return output;
 	}
@@ -10195,9 +10814,9 @@ class HxcCompat {
 			result.push('null-coalescing (??)');
 		if (findOutsideToken(source, '=>', 0) >= 0 || findOutsideToken(source, '->', 0) >= 0)
 			result.push('lambda expressions');
-		if (new EReg('\\b(?:Map|StringMap|IntMap|ObjectMap)\\s*<', '').match(source))
+		if (RegexCache.get('\\b(?:Map|StringMap|IntMap|ObjectMap)\\s*<', '').match(source))
 			result.push('typed maps');
-		if (new EReg('\\b(?:@:|abstract\\s+)', '').match(source))
+		if (RegexCache.get('\\b(?:@:|abstract\\s+)', '').match(source))
 			result.push('Haxe metadata/abstracts');
 		return result;
 	}
@@ -10247,6 +10866,11 @@ class HxcCompat {
 			lines.push(HxcStoryMenuSpec.helperHscript(storySpec));
 			return lines.join('\n');
 		}
+		// V-Slice's SongEvent keeps the kind passed to its constructor in `id`,
+		// and custom events compare chart rows against it (`data.eventKind != id`).
+		// Declared first, so a donor field of the same name still wins.
+		if (result.kind == 'song-event' && result.songEventId != null && result.songEventId != '')
+			lines.push('var id = ' + quote(result.songEventId) + ';');
 		// Keep the translated Save/Preferences view available before any carried
 		// state initializers, but do not make ordinary HXC adapters depend on the
 		// store class. The namespace is donor-root scoped so related scripts share
@@ -10550,8 +11174,10 @@ class HxcCompat {
 		// `getDad() != null ? getDad().zIndex` as one malformed receiver.
 		var receiver = '[A-Za-z_][A-Za-z0-9_]*(?:\\s*\\([^(){};\\n]*\\))?(?:\\s*\\.\\s*[A-Za-z_][A-Za-z0-9_]*'
 			+ '(?:\\s*\\([^(){};\\n]*\\))?)*';
+		// `=(?!=)` keeps a comparison such as `a.zIndex == b.zIndex - 3` a read;
+		// matching its first `=` emitted `setZIndex(a, = b..., "=")`.
 		var assignment = new EReg('\\b(' + receiver + ')'
-			+ '\\s*\\.\\s*zIndex\\s*(=|\\+=|-=|\\*=|/=)\\s*([^;\\n]+)', 'g');
+			+ '\\s*\\.\\s*zIndex\\s*(=(?!=)|\\+=|-=|\\*=|/=)\\s*([^;\\n]+)', 'g');
 		var attempts = 0;
 		while (attempts++ < 256 && assignment.match(output)) {
 			var matched = assignment.matchedPos();
@@ -10566,7 +11192,7 @@ class HxcCompat {
 				+ quote(assignmentOperator) + ')';
 			output = output.substr(0, matched.pos) + replacement + output.substr(valueEnd);
 		}
-		var read = new EReg('\\b(' + receiver + ')'
+		var read = RegexCache.get('\\b(' + receiver + ')'
 			+ '\\s*\\.\\s*zIndex\\b', 'g');
 		return read.replace(output, 'HxcCompatRuntime.getZIndex($1)');
 	}
@@ -10796,8 +11422,10 @@ class HxcCompat {
 		if (source == null || source == '')
 			return output;
 		var offset = 0;
+		// Compiled once per pattern, not once per match. Its state is read before
+		// any other pattern runs, so the shared cached copy is safe here.
+		var expression = RegexCache.get(pattern, 'm');
 		while (offset < source.length) {
-			var expression = new EReg(pattern, 'm');
 			var remaining = source.substr(offset);
 			if (!expression.match(remaining))
 				break;
@@ -10947,15 +11575,31 @@ class HxcCompat {
 		var result:Array<String> = [];
 		if (source == null || source == '')
 			return result;
+		// The base-game V-Slice helpers are known roots, but only the members
+		// they implement exist. Anything else would read as null and throw on
+		// its first call, so it stays a reported gap.
+		for (owner in BASE_HELPER_STATIC_MEMBERS.keys()) {
+			if (source.indexOf(owner) < 0)
+				continue;
+			var allowed = BASE_HELPER_STATIC_MEMBERS.get(owner);
+			for (member in collectMatches(source, '\\b' + owner + '\\s*\\.\\s*([A-Za-z_][A-Za-z0-9_]*)\\b', 1))
+				if (allowed.indexOf(member) < 0)
+					appendUnique(result, owner + '.' + member + ' has no base-game equivalent.');
+		}
 		var facadeMembers:Dynamic = {
-			PlayStatePlaylist: ['isStoryMode'],
+			// PluginManager binds the base-game VSlicePlayStatePlaylist, VSliceVideoCutscene
+			// and VSliceFunkinSound facades; FullScreenScaleMode is the runtime's desktop view.
+			PlayStatePlaylist: ['isStoryMode', 'reset'],
 			Countdown: ['skipCountdown', 'stopCountdown', 'pauseCountdown', 'resumeCountdown'],
-			VideoCutscene: ['play'],
+			VideoCutscene: ['play', 'isPlaying', 'pauseVideo', 'resumeVideo', 'restartVideo', 'finishVideo',
+				'showVideo', 'hideVideo'],
 			CutsceneType: ['ENDING', 'INTRO'],
-			FullScreenScaleMode: ['enabled', 'gameCutoutSize', 'wideScale', 'removeCutouts'],
+			FullScreenScaleMode: ['enabled', 'gameCutoutSize', 'wideScale', 'removeCutouts', 'addCutouts',
+				'instance', 'hasFakeCutouts', 'cutoutSize', 'notchSize', 'notchPosition', 'gameNotchSize',
+				'gameNotchPosition'],
 			FunkinSprite: ['create', 'createSparrow', 'createTextureAtlas', 'cacheTexture'],
 			FunkinCamera: [],
-			FunkinSound: ['playOnce', 'playMusic', 'stopAllAudio', 'load'],
+			FunkinSound: ['playOnce', 'playMusic', 'stopAllAudio', 'load', 'setMusic'],
 			WiggleEffectRuntime: [],
 			WiggleEffectType: ['DREAMY', 'WAVY', 'HEAT_WAVE_HORIZONTAL', 'HEAT_WAVE_VERTICAL', 'FLAG']
 		};
@@ -10995,7 +11639,9 @@ class HxcCompat {
 		// configurator; any other assignment must remain an explicit diagnostic so
 		// a donor object cannot be smuggled into the host graph.
 		for (side in ['player', 'opponent']) {
-			var assignment = new EReg('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)'
+			// Cached: the inner check uses a different pattern, so the match
+			// state read below is still this loop's.
+			var assignment = RegexCache.get('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)'
 				+ '\\s*\\.\\s*' + side + 'Strumline\\s*=\\s*([^;\\n]+)', 'm');
 			var remaining = source;
 			var attempts = 0;
@@ -11005,7 +11651,7 @@ class HxcCompat {
 				// The deliberately simple assignment scanner can also see the first
 				// `=` in `==`/`!=` comparisons. Those begin with another `=` in the
 				// captured RHS and are not property writes.
-				if (rhs != '' && rhs.charAt(0) != '=' && !new EReg('^new\\s+Strumline\\s*\\(', 'm').match(rhs))
+				if (rhs != '' && rhs.charAt(0) != '=' && !RegexCache.get('^new\\s+Strumline\\s*\\(', 'm').match(rhs))
 					appendUnique(result, 'PlayState.instance.' + side
 						+ 'Strumline assignment is read-only; only new Strumline(...) can use the bounded native reconfiguration adapter.');
 				var position = assignment.matchedPos();
@@ -11014,7 +11660,7 @@ class HxcCompat {
 				remaining = remaining.substr(position.pos + position.len);
 			}
 		}
-		var initStrumline = new EReg('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)'
+		var initStrumline = RegexCache.get('\\b(?:PlayState\\s*\\.\\s*instance|currentPlayState|game)'
 			+ '\\s*\\.\\s*initStrumlines\\s*\\(([^)]*)\\)', 'm');
 		if (initStrumline.match(source)) {
 			var initArgs = '';

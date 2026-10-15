@@ -467,6 +467,10 @@ class ModuleFunctions {
 		// An import or refresh can replace or remove owner files, so on-disk
 		// spellings remembered before it must be looked up again.
 		SourceOwnerFiles.forgetResolvedPaths();
+		// Script registries (SongRegistry, LevelRegistry, PlayerRegistry) see the
+		// new songs at once instead of on their next periodic listing.
+		VSliceRegistryCatalog.invalidate();
+		VSlicePlayerRegistry.invalidate();
 		if (songNames == null)
 			return;
 		for (songName in songNames) {
@@ -1194,7 +1198,8 @@ class ModuleFunctions {
 	 * those files as a native vocalStems list so PlayState can load every track
 	 * together; a lone first stem is not a valid substitute for the group.
 	 */
-	static function findImportVocalStems(basePath:String, combinedPlaysAsPlayer:Bool = false):Array<SongImportVocalStem> {
+	static function findImportVocalStems(basePath:String, combinedPlaysAsPlayer:Bool = false,
+		namedStemsFollowCharacters:Bool = false):Array<SongImportVocalStem> {
 		var stems:Array<SongImportVocalStem> = [];
 		if (basePath == null || !FileSystem.isDirectory(basePath))
 			return stems;
@@ -1204,6 +1209,9 @@ class ModuleFunctions {
 		var combinedPath = findImportFile(basePath, ['Voices.ogg', 'voices.ogg']);
 		var combined = combinedPath != null;
 		var playerStem = false;
+		// Character-named stems beside the combined file. Which one plays is only
+		// known at load, from each character's vocals_file.
+		var named:Array<SongImportVocalStem> = [];
 		var entries:Array<String>;
 		try {
 			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(basePath));
@@ -1226,8 +1234,14 @@ class ModuleFunctions {
 			var stemId = entry.substr(7, extensionStart > 7 ? extensionStart - 7 : entry.length - 7);
 			if (StringTools.trim(stemId) == '')
 				continue;
-			if (combined && !SourceVocalRole.namesSide(stemId))
+			if (combined && !SourceVocalRole.namesSide(stemId)) {
+				// Only Psych reads a character's vocals_file. Nightmare Vision loads
+				// Voices-player/Voices-opp or the combined file and nothing else, so
+				// a named stem there would play on top of a voice Voices.ogg has.
+				if (namedStemsFollowCharacters)
+					named.push({source:source, destination:entry, id:stemId, role:'shared'});
 				continue;
+			}
 			if (SourceVocalRole.resolve(stemId, null) == 'player' && SourceVocalRole.namesSide(stemId))
 				playerStem = true;
 			stems.push({source:source, destination:entry, id:stemId, role:'shared'});
@@ -1237,11 +1251,16 @@ class ModuleFunctions {
 		// either way. So for them an opponent stem beside the combined file plays
 		// with that file as the player's voice instead of being dropped. Engines
 		// that only ever load the combined file never played that stem, and
-		// adding it would double the opponent's voice.
+		// adding it would double the opponent's voice. Character-named stems
+		// come along too: SourceVocalRole.keepStems plays the one a character's
+		// vocals_file asks for and keeps the rest silent, as the source does.
 		if (combined && !playerStem) {
-			if (stems.length == 0 || !combinedPlaysAsPlayer)
+			if ((stems.length == 0 && named.length == 0) || !combinedPlaysAsPlayer)
 				return [];
-			stems.unshift({source:combinedPath, destination:'Voices.ogg', id:'Player', role:'player'});
+			stems.unshift({source:combinedPath, destination:'Voices.ogg',
+				id:SourceVocalRole.COMBINED_FALLBACK_ID, role:'player'});
+			for (stem in named)
+				stems.push(stem);
 		}
 		return stems;
 	}
@@ -1804,7 +1823,7 @@ class ModuleFunctions {
 					// Only these two engines fall back to the combined file for the
 					// player while still loading a lone opponent stem.
 					if (songData.vocalStems == null || songData.vocalStems.length == 0) {
-						var fallbackStems = findImportVocalStems(songFolder, true);
+						var fallbackStems = findImportVocalStems(songFolder, true, engine == ImportEngine.PSYCH);
 						if (fallbackStems.length > 0)
 							songData.vocalStems = fallbackStems;
 					}
@@ -2184,6 +2203,14 @@ class ModuleFunctions {
 					return path;
 			}
 		}
+		// Per-library builds keep each style in its own folder beside its
+		// sprites (`notestyles/<id>/<id>.json`).
+		for (base in bases) {
+			var own = findNamedDirectory(base, StringTools.trim(reference));
+			var path = own == null ? null : findImportFile(own, [StringTools.trim(reference) + '.json']);
+			if (path != null)
+				return path;
+		}
 		#end
 		return null;
 	}
@@ -2286,6 +2313,14 @@ class ModuleFunctions {
 			return null;
 		for (folder in vSliceDefinitionFolders(root, kind)) {
 			var path = findImportFile(folder, [stem + '.json']);
+			if (path != null)
+				return path;
+		}
+		// Per-library builds give each definition its own folder beside its
+		// sprites (`characters/<id>/<id>.json`).
+		for (folder in vSliceDefinitionFolders(root, kind)) {
+			var own = findNamedDirectory(folder, stem);
+			var path = own == null ? null : findImportFile(own, [stem + '.json']);
 			if (path != null)
 				return path;
 		}
@@ -4811,6 +4846,46 @@ class ModuleFunctions {
 		return null;
 	}
 
+	/**
+		Per-library builds name script assets from a library folder down
+		(`gameplay/stages/x/warning`, `ui/<id>/circle`), with no images/ or
+		sounds/ level. The first segment is the selected library itself or a
+		sibling library of the same Polymod mod; nothing outside that mod is read.
+	*/
+	static function findVSliceLibraryFile(sourceRoot:String, clean:String, extensions:Array<String>):String {
+		var slash = clean.indexOf('/');
+		if (slash <= 0 || slash == clean.length - 1)
+			return null;
+		var library = clean.substr(0, slash);
+		var rest = clean.substr(slash + 1);
+		var folder:String = null;
+		var normalizedRoot = Path.removeTrailingSlashes(StringTools.replace(sourceRoot, '\\', '/'));
+		if (Path.withoutDirectory(normalizedRoot).toLowerCase() == library.toLowerCase())
+			folder = sourceRoot;
+		else {
+			var mod = Path.directory(normalizedRoot);
+			if (mod != null && mod != '' && findImportFile(mod, ['_polymod_meta.json']) != null)
+				folder = findChildDirectory(mod, library);
+		}
+		if (folder == null)
+			return null;
+		var parts = rest.split('/');
+		var fileName = parts.pop();
+		var parent = folder;
+		for (part in parts) {
+			parent = findChildDirectory(parent, part);
+			if (parent == null)
+				return null;
+		}
+		for (extension in extensions) {
+			var name = fileName.toLowerCase().endsWith(extension.toLowerCase()) ? fileName : fileName + extension;
+			var found = findImportFile(parent, [name]);
+			if (found != null)
+				return found;
+		}
+		return null;
+	}
+
 	/** Locate one case-insensitive asset in a V-Slice image/media tree. */
 	static function findVSliceHxcAsset(sourceRoot:String, relative:String, folderName:String,
 		extensions:Array<String>):String {
@@ -4874,6 +4949,9 @@ class ModuleFunctions {
 				}
 			}
 		}
+		var inLibrary = findVSliceLibraryFile(sourceRoot, clean, extensions);
+		if (inLibrary != null)
+			return inLibrary;
 		// A few shipped V-Slice scripts use a legacy flat alias for an asset that
 		// was later moved below a semantic folder (for example
 		// `characters/DDLCBoyFriend_Assets` -> `characters/boyfriend/...`).
@@ -4969,9 +5047,13 @@ class ModuleFunctions {
 		if (kind == 'image' || kind == 'sparrow' || kind == 'packer') {
 			var png = findVSliceHxcAsset(sourceRoot, stem, 'images', ['.png']);
 			var astc = png == null ? findVSliceHxcAsset(sourceRoot, stem, 'images', ['.astc']) : null;
+			var dds = png == null && astc == null ? findVSliceHxcAsset(sourceRoot, stem, 'images', ['.dds']) : null;
 			if (png != null) {
 				mergeVSliceMapping({source:png, destination:'images/' + stem + '.png', kind:'hxc-stage-image', supported:true},
 					runtimeNamespace, result);
+			} else if (dds != null) {
+				mergeVSliceMapping({source:dds, destination:'images/' + stem + '.png', kind:'hxc-stage-image',
+					supported:true, requiresConversion:true}, runtimeNamespace, result);
 			} else if (astc != null) {
 				mergeVSliceMapping({source:astc, destination:'images/' + stem + '.png', kind:'hxc-stage-image',
 					supported:true, requiresConversion:true}, runtimeNamespace, result);
@@ -8909,6 +8991,11 @@ class ModuleFunctions {
 			}
 			if (skipPaths != null && skipPaths.exists(importPathKey(file.source)))
 				continue;
+			// A game's assets folder can hold a bundled program or Python runtime.
+			// The Nightmare Vision runtime cannot load those, and copying them into
+			// each package namespace cost hundreds of megabytes per package.
+			if (ImportRuntimeFileFilter.neverLoaded(file.relative))
+				continue;
 			var destination = Path.join([destinationRoot, file.relative]);
 			if (!importPathIsWithin(destination, destinationRoot)) {
 				result.failed++;
@@ -12093,8 +12180,10 @@ class ModuleFunctions {
 		// of being stranded under assets/shared.
 		var sharedLayout = sharedRoot != null && (directImages == null
 			|| (directData == null && findChildDirectory(sharedRoot, 'data') != null));
+		// Ordinary asset trees can hold a bundled program or Python runtime that
+		// no engine loads; leave those out of the shared assets folder.
 		var skipMappedGlobal = function(source:String, destination:String):Bool
-			return skipMappedRawFile(ownerPlan, source, destination);
+			return ImportRuntimeFileFilter.neverLoaded(source) || skipMappedRawFile(ownerPlan, source, destination);
 
 		// Merge registries first, then copy their surrounding trees while telling
 		// the file copier not to count the registry a second time.
@@ -12743,6 +12832,16 @@ class ModuleFunctions {
 				if (source != null)
 					mergeTreeNonOverwriting(source, Path.join([runtimeNamespace, relative]), 0, result, skipPaths);
 			}
+		// Cutscene and game-over subtitles (data/subtitles/<language>/*.srt) are
+		// chosen by scripts at run time, often from a language option, so the
+		// whole folder is kept beside the sounds it captions.
+		for (root in roots) {
+			if (importWorkCancelled())
+				return result;
+			var subtitles = findChildDirectory(findChildDirectory(root, 'data'), 'subtitles');
+			if (subtitles != null && importPathIsWithin(subtitles, sourceRoot))
+				mergeTreeNonOverwriting(subtitles, Path.join([runtimeNamespace, 'data', 'subtitles']), 0, result, skipPaths);
+		}
 		var sidecars = mergeVSliceSongSidecars(sourceRoot, runtimeNamespace, selectedSongs, skipPaths);
 		result.copied += sidecars.copied;
 		result.skipped += sidecars.skipped;
@@ -13009,8 +13108,18 @@ class ModuleFunctions {
 		}
 		try {
 			ensureDirectory(Path.directory(destination));
-			if (source.toLowerCase().endsWith('.astc')) {
-				var decoded = VSliceAstcAdapter.decodeFile(source, destination);
+			if (VSliceAstcAdapter.DdsTextureDecoder.isDdsPath(source)) {
+				var converted = VSliceAstcAdapter.DdsTextureDecoder.decodeFile(source, importWriteTarget(destination));
+				if (!converted.success) {
+					result.failed++;
+					if (result.errors == null)
+						result.errors = [];
+					result.errors.push(converted.message);
+					reportImportProgress('vslice-event-assets', source, 0, 0, 0, 0, 1, 1);
+					return;
+				}
+			} else if (source.toLowerCase().endsWith('.astc')) {
+				var decoded = VSliceAstcAdapter.decodeFile(source, importWriteTarget(destination));
 				if (!decoded.success) {
 					result.failed++;
 					if (result.errors == null)
@@ -13035,6 +13144,17 @@ class ModuleFunctions {
 			result.failed++;
 			reportImportProgress('vslice-event-assets', source, 0, 0, 0, 0, 1, 1);
 		}
+	}
+
+	/**
+		The real file an import write lands in. Texture decoders (the astcenc
+		process and the DDS writer) write with the raw file API, which bypasses
+		the ImportFile staging redirect, so they get the staged path instead of
+		the logical assets/ path whose folders only exist inside the stage.
+	*/
+	static function importWriteTarget(path:String):String {
+		var context = ImportIO.current();
+		return context == null ? path : context.writePath(path);
 	}
 
 	static function vSliceMappingDestination(base:String, relative:String):String {
@@ -13067,8 +13187,18 @@ class ModuleFunctions {
 		}
 		try {
 			ensureDirectory(Path.directory(destination));
-			if (mapping.requiresConversion == true) {
-				var decoded = VSliceAstcAdapter.decodeFile(mapping.source, destination);
+			if (mapping.requiresConversion == true && VSliceAstcAdapter.DdsTextureDecoder.isDdsPath(mapping.source)) {
+				var converted = VSliceAstcAdapter.DdsTextureDecoder.decodeFile(mapping.source, importWriteTarget(destination));
+				if (!converted.success) {
+					result.failed++;
+					if (result.errors == null)
+						result.errors = [];
+					result.errors.push(converted.message);
+					reportImportProgress('vslice-assets', destination, 0, 0, 0, 0, 1, 1);
+					return;
+				}
+			} else if (mapping.requiresConversion == true) {
+				var decoded = VSliceAstcAdapter.decodeFile(mapping.source, importWriteTarget(destination));
 				if (!decoded.success) {
 					result.failed++;
 					if (result.errors == null)

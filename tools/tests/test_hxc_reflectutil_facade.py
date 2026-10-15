@@ -33,9 +33,13 @@ class Main {
     if (freeplayName != "funkin.ui.freeplay.FreeplayState")
       fail("FreeplayState compatibility name: " + freeplayName);
     var easing = Reflect.callMethod(null, getAnonymousField, [{easeInQuad: 7}, "easeInQuad"]);
+    // V-Slice answers "Unknown" for a null object, so `.split('.')` on the
+    // result never meets a null.
     if (easing != 7 || Reflect.callMethod(null, getAnonymousField, [null, "easeInQuad"]) != null
-      || Reflect.callMethod(null, getClassNameOf, [null]) != null)
+      || Reflect.callMethod(null, getClassNameOf, [null]) != "Unknown")
       fail("ReflectUtil facade changed null/field lookup semantics");
+    if (reflectUtil != ReflectUtil)
+      fail("in-song HXC scripts must get the same base-game ReflectUtil as every other interpreter");
   }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:

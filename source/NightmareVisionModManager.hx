@@ -279,6 +279,8 @@ class NightmareVisionModManager {
 			entry = {builtin:null,
 				// The engine's formula modifiers only read the sprite in getPos.
 				positionReadsOnly:Std.isOfType(mod, NightmareVisionBuiltinModifier),
+				// The same four methods as the fields below, called without boxing.
+				calls:mod,
 				getPosition:mod.getPos,
 				value:mod.getValue, subValue:mod.getSubmodValue,
 				updateObject:function(beat, obj, pos, player, kind):Void {

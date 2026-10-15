@@ -38,6 +38,9 @@ class PsychHscriptSourceBindings {
 		PsychStandardServices.installHscript(host, interp, origin);
 		if (Std.isOfType(interp, SourceIrisBridge)) {
 			PsychStateClassBindings.install((cast interp:SourceIrisBridge).evaluator);
+			// Older Psych resolved its top-level Boyfriend class by name.
+			if (!variables.exists('Boyfriend')) variables.set('Boyfriend', PsychLegacyBoyfriend);
+			(cast interp:SourceIrisBridge).evaluator.bindConstructorFactory(PsychLegacyBoyfriend, PsychLegacyBoyfriend.create, null);
 			var paths:Dynamic = variables.get('Paths');
 			var root = host.compatPsychOwnerForScript(origin);
 			if (root != null) (cast interp:SourceIrisBridge).evaluator.bindSourceClasses(host.sourceClassSession(root));

@@ -33,11 +33,15 @@ class ImportRevision {
 
 	static final ENGINE_REVISIONS:Map<String, Int> = [
 		// 4: HXC loadSparrow/loadTexture art and base-game sound lookups are planned, so older V-Slice imports re-plan.
-		"V-Slice" => 4,
+		// 5: Animate atlas characters and stage props are converted, so imports that skipped them re-plan.
+		// 6: Characters on base-game Animate art use the engine's own character, and data/subtitles is kept.
+		"V-Slice" => 6,
 		"Kade Engine" => 2,
 		"Modding Plus" => 2,
 		"Psych Engine" => 14,
-		"Nightmare Vision" => 17,
+		// 18: Bundled programs are no longer copied, content packages keep their
+		// namespace and identical core files of one game are stored once.
+		"Nightmare Vision" => 18,
 		"FPS Plus" => 2,
 		"Codename Engine" => 1,
 		"Legacy FNF/Polymod" => 2

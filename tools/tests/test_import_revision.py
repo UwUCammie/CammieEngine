@@ -26,10 +26,10 @@ class Main {
    && ImportRevision.assess({schemaVersion:1, commonRevision:3, sourceEngine:"Psych Engine", engineRevision:8},
     "Psych Engine").status == ImportRevision.OUTDATED,
    "older Psych receipts did not request source-profile republishing");
-  check(ImportRevision.current("V-Slice").engineRevision == 4
-    && ImportRevision.assess({schemaVersion:1, commonRevision:3, sourceEngine:"V-Slice", engineRevision:3},
+  check(ImportRevision.current("V-Slice").engineRevision == 6
+    && ImportRevision.assess({schemaVersion:1, commonRevision:5, sourceEngine:"V-Slice", engineRevision:5},
       "V-Slice").status == ImportRevision.OUTDATED,
-    "V-Slice named rating metadata did not schedule retained-source refresh");
+    "V-Slice base-game Animate characters and subtitles did not schedule retained-source refresh");
   check(current.sourceEngine == "Psych Engine" && current.commonRevision > 0 && current.engineRevision > 0,
    "explicit common and engine revisions were not recorded");
   check(current.commonRevision == 5
@@ -40,8 +40,8 @@ class Main {
 	 engineRevision:10};
   check(ImportRevision.assess(priorNmv, "Nightmare Vision").status == ImportRevision.OUTDATED,
 	 "Nightmare Vision revision-10 receipts were not scheduled for legacy-content refresh");
-  check(ImportRevision.current("Nightmare Vision").engineRevision == 17,
-	 "Nightmare Vision compiled manifest publication did not advance the engine revision");
+  check(ImportRevision.current("Nightmare Vision").engineRevision == 18,
+	 "Nightmare Vision shared core storage did not advance the engine revision");
   current.applicationVersion = "0.0.1-alpha.8";
   check(ImportRevision.assess(current, "Psych Engine").status == ImportRevision.CURRENT,
    "app release number incorrectly determined importer compatibility");

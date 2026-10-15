@@ -147,6 +147,13 @@ MAIN = r'''class Main {
     var other = HxcStateFactory.find("assets/imported_mods/otherprobe", "CacheProbeState", "state");
     if (other == null || other.path == first.path) fail("cross-root cache leaked");
 
+    // V-Slice names scripted classes with their package; the class name still resolves.
+    var qualified = HxcStateFactory.find(root, "probe.states.CacheProbeState", "state");
+    if (qualified == null || qualified.path != first.path) fail("package-qualified name did not resolve: " + HxcStateFactory.lastDiagnostic);
+    var qualifiedPopup = HxcStateFactory.find(root, "probe.substates.CacheProbePopup", "substate");
+    if (qualifiedPopup == null || qualifiedPopup.path != popup.path) fail("package-qualified substate did not resolve");
+    if (HxcStateFactory.find(root, "probe.states.MissingState", "state") != null) fail("unknown qualified name resolved");
+
     Sys.println("hxc-state-factory-cache-ok");
   }
 }'''

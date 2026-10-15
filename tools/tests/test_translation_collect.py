@@ -29,6 +29,21 @@ POLICY = r'''class TranslationCollectFixture {
   if (EngineMemory.scriptTranslated(0) || EngineMemory.scriptTranslated(-5)) fail("empty input collected");
   // Pause and handoff spacing is untouched: a pause right after still collects.
   if (!EngineMemory.collectNow(true, 'pause')) fail("translation collection blocked the pause collection");
+  // A full collection (the loading handoff) restarts the budget, so loading
+  // leftovers never make a mid-song script collect.
+  collects = [];
+  EngineMemory.reset();
+  for (i in 0...3) EngineMemory.scriptTranslated(step);
+  EngineMemory.collectNow(true, 'loading-handoff', true);
+  for (i in 0...3)
+   if (EngineMemory.scriptTranslated(step)) fail("the budget did not restart after a full collection");
+  if (collects.join(",") != "true") fail("expected only the handoff collection: " + collects.join(","));
+  // A minor collection does not count as a fresh start.
+  EngineMemory.reset();
+  collects = [];
+  for (i in 0...3) EngineMemory.scriptTranslated(step);
+  EngineMemory.collectNow(false, 'minor', true);
+  if (!EngineMemory.scriptTranslated(step)) fail("a minor collection reset the budget");
   Sys.println("OK");
  }
 }'''
@@ -49,7 +64,7 @@ ANALYZE = '''class Main {
   // of its own would pass the budget; counting the file once does not.
   EngineMemory.reset();
   sizes = [];
-  var padded = StringTools.replace(source, 'PADDING', [for (i in 0...5500) 'x'].join(''));
+  var padded = StringTools.replace(source, 'PADDING', [for (i in 0...Std.int(EngineMemory.TRANSLATION_COLLECT_CHARS * 0.67)) 'x'].join(''));
   if (padded.length >= EngineMemory.TRANSLATION_COLLECT_CHARS || padded.length * 2 < EngineMemory.TRANSLATION_COLLECT_CHARS)
    throw 'fixture size is off: ' + padded.length;
   HxcCompat.analyze(padded, 'scripts/songs/pair.hxc');
@@ -71,6 +86,26 @@ class PairSong extends Song {
 '''
 
 
+LUA = '''class Main {
+ static function main() {
+  var collects = 0;
+  EngineMemory.collector = function(major:Bool) collects++;
+  EngineMemory.reset();
+  var line = 'function onUpdate(elapsed) setProperty("boyfriend.alpha", 1) end\\n';
+  var small = line;
+  LuaCompat.translate(small, 'small.lua');
+  if (collects != 0) throw 'a small Lua file collected on its own';
+  var big = '';
+  while (big.length < EngineMemory.TRANSLATION_COLLECT_CHARS) big += line;
+  var result = LuaCompat.translate(big, 'big.lua');
+  if (collects != 1) throw 'a Lua file over the budget should collect once, got ' + collects;
+  if (result.hscript.indexOf('onUpdate') < 0) throw 'translation output changed';
+  Sys.println('OK');
+ }
+}
+'''
+
+
 class TranslationCollectTest(unittest.TestCase):
     def run_haxe(self, folder, main, extra):
         return subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', str(ROOT / '.haxelib/hscript/2,5,0'),
@@ -81,6 +116,13 @@ class TranslationCollectTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=TEST_TMP) as folder:
             (Path(folder) / 'TranslationCollectFixture.hx').write_text(POLICY, newline=chr(10))
             result = self.run_haxe(folder, 'TranslationCollectFixture', [])
+        self.assertEqual(result.returncode, 0, result.stdout[-3000:] + result.stderr[-3000:])
+        self.assertIn('OK', result.stdout)
+
+    def test_lua_translation_counts_toward_the_budget(self):
+        with tempfile.TemporaryDirectory(dir=TEST_TMP) as folder:
+            (Path(folder) / 'Main.hx').write_text(LUA, newline=chr(10))
+            result = self.run_haxe(folder, 'Main', [])
         self.assertEqual(result.returncode, 0, result.stdout[-3000:] + result.stderr[-3000:])
         self.assertIn('OK', result.stdout)
 

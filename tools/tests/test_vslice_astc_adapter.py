@@ -86,7 +86,9 @@ class Main {
 
     def test_probe_and_process_boundary_are_explicit_and_shell_free(self):
         source = (ROOT / "source/VSliceAstcAdapter.hx").read_text()
-        self.assertIn("new Process(available.executable, ['-ds', source, destination])", source)
+        # The decoder writes either the destination or a short temporary file
+        # (deep paths); both go through the same argument array.
+        self.assertIn("new Process(executable, ['-ds', source, output])", source)
         self.assertNotIn("Sys.command", source)
         self.assertNotIn("/bin/sh", source)
         self.assertIn("Sys.programPath()", source)

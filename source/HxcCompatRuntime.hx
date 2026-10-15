@@ -28,32 +28,13 @@ class HxcCompatRuntime {
 	#end
 
 	/**
-		Provide the small ReflectUtil surface used by imported V-Slice scripts.
-		Imports are metadata in HXC, so the HScript interpreter needs an explicit
-		facade for the class-name and anonymous-field queries that remain after
-		translation.  Keep class-name aliases limited to native equivalents whose
-		old fully-qualified names are present in the mounted HXC corpus.
+		The ReflectUtil imported V-Slice scripts see. Imports are metadata in
+		HXC, so the interpreter is handed the base-game ReflectUtil, the same
+		class every other script interpreter binds, with V-Slice's class-name
+		aliases for the engine's screens.
 	*/
-	public static function reflectUtilFacade():Dynamic {
-		return {
-			getClassNameOf: function(value:Dynamic):String {
-				if (value == null)
-					return null;
-				var classType = Type.getClass(value);
-				if (classType == null)
-					return null;
-				var className = Type.getClassName(classType);
-				if (className == 'StoryMenuState' || StringTools.endsWith(className, '.StoryMenuState'))
-					return 'funkin.ui.story.StoryMenuState';
-				if (className == 'FreeplayState' || StringTools.endsWith(className, '.FreeplayState'))
-					return 'funkin.ui.freeplay.FreeplayState';
-				return className;
-			},
-			getAnonymousField: function(value:Dynamic, fieldName:Dynamic):Dynamic {
-				return value == null || fieldName == null ? null : Reflect.field(value, Std.string(fieldName));
-			}
-		};
-	}
+	public static function reflectUtilFacade():Dynamic
+		return ReflectUtil;
 
 	/** Evaluate generated HXC null-coalescing operands lazily in menu scopes. */
 	public static function hxcCoalesce(left:Dynamic, right:Dynamic):Dynamic {
@@ -148,8 +129,7 @@ class HxcCompatRuntime {
 	static var currentChartAlbumValue:String = '';
 	/** Process-local geometry view for V-Slice's FullScreenScaleMode singleton. */
 	static var fullScreenScaleModeView:Dynamic;
-	static var skipNextTransInValue:Bool = false;
-	static var skipNextTransOutValue:Bool = false;
+
 	/** Native owner of the currently mounted menu overlay, if any. */
 	static var activeMenuOverlayState:Dynamic;
 	/** Native owner of the currently mounted pause overlay, if any. */
@@ -214,6 +194,28 @@ class HxcCompatRuntime {
 			}
 		} catch (_:Dynamic) {}
 		return currentChartAlbumValue;
+	}
+
+	/** V-Slice currentChart.songName: the song's display name, the same value
+	 * the native PlayState.currentChart view reports, with the chart id as the
+	 * fallback when no state is running. */
+	public static var currentChartSongName(get, never):String;
+	static function get_currentChartSongName():String {
+		try {
+			var stateClass = Type.resolveClass('PlayState');
+			if (stateClass != null) {
+				var state = Reflect.field(stateClass, 'instance');
+				var view = state == null ? null : Reflect.getProperty(state, 'currentChart');
+				var name = view == null ? null : Reflect.getProperty(view, 'songName');
+				if (name != null && Std.string(name) != '')
+					return Std.string(name);
+				var chart = Reflect.field(stateClass, 'SONG');
+				var id = chart == null ? null : Reflect.field(chart, 'song');
+				if (id != null)
+					return Std.string(id);
+			}
+		} catch (_:Dynamic) {}
+		return '';
 	}
 
 	/** Desktop-native HXC modules use this only as a constructor guard. */
@@ -317,17 +319,231 @@ class HxcCompatRuntime {
 		defaults are zero cutout and unit-wide scale. `enabled` remains mutable in
 		the isolated view and `removeCutouts()` is a bounded no-op.
 	*/
+	/**
+		Desktop has no screen cutouts or notch, so every size is zero, the wide
+		scale is 1 and there is no FullScreenScaleMode instance (scripts then take
+		their plain ratio-scaled path). Points answer `set(x, y)` like FlxPoint so
+		scripts that reset them keep running; add/remove cutouts draw nothing.
+	*/
 	public static var fullScreenScaleMode(get, never):Dynamic;
 	static function get_fullScreenScaleMode():Dynamic {
 		if (fullScreenScaleModeView == null)
 			fullScreenScaleModeView = {
 				enabled: true,
-				gameCutoutSize: {x: 0.0, y: 0.0},
-				wideScale: {x: 1.0, y: 1.0},
-				removeCutouts: function() {}
+				instance: null,
+				hasFakeCutouts: false,
+				cutoutSize: scalePoint(0, 0),
+				notchSize: scalePoint(0, 0),
+				notchPosition: scalePoint(0, 0),
+				gameCutoutSize: scalePoint(0, 0),
+				gameNotchSize: scalePoint(0, 0),
+				gameNotchPosition: scalePoint(0, 0),
+				wideScale: scalePoint(1, 1),
+				addCutouts: function(?tweenDuration:Float, ?ease:Dynamic) {},
+				removeCutouts: function(?tweenDuration:Float, ?ease:Dynamic) {}
 			};
 		return fullScreenScaleModeView;
 	}
+
+	static function scalePoint(x:Float, y:Float):Dynamic {
+		var point:Dynamic = {x: x, y: y};
+		point.set = function(?nextX:Float = 0, ?nextY:Float = 0):Dynamic {
+			point.x = nextX;
+			point.y = nextY;
+			return point;
+		};
+		return point;
+	}
+
+	/** V-Slice FunkinSound.setMusic: make a loaded sound the current music track. */
+	public static function setMusic(sound:Dynamic):Dynamic {
+		if (sound == null)
+			return null;
+		try {
+			var globals = Type.resolveClass('flixel.FlxG');
+			var front = globals == null ? null : runtimeField(globals, 'sound');
+			if (front == null)
+				return null;
+			Reflect.setProperty(front, 'music', sound);
+			// Music is updated by the sound front end itself, not through the list.
+			hxcCall(runtimeField(front, 'list'), 'remove', [sound]);
+		} catch (_:Dynamic) {}
+		return sound;
+	}
+
+	/**
+		V-Slice's PlayState.subtitles: assignSubtitles(path, sound) shows the
+		lines of `data/<path>.srt` while that sound plays. The lines go to the
+		native lyric line, so they follow the player's lyrics option and style.
+		Only one subtitle track runs at a time, as in V-Slice, and it stops when
+		the state that started it is gone.
+	**/
+	public static function subtitlesFor(root:Dynamic):Dynamic {
+		return {
+			assignSubtitles: function(path:Dynamic, sound:Dynamic):Bool return assignSubtitles(root, path, sound)
+		};
+	}
+
+	static var subtitleTrack:SubtitleTrack = null;
+	static var subtitleSound:Dynamic = null;
+	static var subtitleOwner:Dynamic = null;
+	static var subtitleKey:Int = 0;
+	static var subtitleTick:Void->Void = null;
+
+	/** `source` replaces the file read, for tests. */
+	public static function assignSubtitles(root:Dynamic, path:Dynamic, sound:Dynamic, ?source:String):Bool {
+		stopSubtitles();
+		if (sound == null)
+			return false;
+		var text = source;
+		if (text == null) {
+			var file = hxcScopedAsset(root, path, 'data', '.srt');
+			if (file == null)
+				return false;
+			text = readScopedText(file);
+		}
+		var track = SubtitleTrack.parse(text);
+		if (track.cues.length == 0)
+			return false;
+		subtitleTrack = track;
+		subtitleSound = sound;
+		subtitleOwner = resolveActiveState();
+		subtitleKey = 0;
+		if (subtitleTick == null)
+			subtitleTick = updateSubtitles;
+		frameSignal('add');
+		return true;
+	}
+
+	/** Runs once per frame while a subtitle track is assigned. */
+	public static function updateSubtitles():Void {
+		if (subtitleTrack == null)
+			return;
+		if (!subtitleOwnerRunning()) {
+			stopSubtitles();
+			return;
+		}
+		var time:Dynamic = runtimeField(subtitleSound, 'time');
+		var position = time == null ? -1.0 : runtimeFloatValue(time);
+		var key = position < 0 ? 0 : subtitleTrack.visibleKey(position);
+		if (key == subtitleKey)
+			return;
+		subtitleKey = key;
+		setLyricText(subtitleOwner, [key == 0 ? '' : subtitleTrack.textAt(position)]);
+	}
+
+	/** True while the state that assigned the track is still the running one.
+	 * PlayState.instance keeps pointing at the last song after the game moves
+	 * to a menu, so the running FlxG.state is checked too: a persistent sound
+	 * would otherwise keep writing to the lyric line of a destroyed state. */
+	static function subtitleOwnerRunning():Bool {
+		if (subtitleOwner == null || resolveActiveState() != subtitleOwner)
+			return false;
+		try {
+			var globals = Type.resolveClass('flixel.FlxG');
+			var running = globals == null ? null : runtimeField(globals, 'state');
+			if (running != null && running != subtitleOwner)
+				return false;
+		} catch (_:Dynamic) {}
+		return true;
+	}
+
+	public static function stopSubtitles():Void {
+		if (subtitleTrack != null && subtitleKey != 0 && subtitleOwnerRunning())
+			setLyricText(subtitleOwner, ['']);
+		subtitleTrack = null;
+		subtitleSound = null;
+		subtitleOwner = null;
+		subtitleKey = 0;
+		frameSignal('remove');
+	}
+
+	static function frameSignal(method:String):Void {
+		if (subtitleTick == null)
+			return;
+		try {
+			var globals = Type.resolveClass('flixel.FlxG');
+			var signal = runtimeField(runtimeField(globals, 'signals'), 'preUpdate');
+			if (signal != null)
+				hxcCall(signal, method, [subtitleTick]);
+		} catch (_:Dynamic) {}
+	}
+
+	static function readScopedText(path:String):String {
+		try {
+			var assets = Type.resolveClass('FNFAssets');
+			var getter = assets == null ? null : runtimeField(assets, 'getText');
+			if (getter != null) {
+				var value:Dynamic = Reflect.callMethod(assets, getter, [path]);
+				if (value != null)
+					return Std.string(value);
+			}
+		} catch (_:Dynamic) {}
+		#if sys
+		try return sys.io.File.getContent(path) catch (_:Dynamic) {}
+		#end
+		return null;
+	}
+
+	/** A private beat clock for `new Conductor()`: see ConductorTimeline. */
+	public static function newConductor():ConductorTimeline
+		return new ConductorTimeline();
+
+	/** V-Slice Conductor.getBeatTimeInMs: song milliseconds at a beat, across tempo changes. */
+	public static function conductorGetBeatTimeInMs(beat:Dynamic):Float
+		return conductorCall('beatToSeconds', [runtimeFloatValue(beat)]);
+
+	/** V-Slice Conductor.getStepTimeInMs: song milliseconds at a step, across tempo changes. */
+	public static function conductorGetStepTimeInMs(step:Dynamic):Float
+		return conductorCall('stepToSeconds', [runtimeFloatValue(step)]);
+
+	/**
+		V-Slice Conductor.getTypeLengthAtMs: the length of a step, beat or
+		measure ('s', 'b', 'm' or the full word) in the tempo in force at `ms`.
+		The native tempo map has no time signature, so a measure is four beats.
+	*/
+	public static function conductorGetTypeLengthAtMs(ms:Dynamic, ?type:Dynamic):Float {
+		var beat = conductorCall('getCrotchetAtTime', [runtimeFloatValue(ms)]);
+		return switch (type == null ? 'beat' : Std.string(type).toLowerCase()) {
+			case 'measure' | 'm': beat * 4;
+			case 'step' | 's': beat / 4;
+			default: beat;
+		};
+	}
+
+	/** V-Slice Conductor.currentBeatTime: the fractional beat at the song position. */
+	public static var conductorCurrentBeatTime(get, never):Float;
+	static function get_conductorCurrentBeatTime():Float
+		return conductorCall('getBeat', [conductorNumber('songPosition'), 0]);
+
+	/** V-Slice Conductor.currentStepTime: the fractional step at the song position. */
+	public static var conductorCurrentStepTime(get, never):Float;
+	static function get_conductorCurrentStepTime():Float
+		return conductorCall('getStep', [conductorNumber('songPosition'), 0]);
+
+	/** V-Slice Conductor.measureLengthMs, four beats as above. */
+	public static var conductorMeasureLengthMs(get, never):Float;
+	static function get_conductorMeasureLengthMs():Float
+		return conductorNumber('crochet') * 4;
+
+	public static var conductorBpm(get, never):Float;
+	static function get_conductorBpm():Float
+		return conductorNumber('bpm');
+
+	static function conductorCall(name:String, args:Array<Dynamic>):Float {
+		try {
+			var conductor = Type.resolveClass('Conductor');
+			var method = conductor == null ? null : Reflect.field(conductor, name);
+			if (method != null && Reflect.isFunction(method))
+				return runtimeFloatValue(Reflect.callMethod(conductor, method, args));
+		} catch (_:Dynamic) {}
+		return 0;
+	}
+
+	/** The song clock already follows the chart's tempo map, so restoring it
+	 * from the chart is nothing to do. The argument is still evaluated by the
+	 * caller, as it was in the original call. */
+	public static function conductorMapTimeChanges(?timeChanges:Dynamic):Void {}
 
 	static function conductorNumber(field:String):Float {
 		try {
@@ -341,8 +557,13 @@ class HxcCompatRuntime {
 		return 0;
 	}
 
-	/** PlayStatePlaylist.isStoryMode maps to the native static story flag. */
-	public static var playStatePlaylistIsStoryMode(get, never):Bool;
+	/**
+		PlayStatePlaylist.isStoryMode maps to the native static story flag. Menus
+		write it before LoadingState.loadPlayState, so it is writable too; without
+		a PlayState class (tests) the value is kept here.
+	*/
+	public static var playStatePlaylistIsStoryMode(get, set):Bool;
+	static var detachedStoryMode:Bool = false;
 	static function get_playStatePlaylistIsStoryMode():Bool {
 		try {
 			var stateClass = Type.resolveClass('PlayState');
@@ -350,7 +571,19 @@ class HxcCompatRuntime {
 				return Reflect.field(stateClass, 'isStoryMode') == true;
 		} catch (_:Dynamic) {}
 		var state = activeState != null ? activeState : resolveActiveState();
-		return runtimeField(state, 'isStoryMode') == true;
+		return state == null ? detachedStoryMode : runtimeField(state, 'isStoryMode') == true;
+	}
+	static function set_playStatePlaylistIsStoryMode(value:Bool):Bool {
+		var flag = value == true;
+		try {
+			var stateClass = Type.resolveClass('PlayState');
+			if (stateClass != null) {
+				Reflect.setProperty(stateClass, 'isStoryMode', flag);
+				return flag;
+			}
+		} catch (_:Dynamic) {}
+		detachedStoryMode = flag;
+		return flag;
 	}
 
 	/** Native extra-event gates used by imported lyric/vignette modules. */
@@ -428,19 +661,32 @@ class HxcCompatRuntime {
 		}
 	}
 
+	/**
+		Older translations lowered FlxTransitionableState's skip flags to these
+		fields, which nothing read, so a module's skip request was lost. They
+		now forward to the real Flixel flags the engine's states honour.
+	**/
 	public static var skipNextTransIn(get, set):Bool;
 	static function get_skipNextTransIn():Bool
-		return skipNextTransInValue;
-	static function set_skipNextTransIn(value:Bool):Bool {
-		skipNextTransInValue = value;
-		return value;
-	}
+		return transitionFlag('skipNextTransIn');
+	static function set_skipNextTransIn(value:Bool):Bool
+		return setTransitionFlag('skipNextTransIn', value);
 
 	public static var skipNextTransOut(get, set):Bool;
 	static function get_skipNextTransOut():Bool
-		return skipNextTransOutValue;
-	static function set_skipNextTransOut(value:Bool):Bool {
-		skipNextTransOutValue = value;
+		return transitionFlag('skipNextTransOut');
+	static function set_skipNextTransOut(value:Bool):Bool
+		return setTransitionFlag('skipNextTransOut', value);
+
+	static function transitionFlag(name:String):Bool {
+		var owner = Type.resolveClass('flixel.addons.transition.FlxTransitionableState');
+		return owner != null && Reflect.getProperty(owner, name) == true;
+	}
+
+	static function setTransitionFlag(name:String, value:Bool):Bool {
+		var owner = Type.resolveClass('flixel.addons.transition.FlxTransitionableState');
+		if (owner != null)
+			Reflect.setProperty(owner, name, value);
 		return value;
 	}
 
@@ -2357,6 +2603,24 @@ class HxcCompatRuntime {
 
 	static var missingTweenFields:Map<String, Bool> = new Map<String, Bool>();
 
+	/**
+		FunkinMemory warm-ups are lowered to hxcCacheTexture and hxcCacheSound.
+		Menus, modules and song scripts all run them, so every interpreter binds
+		the same pair here. A texture warm-up is only a hint. A sound warm-up
+		loads through the script owner's root, read when it runs because the
+		root is bound after the interpreter is made, so the first play is warm.
+	**/
+	public static function bindAssetWarmups(variables:Map<String, Dynamic>):Void {
+		if (variables == null)
+			return;
+		variables.set('hxcCacheTexture', function(_asset:Dynamic) return null);
+		variables.set('hxcCacheSound', function(asset:Dynamic) {
+			var root:Dynamic = variables.get('hxcAssetRoot');
+			try loadFunkinSound(root == null ? '' : Std.string(root), asset) catch (_:Dynamic) {}
+			return null;
+		});
+	}
+
 	/** Bounded equivalent of FunkinSound.load; root checks happen before disk I/O. */
 	public static function loadFunkinSound(root:Dynamic, path:Dynamic, ?volume:Dynamic = 1,
 		?looped:Dynamic = false, ?autoDestroy:Dynamic = false, ?arg4:Dynamic = null,
@@ -3306,8 +3570,6 @@ class HxcCompatRuntime {
 		discordRPCIconValue = '';
 		discordRPCAlbumValue = '';
 		currentChartAlbumValue = '';
-		skipNextTransInValue = false;
-		skipNextTransOutValue = false;
 		activeMenuOverlayState = null;
 		activePauseOverlayState = null;
 		resetGameOverSettings();

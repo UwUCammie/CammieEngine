@@ -564,6 +564,12 @@ class ImportScanJob {
 				scope = descriptor.root;
 			if (scope == null || StringTools.trim(scope) == '')
 				continue;
+			// A chart outside the descriptor's content root lives in a content
+			// package of that game (Nightmare Vision content/<pack>/data/<song>).
+			// The package's own stages and characters are imported with it and win
+			// over the game's base assets, so search the package first.
+			if (!pathWithin(chartPath, scope))
+				uniquePush(scopes, chartPackageRoot(chartPath, descriptor.root));
 			uniquePush(scopes, scope);
 			// Some mixed packs keep shared character/stage definitions outside the
 			// chart's contentRoot. Keep that sibling scope attached to its owner so
@@ -573,6 +579,26 @@ class ImportScanJob {
 				uniquePush(scopes, Std.string(shared));
 		}
 		return scopes;
+	}
+
+	/** The content package holding a chart: the folder directly inside a
+	 * `content` folder on the chart's path, strictly inside `root`. Null when the
+	 * chart is not in one. Only the package folder itself is returned; a song or
+	 * data folder as a scope would make stage and character lookups read the
+	 * song's own chart files as definitions. */
+	static function chartPackageRoot(chartPath:String, root:String):Null<String> {
+		if (chartPath == null || root == null || StringTools.trim(root) == '')
+			return null;
+		var current = Path.directory(normalized(chartPath));
+		while (current != null && current != '' && pathWithin(current, root) && pathKey(current) != pathKey(root)) {
+			var parent = Path.directory(current);
+			if (parent == null || parent == '' || parent == current)
+				break;
+			if (Path.withoutDirectory(parent).toLowerCase() == 'content')
+				return pathWithin(parent, root) ? current : null;
+			current = parent;
+		}
+		return null;
 	}
 
 	static function descriptorScopes(descriptors:Array<ImportRoot>):Array<String> {
@@ -1374,7 +1400,9 @@ class ImportScanJob {
 			if (candidate == null)
 				continue;
 			var lower = candidate.toLowerCase().replace('\\', '/');
-			var legacySprite = lower.indexOf('/characters/') >= 0 && lower.endsWith('.png');
+			// DDS sprites only come from per-library candidates (see charCandidates).
+			var legacySprite = lower.indexOf('/characters/') >= 0
+				&& (lower.endsWith('.png') || lower.endsWith('.dds'));
 			var implementation = lower.endsWith('.hscript') || lower.endsWith('.json')
 				|| lower.endsWith('.jsonc') || lower.endsWith('.hxc');
 			// Keep all searched paths for diagnostics, but do not stat descriptors
@@ -1527,7 +1555,12 @@ class ImportScanJob {
 				// (for example PERFEXION) and used to be reported as unsupported
 				// even though importPsychCharacters() can convert them later.
 				caseInsensitiveFile(Path.join([root, 'characters']), reference + '.json'),
-				caseInsensitiveFile(Path.join([root, 'characters']), reference + '.hxc')
+				caseInsensitiveFile(Path.join([root, 'characters']), reference + '.hxc'),
+				// Per-library V-Slice builds give each definition its own folder
+				// beside its sprites (`characters/<id>/<id>.json`); the library
+				// folder is the root there, as the importer reads it.
+				caseInsensitiveFile(Path.join([root, 'characters', reference]), reference + '.json'),
+				caseInsensitiveFile(Path.join([root, 'data', 'characters', reference]), reference + '.json')
 			]) {
 				uniquePushKeyed(result, resultKeys, definition);
 				if (!file(definition))
@@ -1539,6 +1572,18 @@ class ImportScanJob {
 					// Psych names this field `image`; V-Slice/FPS definitions use
 					// `assetPath`.  Both describe the atlas relative to images/.
 					var assetPath = field(parsed, 'assetPath', field(parsed, 'image', 'characters/' + reference));
+					// A per-library assetPath starts with the library folder
+					// (`gameplay/characters/hex/hex`) and is relative to the folder
+					// above it. Those builds ship DDS textures, which the importer
+					// converts, so the DDS half counts as the sprite there.
+					var libraryParent = libraryAssetParent(root, assetPath);
+					if (libraryParent != null) {
+						for (extension in ['.png', '.dds', '.xml', '.txt'])
+							uniquePushKeyed(result, resultKeys,
+								caseInsensitivePath(Path.join([libraryParent, assetPath + extension])));
+						uniquePushKeyed(result, resultKeys,
+							caseInsensitivePath(Path.join([libraryParent, assetPath, 'Animation.json'])));
+					}
 					for (imageRoot in [Path.join([root, 'images']), Path.join([root, 'shared', 'images'])]) {
 						uniquePushKeyed(result, resultKeys, caseInsensitivePath(Path.join([imageRoot, assetPath + '.png'])));
 						uniquePushKeyed(result, resultKeys, caseInsensitivePath(Path.join([imageRoot, assetPath + '.xml'])));
@@ -1553,6 +1598,22 @@ class ImportScanJob {
 			}
 		}
 		return rememberDependencyCandidates('character', sourceRoots, reference, result);
+	}
+
+	/** The folder above `root` when `assetPath` starts with root's own folder name (per-library builds). */
+	static function libraryAssetParent(root:String, assetPath:Dynamic):Null<String> {
+		if (root == null || assetPath == null)
+			return null;
+		var path = Std.string(assetPath).replace('\\', '/');
+		var slash = path.indexOf('/');
+		if (slash <= 0)
+			return null;
+		var trimmedRoot = Path.removeTrailingSlashes(root.replace('\\', '/'));
+		var library = Path.withoutDirectory(trimmedRoot);
+		if (library == '' || path.substr(0, slash).toLowerCase() != library.toLowerCase())
+			return null;
+		var parent = Path.directory(trimmedRoot);
+		return parent == '' ? null : parent;
 	}
 
 	static function stageCandidates(sourceRoots:Array<String>, reference:String):Array<String> {
@@ -1587,6 +1648,9 @@ class ImportScanJob {
 				uniquePush(result, caseInsensitiveFile(Path.join([root, 'stages']), requested + '.json'));
 				uniquePush(result, caseInsensitiveFile(Path.join([root, 'stages']), requested + '.lua'));
 				uniquePush(result, caseInsensitiveFile(Path.join([root, 'stages']), requested + '.hxc'));
+				// Per-library V-Slice builds: `stages/<id>/<id>.json` beside the props.
+				uniquePush(result, caseInsensitiveFile(Path.join([root, 'stages', requested]), requested + '.json'));
+				uniquePush(result, caseInsensitiveFile(Path.join([root, 'data', 'stages', requested]), requested + '.json'));
 			}
 		}
 		return rememberDependencyCandidates('stage', sourceRoots, reference, result);

@@ -3,6 +3,90 @@ Earlier Disappointing Plus development history is retained below.
 
 v0.0.42 development - CammieEngine
 - Development continues after the published v0.0.41 checkpoint; remaining roadmap requirements stay open.
+- Removing a mod from Freeplay now always goes through the clean removal screen, which closes every mod menu, Freeplay module and mod session first. Before, linked mods held by those sessions showed "Package is active or reserved" and nothing could be removed.
+- If a removal is still blocked by something holding the mods, the popup now offers to close the running mod menus and try again, or to try again once an import finishes.
+- Fixed removals failing and rolling back whenever a shared song or week list contained non-English text: the removal compared a miscounted checksum against the file it had just written.
+- Removals that were interrupted by that failure now finish cleaning up on the next launch instead of keeping imported content locked.
+- An import whose small index record went missing no longer blocks every removal, and it can be removed itself.
+- Fixed the whole library staying on "checking package status" after a removal that had rolled back was followed by a successful removal of the same mod. The old attempt is now cleared on launch.
+- Imported Psych and Nightmare Vision songs that ship a character's own vocal file next to Voices.ogg now play that character's vocals, with Voices.ogg as the player's fallback, the way the original engines pick them, instead of ignoring the extra file.
+- Event early-trigger offsets for Psych songs are now applied in the same fixed order as Nightmare Vision songs, so a script that edits an event while it is being prepared gets the same timing on every build.
+- Imported V-Slice scripts can now use the haptics, touch, preferences, reflection and timed-sequence helpers. Death quotes, death animations and menu fallbacks that stopped at the first use of these now run.
+- V-Slice scripts now read your real flashing lights, downscroll, auto pause, lyrics and clean-language settings, and cannot change them.
+- Added V-Slice's stepped camera fades and sprite text (AtlasText). Menu text uses the mod's own font, or the game's alphabet when the font is missing.
+- More V-Slice character effects now load: hooks that load sounds, images, fonts or atlases from the character's own mod are no longer skipped.
+- Older Psych mods that play videos through hxCodec's FlxVideo or vlc's MP4Handler now play them, and a video a script forgets to close is closed when you leave the song.
+- Psych scripts that import psychlua.LuaUtils get more of its helpers (object lookup, type checks, group reads and writes).
+- Custom V-Slice menus can now start songs: imported mods that browse songs and weeks through SongRegistry and LevelRegistry and call LoadingState.loadPlayState open the right chart, difficulty and variation, in Freeplay or as a full story week.
+- V-Slice scripts can read PlayStatePlaylist, PlayerRegistry and the song details of the chart being played (currentChart, currentDifficulty, currentVariation, practice and botplay flags), and can call resetCamera.
+- Imported pause menus and song scripts can pause, resume, restart, skip, hide and show a script cutscene video.
+- V-Slice scripts using Json, Date, FunkinSound.setMusic or screen cutout sizes no longer stop with an error.
+- V-Slice characters made with Adobe Animate texture atlases (single and multi-atlas) now import, so songs no longer replace them with a placeholder character.
+- Animate texture atlas props in V-Slice stages now import and play their frame label or symbol animations.
+- V-Slice scripts that call the base behaviour (super) inside a callback keep that callback instead of losing it.
+- V-Slice scripts with their own enums, or fields that start from other fields, now get those values at song start.
+- If one translated V-Slice script callback has a syntax problem, only that callback is skipped and the rest of the script still runs.
+- Existing V-Slice imports refresh once to pick up the new atlas characters.
+- Songs with large V-Slice script packs load noticeably faster: script translation reuses its text patterns instead of rebuilding them for every script (one heavy song's script stage went from about 4.2 s to 2.5 s).
+- Psych Lua scripts also translate faster while a song loads.
+- The results screen a Psych global script builds at the end of a song opens with a much shorter hitch: its animated sheets are now prepared while the song loads, and loading the same sheet again no longer re-reads files from disk.
+- Fewer memory clean-up stutters during songs: the game leaves more memory headroom while a song plays (Low Memory Mode keeps the old, smaller setting), and Nightmare Vision note rendering produces about a quarter less garbage.
+- Psych HScript files whose onEvent takes a fourth strumTime value now receive the event time and run on every event, instead of failing with a parameter count error.
+- Psych Lua scripts now receive the event's time as the fourth onEvent value, as in Psych 0.7, so scripts that read strumTime in onEvent no longer get nil.
+- Imported Psych and Nightmare Vision songs stay playable while a startup import refresh runs.
+- After an update, startup import refreshes handle smaller packages first, so most imported packages become playable sooner.
+- V-Slice characters built on the base game's Animate art for Boyfriend, Pico, Nene or Darnell now show the engine's own version of that character instead of falling back to Dad.
+- V-Slice cutscene subtitles now show on the lyrics line when lyrics are turned on.
+- V-Slice scripts can run their own beat clock, so cutscene characters bop to the cutscene music.
+- V-Slice song credit scripts show the song's display name instead of its folder name.
+- V-Slice menus that open scripted screens by their full package name now open them.
+- Newly imported V-Slice songs show up in script song lists right away.
+- Psych songs load much faster: note skins are no longer looked up again on disk for every note (frostbite loads in 5.0 s instead of 11.7 s, lonely-sapphire in 6.9 s instead of 15.6 s).
+- Restarting a Psych song is now almost instant (about 0.8 s instead of 7 to 9 s on large charts).
+- Restarting a song with V-Slice or Lua scripts no longer translates the same scripts again.
+- Garbage collection pauses during songs are shorter: every pause now stays under 50 ms, at the cost of a few more of them.
+- Loading V-Slice script packs does less repeated work while translating scripts.
+- V-Slice mods made for newer Funkin builds, which keep each song's chart beside its music and give characters and stages their own folders, now import instead of finding no songs.
+- V-Slice character and stage sprite sheets saved as DDS textures are now converted to PNG during import, so those characters and stages show up.
+- V-Slice mods with compressed ASTC sprite sheets import again; converting them no longer fails the whole import, even in deep install folders.
+- V-Slice imports no longer list fake missing files for image and music paths that a script only builds while the song is playing.
+- V-Slice scripts that ask the song clock for beat or step times, or run their own tween timer, now work instead of stopping with errors.
+- V-Slice scripts that check for the options menu, and custom song events that read their own event name, no longer throw errors every frame.
+- Added the base game's add-colour shader, which some V-Slice scripts load by name.
+- Retrying after a death or choosing Restart in the pause menu no longer shows the loading screen: the song restarts straight away and reuses the images, audio and script translations it already loaded.
+- Retries that need nothing reloaded are much faster: on a Psych song, rebuilding the song after the game over fade went from over 5 seconds to under half a second.
+- Scripts that restart the song (restartSong, reloading the same song with loadSong, or resetting the state during a song) and the loop modifier now use the same quick retry, and every script engine still gets its retry callback.
+- Changing difficulty, picking another song or moving on in story mode still loads normally.
+- Psych songs no longer crash on the game over screen when a script reads a gameplay-only property during the death animation; the script error is reported instead.
+- Psych mods now play their own game over death, loop and confirm sounds instead of a beep.
+- V-Slice HUD modules that move the combo popups run again, so custom health bars and HUD setups from those modules show up.
+- Nightmare Vision mods with several content packs now store the game's base assets once instead of once per pack. One example went from about 8.7 GB to about 0.5 GB on disk, and existing imports shrink on their next refresh.
+- Imports no longer copy programs, DLLs, video player plugins or Python files that a mod bundles inside its asset folders.
+- Re-importing a Nightmare Vision mod keeps every content pack in the same place, so scores are kept and no empty duplicate folders are left behind. Old empty duplicates are cleaned up on the next refresh.
+- Re-importing a large Nightmare Vision mod is much faster (one example went from about 13 minutes to about 4).
+- The import report no longer calls Nightmare Vision scripts unsupported, and finds the stages and characters inside content packs instead of reporting them missing.
+- The first retry after starting the game is now as quick as later ones: the game no longer treats an already finished mod removal as a library change on every launch, which used to throw away the song's loaded images.
+- Retrying a song many times no longer slowly piles up unused sound entries and hidden score text images.
+- Songs that keep a lot in memory now pause for memory cleanup about half as often during play.
+- V-Slice HUD modules that use PlayState features such as combo popups, countdown or scroll speed tweens are no longer dropped as unsupported.
+- V-Slice modules that ask to skip the next screen transition now skip it.
+- HexV3-style stage scripts that compare zIndex values no longer fail to load.
+- The import report no longer lists converted characters and stages as missing for V-Slice packs that keep each character in its own library folder.
+- Imported V-Slice characters that use a base-game sprite sheet the pack does not ship no longer turn into Dad when the pack has no icon for them.
+- V-Slice modules that have their own methods named like hooks (for example onSongDestroy) now run instead of being switched off.
+- Psych scripts that reset the song now restart it the same way as the pause menu retry, keeping retry callbacks and loaded assets.
+- Scrolling Freeplay no longer fills the log with missing health icon warnings; each missing icon is noted once.
+- Psych stages marked as pixel stages now give the song pixel notes, receptors and UI, as in Psych.
+- Psych note textures now load when the file name differs only in letter case, and pixel note textures without an ENDS sheet still work for tap notes.
+- Psych note types that put their own sprite sheet on a note (for example a single spacebar key) now show it instead of the default arrows.
+- Psych scripts no longer stop when addHaxeLibrary asks for a class that does not exist, or when Paths.image is given a missing or empty image.
+- Older Psych scripts can build extra players with new Boyfriend(...) and load top-level classes such as HealthIcon by name.
+- Psych scripts that add an extra receptor with new StrumNote(...) no longer crash the game.
+- Psych scripts that keep reading a text object that does not exist no longer flood the log.
+- Nightmare Vision content packs now show their base boyfriend, girlfriend and opponent instead of placeholders.
+- Older Nightmare Vision packs now show their rating and combo images instead of Flixel logos.
+- Nightmare Vision HUD scripts that read sicks, goods, bads or shits work again, so their score text updates.
+- Repeated Nightmare Vision script errors are shown a few times and then hidden, as Psych script errors already were.
 
 v0.0.41 alpha - CammieEngine
 - Fixed freezes of several seconds in Psych songs whose Lua scripts join text and numbers often, for example in tween and timer callbacks. Every number in a .. join built throwaway native patterns, and clearing them later stopped the game.

@@ -32,9 +32,14 @@ class PsychOwnerPaths {
  public static function create(root:String, ?library:String):Dynamic {
   libraries.push(root + ':' + library);
   return {
-  sound:function(name:String):String { calls.push(root + ':sound:' + name); return root + '/sounds/' + name + '.ogg'; },
-  music:function(name:String):String { calls.push(root + ':music:' + name); return root + '/music/' + name + '.ogg'; }
+  // Like the real owner Paths, sound and music return the loaded Sound and the
+  // beep for a missing file, never a path.
+  sound:function(name:String):Sound { calls.push(root + ':sound:' + name); return load(root + '/sounds/' + name + '.ogg'); },
+  music:function(name:String):Sound { calls.push(root + ':music:' + name); return load(root + '/music/' + name + '.ogg'); }
   };
+ }
+ static function load(path:String):Sound {
+  return FNFAssets.exists(path) ? new Sound(path) : flixel.system.FlxAssets.getSound('flixel/sounds/beep');
  }
 }
 class NVPaths {
@@ -78,6 +83,9 @@ class Main {
   var soundPath = 'owner-one/sounds/  loss  .ogg';
   FNFAssets.available.set(soundPath, true);
   check(psych.sourceGameOverSound('deathSoundName', true).label == soundPath, 'sound key was trimmed or wrong provider used');
+  psych.sourceGameOverSettings.deathSoundName = 'absent';
+  check(psych.sourceGameOverSound('deathSoundName', true).label == 'flixel/sounds/beep', 'missing Psych sound did not fall back to the beep');
+  psych.sourceGameOverSettings.deathSoundName = '  loss  ';
   check(PsychOwnerPaths.libraries[0] == 'owner-one:shared-stage', 'Psych stage library was lost for game-over assets');
   psych.sourceGameOverSettings.loopSoundName = 'loop';
   FNFAssets.available.set('owner-one/music/loop.ogg', true);
@@ -85,6 +93,11 @@ class Main {
   psych.sourceGameOverSettings.endSoundName = null;
   check(psych.sourceGameOverSound('endSoundName', false).label == 'flixel/sounds/beep', 'Psych missing/null name did not preserve source beep fallback');
   check(PsychOwnerPaths.calls.indexOf('owner-one:music:null') >= 0, 'Psych null name was skipped as NV policy');
+  // Psych Paths has no path form, so the path route must not hand back its Sound as a String.
+  var psychCalls = PsychOwnerPaths.calls.length;
+  var psychPath:Dynamic = psych.sourceGameOverSoundPath('loopSoundName', false);
+  check(psychPath == null, 'Psych owner returned a Sound where a path was expected');
+  check(PsychOwnerPaths.calls.length == psychCalls, 'Psych path route loaded audio it cannot return');
   var nv = new Host('owner-two', true);
   nv.sourceGameOverSettings.deathSoundName = null;
   check(nv.sourceGameOverSound('deathSoundName', true) == null && nv.nightmareVisionPaths.calls.length == 0,

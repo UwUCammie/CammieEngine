@@ -154,7 +154,12 @@ class PsychRuntimeBindings {
 			}
 		});
 		owner.variables.set('addHaxeLibrary', function(name:String, packageName:String = ''):Void {
-			module().bindLibrary(name, packageName == '' ? name : packageName + '.' + name);
+			var path = packageName == null || packageName == '' ? name : packageName + '.' + name;
+			// Psych binds the class when it resolves and otherwise does nothing; the
+			// rest of the Lua callback always runs. Throwing here stopped whole
+			// onCreate callbacks over a library the script never even used.
+			try module().bindLibrary(name, path)
+			catch (error:Dynamic) trace('[psych-hscript-import] ' + origin + '#addHaxeLibrary: ' + Std.string(error));
 		});
 		owner.variables.set('addHScript', function(path:String, ignoreAlreadyRunning:Bool = false):Bool {
 			return host.compatAddLuaScript(path, ignoreAlreadyRunning, origin, true);

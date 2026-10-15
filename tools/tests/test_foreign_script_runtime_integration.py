@@ -231,7 +231,8 @@ class ForeignScriptRuntimeIntegrationTest(unittest.TestCase):
     def test_event_sprite_uses_selected_manifest_root_and_astc_decoder_boundary(self):
         module = (ROOT / "source/ModuleFunctions.hx").read_text()
         source = self.play_state
-        self.assertIn("VSliceAstcAdapter.decodeFile(source, destination)", module)
+        # The decoder writes the staged file directly, so it gets the staged path.
+        self.assertIn("VSliceAstcAdapter.decodeFile(source, importWriteTarget(destination))", module)
         self.assertIn("result.errors.push(detail)", module)
         self.assertIn("for (message in mergedRuntime.errors)", module)
         self.assertIn("CompatScriptManifest.selectedRoot(getCompatScriptManifest())", source)

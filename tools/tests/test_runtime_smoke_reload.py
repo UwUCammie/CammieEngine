@@ -87,6 +87,8 @@ class FlxG {
  public static function switchState(_:Dynamic):Void switches++;
 }
 class PlayState {public static var instance:Dynamic=null;}
+// Readiness installs the retry probe; it stays idle without --smoke-retry-after-ms.
+class RuntimeRetryProbe {public static function install():Void {}}
 class RuntimeSmokeVisuals {
  public static function character(_:String,_:Dynamic):Dynamic return {};
  public static function stage(_:Dynamic):Dynamic return {memberCount:0,members:[]};

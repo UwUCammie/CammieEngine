@@ -73,7 +73,8 @@ class CodenameFlxGFacade {
 		return true;
 	}
 
-	public function resetState():Void FlxG.resetState();
+	/** Resetting a song is a retry; PlayState routes that, other states reset. */
+	public function resetState():Void PlayState.resetCurrentState();
 
 	/** Open only validated web URLs through Flixel's host browser bridge. */
 	public function openURL(url:String, target:String = '_blank'):Bool return CodenameOpenURLCompat.open(url,

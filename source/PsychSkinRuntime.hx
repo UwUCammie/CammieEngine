@@ -11,12 +11,44 @@ class PsychSkinRuntime {
 	static var noteColors:Array<String> = ['purple', 'blue', 'green', 'red'];
 	static var directions:Array<String> = ['left', 'down', 'up', 'right'];
 	static var receptorIdle:Array<String> = ['arrowLEFT', 'arrowDOWN', 'arrowUP', 'arrowRIGHT'];
+	/** Resolutions by skin, owner, pixel and postfix, for one FNFAssets.pathEpoch.
+		Resolving lists every folder on both file paths to check letter case,
+		about 4 ms, and a chart reloads the same skin for each of its notes:
+		1,700 notes spent about 6.5 s of loading there. The files only change
+		through an import refresh or a reported disk change, which move the epoch. */
+	static var resolutions:Map<String, PsychSkinResolver.PsychSkinResolution> = new Map();
+	static var resolutionsEpoch:Int = -1;
+	#if target.threaded
+	static var resolutionsLock:sys.thread.Mutex = new sys.thread.Mutex();
+	#end
+
+	static function resolveSkin(skin:String, ownerRoot:String, pixel:Bool,
+		postfix:String):PsychSkinResolver.PsychSkinResolution {
+		var key = skin + '\n' + (ownerRoot == null ? '' : ownerRoot) + '\n' + (pixel ? '1' : '0')
+			+ '\n' + (postfix == null ? '' : postfix);
+		var epoch = FNFAssets.pathEpoch();
+		#if target.threaded resolutionsLock.acquire(); #end
+		if (epoch != resolutionsEpoch) {
+			resolutions = new Map();
+			resolutionsEpoch = epoch;
+		}
+		var result = resolutions.get(key);
+		#if target.threaded resolutionsLock.release(); #end
+		if (result != null)
+			return result;
+		result = PsychSkinResolver.resolveDetailed(skin, ownerRoot, pixel, postfix);
+		#if target.threaded resolutionsLock.acquire(); #end
+		if (epoch == resolutionsEpoch)
+			resolutions.set(key, result);
+		#if target.threaded resolutionsLock.release(); #end
+		return result;
+	}
 
 	public static function reloadNote(note:Note, authored:String, ownerRoot:String, chartSkin:String,
 		pixel:Bool, postfix:String, ?diagnostics:Bool = false):Bool {
 		markDiagnostic(diagnostics, 'reload:resolve');
 		var skin = authored == null || authored == '' ? (chartSkin == null || chartSkin == '' ? DEFAULT_SKIN : chartSkin) : authored;
-		var result = PsychSkinResolver.resolveDetailed(skin, ownerRoot, pixel, postfix);
+		var result = resolveSkin(skin, ownerRoot, pixel, postfix);
 		if (result.descriptor == null) {
 			markDiagnostic(diagnostics, 'reload:missing-descriptor');
 			trace('[psych-skin] note ' + result.reason);
@@ -29,9 +61,16 @@ class PsychSkinRuntime {
 		var frames = pixel ? null : atlas(descriptor);
 		markDiagnostic(diagnostics, 'reload:validate');
 		if (!validNote(descriptor, frames, color, note.isSustainNote)) {
-			markDiagnostic(diagnostics, 'reload:incomplete-animations');
-			trace('[psych-skin] incomplete note animations for ' + descriptor.key + ' in ' + descriptor.ownerRoot);
-			return false;
+			// Psych installs any atlas that loads and only adds the color
+			// animations it finds. Note-type scripts rely on that to put a sheet
+			// with their own prefixes on a note and add those animations next.
+			// Only a sheet that cannot be built at all keeps the old visual.
+			if (pixel || frames == null) {
+				markDiagnostic(diagnostics, 'reload:incomplete-animations');
+				trace('[psych-skin] incomplete note animations for ' + descriptor.key + ' in ' + descriptor.ownerRoot);
+				return false;
+			}
+			reportPartialNoteAtlas(descriptor, color, note.isSustainNote);
 		}
 		note.psychSkinUsesNativeDefaultFallback = descriptor.nativeDefaultFallback;
 		markDiagnostic(diagnostics, 'reload:read-current-visual');
@@ -81,7 +120,7 @@ class PsychSkinRuntime {
 	public static function reloadStrum(strum:StrumNote, authored:String, ownerRoot:String,
 		chartSkin:String, pixel:Bool, postfix:String):Bool {
 		var skin = authored == null || authored == '' ? (chartSkin == null || chartSkin == '' ? DEFAULT_SKIN : chartSkin) : authored;
-		var result = PsychSkinResolver.resolveDetailed(skin, ownerRoot, pixel, postfix);
+		var result = resolveSkin(skin, ownerRoot, pixel, postfix);
 		if (result.descriptor == null) {
 			trace('[psych-skin] receptor ' + result.reason);
 			return false;
@@ -114,6 +153,28 @@ class PsychSkinRuntime {
 		return true;
 	}
 
+	/** One line per atlas and lane shape: a chart reloads the same texture for
+		every note of its type, hundreds of identical lines otherwise. Cleared
+		with the resolutions so a refreshed file is reported again. */
+	static var partialAtlasReported:Map<String, Bool> = new Map();
+	static var partialAtlasEpoch:Int = -1;
+
+	static function reportPartialNoteAtlas(descriptor:PsychSkinDescriptor, color:String, sustain:Bool):Void {
+		var epoch = FNFAssets.pathEpoch();
+		var key = descriptor.ownerRoot + '\n' + descriptor.key + '\n' + color + (sustain ? ' hold' : '');
+		#if target.threaded resolutionsLock.acquire(); #end
+		if (epoch != partialAtlasEpoch) {
+			partialAtlasReported = new Map();
+			partialAtlasEpoch = epoch;
+		}
+		var first = !partialAtlasReported.exists(key);
+		if (first) partialAtlasReported.set(key, true);
+		#if target.threaded resolutionsLock.release(); #end
+		if (first)
+			trace('[psych-skin] note atlas ' + descriptor.key + ' in ' + descriptor.ownerRoot + ' has no ' + color
+				+ (sustain ? ' hold' : '') + ' animation; installed without it, as Psych does');
+	}
+
 	static function atlas(descriptor:PsychSkinDescriptor):FlxAtlasFrames {
 		try {
 			return DynamicAtlasFrames.fromSparrow(descriptor.image, descriptor.metadata);
@@ -126,6 +187,8 @@ class PsychSkinRuntime {
 	static function validNote(descriptor:PsychSkinDescriptor, frames:FlxAtlasFrames,
 		color:String, sustain:Bool):Bool {
 		if (descriptor.pixel) {
+			// A pixel sheet without its ENDS half still skins tap notes, as in Psych.
+			if (sustain && descriptor.endsImage == null) return false;
 			try {
 				var bitmap = FNFAssets.getBitmapData(sustain ? descriptor.endsImage : descriptor.image);
 				return bitmap != null && bitmap.width >= 4 && bitmap.height >= (sustain ? 2 : 5)

@@ -50,13 +50,25 @@ class PsychSkinResolver {
 			? ['assets/images']
 			: [root + '/images', root + '/shared/images'];
 		var missing:Array<String> = [];
+		// Psych loads a pixel note sheet and its ENDS sheet separately, and only
+		// sustains need ENDS: a custom note texture that is never held often
+		// ships without one. A complete pair anywhere still wins over that.
+		var withoutEnds:PsychSkinResolution = null;
 		for (directory in directories) {
 			var relative = pixel ? 'pixelUI/' + clean : clean;
 			var variant = suffix == '' ? null : candidate(directory, relative + suffix, clean + suffix,
 				owner, pixel, pixel ? relative + 'ENDS' + suffix : null);
-			if (variant != null && variant.descriptor != null)
+			if (variant != null && variant.descriptor != null && (!pixel || variant.descriptor.endsImage != null))
 				return variant;
+			// Psych picks the postfix sheet when its png exists, so a postfix sheet
+			// without ENDS still ranks above a base sheet without ENDS.
+			if (variant != null && variant.descriptor != null && withoutEnds == null)
+				withoutEnds = variant;
 			var base = candidate(directory, relative, clean, owner, pixel);
+			if (base.descriptor != null && pixel && base.descriptor.endsImage == null) {
+				if (withoutEnds == null) withoutEnds = base;
+				continue;
+			}
 			if (base.descriptor != null)
 				return base;
 			if (variant != null && variant.reason != '')
@@ -73,6 +85,8 @@ class PsychSkinResolver {
 				return nativeDefault;
 			missing.push(nativeDefault.reason);
 		}
+		if (withoutEnds != null)
+			return withoutEnds;
 		return failure('missing Psych skin ' + clean + ' in ' + owner + ': ' + missing.join('; '));
 		#end
 	}
@@ -88,13 +102,22 @@ class PsychSkinResolver {
 			: null;
 		var files = pixel ? [image, endsImage] : [image, metadata];
 		var missing:Array<String> = [];
-		for (file in files) {
-			var state = fileState(file);
-			if (state != 'ok')
-				missing.push(state + ' ' + file);
+		var endsMissing = false;
+		for (index in 0...files.length) {
+			var found = onDiskPath(files[index]);
+			if (pixel && index == 1 && found.state == 'missing')
+				endsMissing = true;
+			else if (found.state != 'ok')
+				missing.push(found.state + ' ' + files[index]);
+			else
+				files[index] = found.path;
 		}
-		if (missing.length > 0)
+		if (missing.length > 0) {
+			if (endsMissing) missing.push('missing ' + endsImage);
 			return failure(missing.join(', '));
+		}
+		image = files[0];
+		if (pixel) endsImage = endsMissing ? null : files[1]; else metadata = files[1];
 		var descriptor:PsychSkinDescriptor = {
 			key:key, ownerRoot:owner, image:image, metadata:metadata,
 			endsImage:endsImage, pixel:pixel, nativeDefaultFallback:nativeDefaultFallback
@@ -149,28 +172,34 @@ class PsychSkinResolver {
 		return false;
 	}
 
-	/** Check each existing path component for exact case and case collisions. */
+	/** Find the file as it is spelled on disk. Psych mods are made on Windows,
+		where `setPropertyFromGroup(..., 'texture', 'Door')` opens pixelUI/door.png,
+		so a single entry that differs only in letter case is used under its real
+		name. Case variants that collide are still refused rather than guessed. */
 	#if sys
-	static function fileState(path:String):String {
+	static function onDiskPath(path:String):{state:String, path:String} {
 		var current = '';
 		for (part in path.split('/')) {
+			var name = part;
 			if (current != '' && FileSystem.exists(current) && FileSystem.isDirectory(current)) {
 				var matches = 0;
 				var exact = false;
+				var found:String = null;
 				for (entry in FileSystem.readDirectory(current))
 					if (entry.toLowerCase() == part.toLowerCase()) {
 						matches++;
+						found = entry;
 						if (entry == part)
 							exact = true;
 					}
 				if (matches > 1)
-					return 'ambiguous case';
+					return {state:'ambiguous case', path:null};
 				if (matches == 1 && !exact)
-					return 'case mismatch';
+					name = found;
 			}
-			current = current == '' ? part : current + '/' + part;
+			current = current == '' ? name : current + '/' + name;
 		}
-		return FileSystem.exists(path) && !FileSystem.isDirectory(path) ? 'ok' : 'missing';
+		return {state:FileSystem.exists(current) && !FileSystem.isDirectory(current) ? 'ok' : 'missing', path:current};
 	}
 	#end
 }

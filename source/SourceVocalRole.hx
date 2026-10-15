@@ -6,6 +6,13 @@ package;
  */
 class SourceVocalRole {
 	/**
+		Stem id the importer gives a song's combined Voices file when it plays as
+		the player's fallback next to split stems. Psych and Nightmare Vision load
+		the player's own stem when there is one and the combined file otherwise.
+	**/
+	public static inline var COMBINED_FALLBACK_ID:String = 'Voices';
+
+	/**
 	 * An authored role other than 'shared' always wins. Otherwise the stem id
 	 * decides: the conventional player/opponent names, or the file suffix a
 	 * character asks for (`playerSuffix` / `opponentSuffix`). A stem with no
@@ -57,17 +64,54 @@ class SourceVocalRole {
 			if (id == opponent)
 				opponentShipped = true;
 		}
-		if (!playerShipped && !opponentShipped)
-			return keep;
+		if (playerShipped || opponentShipped)
+			for (index in 0...stemIds.length) {
+				var id = clean(stemIds[index]);
+				var role = roles == null || index >= roles.length ? '' : clean(roles[index]);
+				if (role != '' && role != 'shared' && !namesSide(id))
+					continue;
+				var forPlayer = playerShipped ? id == player : id == 'player';
+				var forOpponent = opponentShipped ? id == opponent : (id == 'opp' || id == 'opponent');
+				keep[index] = forPlayer || forOpponent;
+			}
+		return applyCombinedFallback(stemIds, roles, keep, playerShipped ? player : 'player', opponent);
+	}
+
+	/**
+		With the combined file beside the stems the source rule is exact: the
+		player hears their own stem or else the combined file, the opponent hears
+		their own stem, and a character-named stem nobody asks for stays silent
+		(it would double a voice the combined file already has). Packs without a
+		combined fallback keep the lenient rule above.
+	**/
+	static function applyCombinedFallback(stemIds:Array<Dynamic>, roles:Array<Dynamic>, keep:Array<Bool>,
+		playerId:String, opponent:String):Array<Bool> {
+		var fallback = -1;
 		for (index in 0...stemIds.length) {
 			var id = clean(stemIds[index]);
 			var role = roles == null || index >= roles.length ? '' : clean(roles[index]);
-			if (role != '' && role != 'shared' && !namesSide(id))
-				continue;
-			var forPlayer = playerShipped ? id == player : id == 'player';
-			var forOpponent = opponentShipped ? id == opponent : (id == 'opp' || id == 'opponent');
-			keep[index] = forPlayer || forOpponent;
+			// The importer writes the fallback as a player stem. A stem whose
+			// format already gave it a side (V-Slice lists each side's files) is
+			// not a Psych layout, so this rule never applies next to one.
+			if (id == clean(COMBINED_FALLBACK_ID) && (roles == null || role == 'player')) {
+				if (fallback < 0)
+					fallback = index;
+			} else if (role != '' && role != 'shared' && !namesSide(id))
+				return keep;
 		}
+		if (fallback < 0)
+			return keep;
+		var playerKept = false;
+		for (index in 0...stemIds.length) {
+			if (index == fallback)
+				continue;
+			var id = clean(stemIds[index]);
+			if (!namesSide(id) && id != playerId && (id == '' || id != opponent))
+				keep[index] = false;
+			if (keep[index] && id == playerId)
+				playerKept = true;
+		}
+		keep[fallback] = !playerKept;
 		return keep;
 	}
 

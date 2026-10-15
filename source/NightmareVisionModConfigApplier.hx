@@ -57,9 +57,15 @@ class NightmareVisionModConfigApplier {
 		} else fontPath = host.resolveSelectedFont(DEFAULT_FONT_KEY);
 		host.setDefaultFont(fontPath);
 
-		applyPrefix('UI_PREFIX', field(pack, 'uiPrefix'), host.defaultUiPrefix());
-		applyPrefix('COMBO_PREFIX', field(pack, 'comboPrefix'), 'UI/combo/');
-		applyPrefix('RATINGS_PREFIX', field(pack, 'ratingsPrefix'), 'UI/ratings/');
+		var defaultUi = host.defaultUiPrefix();
+		applyPrefix('UI_PREFIX', field(pack, 'uiPrefix'), defaultUi);
+		// A core with the older layout keeps its UI, rating and combo art at the
+		// image root (an empty UI prefix). Its packs have no prefixes in their
+		// config, so the newer UI/ratings/ defaults showed placeholders instead
+		// of every rating and combo digit.
+		var historicalLayout = defaultUi == '';
+		applyPrefix('COMBO_PREFIX', field(pack, 'comboPrefix'), historicalLayout ? '' : 'UI/combo/');
+		applyPrefix('RATINGS_PREFIX', field(pack, 'ratingsPrefix'), historicalLayout ? '' : 'UI/ratings/');
 		applyPrefix('COUNTDOWN_PREFIX', field(pack, 'countdownPrefix'), 'UI/countdown/');
 	}
 

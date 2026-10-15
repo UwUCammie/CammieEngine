@@ -174,7 +174,7 @@ class Main {{
     def test_death_quote_does_not_admit_other_unmapped_paths_operations(self):
         result=self.run_fixture(r'''class Main {
  static function main() {
-  var result=HxcCompat.analyze("class Actor extends Character { function new() {super('actor');} override function getDeathQuote():Null<String> { return Paths.image('unmapped'); } }",'scripts/characters/Actor.hxc');
+  var result=HxcCompat.analyze("class Actor extends Character { function new() {super('actor');} override function getDeathQuote():Null<String> { return Paths.animateAtlas('unmapped'); } }",'scripts/characters/Actor.hxc');
   if(result.characterHookGaps.indexOf('getDeathQuote')<0) throw 'unmapped asset getter silently admitted';
  }
 }''')
@@ -441,6 +441,7 @@ class ZIndexProbe extends Song {
         PlayState.instance.currentStage.getDad().zIndex = PlayState.instance.currentStage.getDad().zIndex + 1;
         var current = iconP1.zIndex;
         trace(current);
+        if (iconP2.zIndex == (PlayState.instance.currentStage.getBoyfriend().zIndex - 3)) trace(current);
     }
 }
 '''
@@ -455,6 +456,10 @@ class Main {{
       fail("zIndex was not routed through the engine adapter: " + generated);
     if (generated.indexOf(".zIndex") >= 0)
       fail("native HScript still exposes donor zIndex: " + generated);
+    // A comparison stays a read on both sides instead of becoming a write.
+    if (generated.indexOf("HxcCompatRuntime.getZIndex(iconP2) ==") < 0
+      || generated.indexOf("setZIndex(iconP2") >= 0)
+      fail("zIndex comparison was lowered as an assignment: " + generated);
     new Parser().parseString(generated);
     var actor = HxcCompat.analyze("class Actor extends MultiSparrowCharacter {{ function new() {{ super('actor'); }} function onUpdate(event) {{ glow.zIndex = this.zIndex + 1; this.zIndex += 2; }} }}", "scripts/stages/Actor.hxc");
     if (actor.generatedHscript.indexOf("HxcCompatRuntime.getZIndex(hxcCharacter())") < 0
@@ -2414,7 +2419,7 @@ class Main {
     FileSystem.createDirectory(scripts);
     var base = scripts + "/base.hxc";
     var wrapper = scripts + "/wrapper.hxc";
-    File.saveContent(base, "class BaseCharacter extends Character {\nfunction onAdd(event) { Paths.image('donor-only'); }\nfunction getScreenPosition() { Paths.image('donor-only'); }\nfunction dance(force:Bool) { trace('safe-base'); }\n}");
+    File.saveContent(base, "class BaseCharacter extends Character {\nfunction onAdd(event) { Paths.animateAtlas('donor-only'); }\nfunction getScreenPosition() { Paths.animateAtlas('donor-only'); }\nfunction dance(force:Bool) { trace('safe-base'); }\n}");
     File.saveContent(wrapper, "class WrapperCharacter extends BaseCharacter {\nfunction new() { super('costumes/gap'); }\nfunction dance(force:Bool) { trace('safe-wrapper'); super.dance(force); }\n}");
     var inherited = HxcCompat.analyze(File.getContent(wrapper), wrapper);
     if (!has(inherited, "unsupported-hxc-character-base")
@@ -2427,7 +2432,7 @@ class Main {
       || inherited.generatedHscript.indexOf("safe-wrapper") < 0)
       fail("safe inherited/wrapper callback was masked: " + inherited.generatedHscript);
     var direct = HxcCompat.analyze(
-      "class DirectCharacter extends MissingCharacter { function onCreate() { Paths.image('donor-only'); } function dance(force:Bool) { trace('direct-safe'); } }",
+      "class DirectCharacter extends MissingCharacter { function onCreate() { Paths.animateAtlas('donor-only'); } function dance(force:Bool) { trace('direct-safe'); } }",
       "scripts/characters/direct.hxc");
     if (has(direct, "unsupported-hxc-character-base")
       || !has(direct, "unsupported-hxc-character-hook")

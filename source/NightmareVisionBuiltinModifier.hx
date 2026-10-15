@@ -27,7 +27,9 @@ class NightmareVisionBuiltinModifier extends NightmareVisionNoteModifier {
 	public function refreshFormulaState():Void {}
 	public function leafEntry():NightmareVisionModifierExecution {
 		refreshFormulaState();
-		if(entry==null) entry={builtin:formulaKind,state:formulaState,value:getValue,subValue:getSubmodValue,getPosition:getPos,updateObject:dispatchObject};
+		// calls: the same four methods as the fields, called without boxing
+		// (dispatchObject is the base updateObjectOfKind switch).
+		if(entry==null) entry={builtin:formulaKind,state:formulaState,calls:this,value:getValue,subValue:getSubmodValue,getPosition:getPos,updateObject:dispatchObject};
 		return entry;
 	}
 	public override function getPos(time:Float,diff:Float,tDiff:Float,beat:Float,pos:NightmareVisionModchartVector,data:Int,player:Int,obj:Dynamic):NightmareVisionModchartVector {

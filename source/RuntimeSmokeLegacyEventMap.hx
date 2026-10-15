@@ -118,10 +118,12 @@ class RuntimeSmokeLegacyEventMap {
 		var stop=false;var lua=new LuaCompatInterp();lua.variables.set('__psychScoreGlobals',true);
 		var unexpected=0;
 		lua.variables.set('songEvent',function(e:Dynamic){unexpected++;});
-		lua.variables.set('onEvent',function(n:String,a:String,b:String):Dynamic {
-			if(state.gfSpeed!=7)throw 'Lua notification preceded effect';log.push('lua:'+n+':'+a+':'+b);
+		// Varargs: a Lua onEvent may be given Psych's strumTime as a fourth value, and a
+		// native closure with three parameters would reject that call under hxcpp.
+		lua.variables.set('onEvent',Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
+			if(state.gfSpeed!=7)throw 'Lua notification preceded effect';log.push('lua:'+args[0]+':'+args[1]+':'+args[2]);
 			registry.eventScripts=['Set GF Speed'=>selected];return stop?2:0;
-		});
+		}));
 		state.hscriptStates.set('compat_global_event_notify',lua);
 		state.registerHistoricalNightmareLua('compat_global_event_notify',lua,'__notify.lua');
 		registry.add(make('__notify_last','function onEvent(n,a,b){record("last");}'));

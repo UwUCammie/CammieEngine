@@ -336,6 +336,12 @@ class SongLoadingScreen {
 			// the overlay doubled both the first render and the first frame
 			// after the music starts (about 90 to 180 ms instead of 40 to 95 ms,
 			// measured on several songs); textures upload when first drawn.
+			// Uploading only the hidden sprites' textures (the ones a script
+			// reveals mid-song) did not help either: 512 to 752 MB uploaded in
+			// 137 to 318 ms here, but the driver still did the work on the first
+			// rendered frame (600 to 690 ms instead of 100 to 200 ms) and the
+			// song-start gap grew, while the mid-song reveal hitch it targets
+			// only shows up in some runs.
 			complete(4, progress.label);
 		}
 		else if (progress.completed == 4 && readyFrameRendered) {

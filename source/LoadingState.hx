@@ -21,6 +21,21 @@ class LoadingState extends FlxState {
 		else action();
 	}
 
+	/** Switch at once, without the loading screen. A song retry uses this:
+		everything the song needs is still loaded, so the screen would only
+		add a wait. A screen that is already up keeps its normal queue. */
+	public static function switchStateNow(target:FlxState):Void {
+		PlayerSettings.player1.controls.setKeyboardScheme(Solo(4));
+		if (SongLoadingScreen.active || SongLoadingScreen.preparing) {
+			switchState(target);
+			return;
+		}
+		if (CodenameMusicBeatTransition.switchStateForCurrentOwner(target))
+			return;
+		CodenameRequestedStateCompat.switchToKnownTarget(target,
+			function():Void FlxG.switchState(target));
+	}
+
     /** Construct states that allocate graphics only after Flixel destroys the
         previous state and clears its bitmap cache. */
     public static function loadAndSwitchStateFactory(target:()->FlxState):Void {
@@ -33,6 +48,11 @@ class LoadingState extends FlxState {
 			SongLoadingScreen.queue('LEAVING THE STAGE', PlayState.SONG == null ? 'Getting ready' : PlayState.SONG.song, action);
 		else action();
     }
+
+	/** V-Slice's song launch for imported menus; the binding resolves the chart and starts PlayState. */
+	public static function loadPlayState(params:Dynamic, shouldStopMusic:Bool = false, asSubState:Bool = false):Void {
+		VSliceGameBinding.loadPlayState(params, shouldStopMusic, asSubState);
+	}
 
 	/** Defer chart preparation until the loading overlay has rendered. */
 	public static function prepareSongTransition(song:String, prepare:Void->Void):Bool {

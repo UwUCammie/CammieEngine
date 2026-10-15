@@ -508,6 +508,9 @@ class SourceMappedAssetPublisher {
 				cancelAll(plan);
 				return;
 			}
+			// A compiled asset list can name the video player's native plugins and
+			// other programs; nothing in the engine loads them from a mod.
+			if (ImportRuntimeFileFilter.neverLoaded(file.sourcePath)) continue;
 			copyFile(file.sourcePath, file.destinationPath);
 		}
 		if (plan.identityPublication != null && !plan.identityPublication.failed) {
@@ -528,6 +531,7 @@ class SourceMappedAssetPublisher {
 				view.cancelled = true;
 				return;
 			}
+			if (ImportRuntimeFileFilter.neverLoaded(file.sourcePath)) continue;
 			copyFile(file.sourcePath, file.destinationPath);
 		}
 	}

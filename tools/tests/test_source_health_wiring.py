@@ -214,7 +214,10 @@ __HELPERS__
         self.assertIn("varreacts=note!=null||actingOn==null||!actingOn.stunned;", nv)
         self.assertLess(nv.index("applySourceMissHealth(note,playerOne,reacts);"), nv.index("if(sourceMissCounts(note)){"))
         self.assertIn("if(sourceMissCounts(note)){", nv)
-        self.assertIn("applySourceMiss();", nv[nv.index("if(sourceMissCounts(note)){"):])
+        # The ledger miss is counted through the shared countSourceMiss step.
+        self.assertIn("countSourceMiss();", nv[nv.index("if(sourceMissCounts(note)){"):])
+        count = compact(extract_method(self.play_source, "function countSourceMiss("))
+        self.assertIn("applySourceMiss();notifyPsychRatingChange(true);", count)
         for callback in (
             'callAllHScript("playerOneMiss", []);',
             "dispatchPsychCompiledStage('noteMissPress', [direction]);",

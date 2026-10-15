@@ -58,5 +58,9 @@ class PsychStateClassBindings {
 		interp.bindImport('backend.MusicBeatSubstate', PsychMusicBeatSubstate);
 		interp.bindImport('states.PlayState', PlayState);
 		interp.bindImport('psychlua.CustomSubstate', PsychCustomSubstate);
+		// Older Psych mods play videos through hxCodec's classes, imported or
+		// added with addHaxeLibrary; all of them map onto the engine playback.
+		for (path in LegacyVideoHandler.SCRIPT_PATHS)
+			interp.bindImport(path, LegacyVideoHandler);
 	}
 }

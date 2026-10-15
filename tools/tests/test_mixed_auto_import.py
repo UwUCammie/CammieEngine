@@ -148,6 +148,7 @@ class MixedAutoImportTest(unittest.TestCase):
                 "static function ensureDirectory",
                 "static function existingImportChild",
                 "static function vSliceMappingDestination",
+                "static function importWriteTarget",
                 "static function mergeVSliceMapping",
                 "static function chooseVSliceRegistry",
                 "static function registryHasVSliceKey",
@@ -532,6 +533,10 @@ class Main {{
             , newline='\n')
             (temp_path / "VSliceAstcAdapter.hx").write_text(self.astc, newline='\n')
             (temp_path / "VSliceImporter.hx").write_text(self.vslice, newline='\n')
+            # This fixture writes straight to its temporary install, with no
+            # import stage, so the staged-write lookup has no active context.
+            (temp_path / "ImportIO.hx").write_text(
+                "class ImportIO {\n  public static function current():Dynamic return null;\n}\n", newline='\n')
             # V-Slice discovery reads story levels into owner weeks.
             for shared in ("VSliceStoryWeeks.hx", "PsychFamilyWeekImport.hx", "NightmareVisionSongNameCompat.hx"):
                 (temp_path / shared).write_text((ROOT / "source" / shared).read_text(), newline='\n')

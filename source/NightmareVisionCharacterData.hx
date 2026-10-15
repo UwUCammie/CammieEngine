@@ -98,7 +98,17 @@ class NightmareVisionCharacterData {
 		var corePrefix = normalizeOwnerPath(ownerRoot, coreRelative);
 		if (corePrefix != null && hasAnimateAtlas(corePrefix))
 			return corePrefix;
-		return resolveSparrowPrefix(ownerRoot, coreRelative);
+		var coreSparrow = resolveSparrowPrefix(ownerRoot, coreRelative);
+		if (coreSparrow != null)
+			return coreSparrow;
+		// Nightmare Vision's Paths also searches the shared library, and that is
+		// where its own base cast lives (characters/BOYFRIEND, GF_assets). Without
+		// it a pack's bf or gf fell back to a placeholder.
+		var sharedRelative = '__nmv_core/shared/' + ownerRelative;
+		var sharedPrefix = normalizeOwnerPath(ownerRoot, sharedRelative);
+		if (sharedPrefix != null && hasAnimateAtlas(sharedPrefix))
+			return sharedPrefix;
+		return resolveSparrowPrefix(ownerRoot, sharedRelative);
 	}
 	#end
 

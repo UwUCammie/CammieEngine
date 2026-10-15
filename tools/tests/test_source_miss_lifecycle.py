@@ -73,6 +73,7 @@ class SourceMissLifecycleTest(unittest.TestCase):
             "function sourceMissPerformer(",
             "function setSourceVocalVolume(",
             "function applySourceMiss(",
+            "function countSourceMiss(",
             "function notifyNoteMissObservers(",
             "function dispatchNightmareVisionNoteMiss(",
             "function markNightmareVisionTailMissed(",

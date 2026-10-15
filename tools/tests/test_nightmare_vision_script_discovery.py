@@ -87,7 +87,9 @@ class NightmareVisionScriptDiscoveryTest(unittest.TestCase):
         self.assertEqual([e['scope'] for e in entries],
                          ['stage','global','global','global','character','character','character',
                           'song','song','notetype','event','character_event'])
-        self.assertTrue(any('[nightmare-vision-unsupported-script]' in d for d in result['diagnostics']))
+        # Every planned scope is loaded at runtime, so the import report must
+        # not call these scripts unsupported.
+        self.assertFalse(any('[nightmare-vision-unsupported-script]' in d for d in result['diagnostics']))
         self.assertTrue(any('inventory-incomplete' in d for d in result['diagnostics']))
 
     def test_hidden_girlfriend_bare_chart_and_source_sidecar_precedence(self):
@@ -132,7 +134,7 @@ class NightmareVisionScriptDiscoveryTest(unittest.TestCase):
             self.write(self.owner, f'scripts/file{i}.hx')
         result = self.discover({'song':'title','notes':[]})
         self.assertEqual(len(result['plan']['scripts']), 1030)
-        self.assertEqual(sum('[nightmare-vision-unsupported-script]' in d for d in result['diagnostics']), 1030)
+        self.assertEqual(sum('[nightmare-vision-unsupported-script]' in d for d in result['diagnostics']), 0)
 
 
 if __name__ == '__main__':

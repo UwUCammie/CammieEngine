@@ -63,6 +63,10 @@ end";
    ['clearPercent/clearPercentText', 'clearPercent/numbers', 'resultsAlphabet', 'spaced/image', 'afterCall'],
    'lua literals');
   same(ScriptImageLiterals.spriteImages(lua, 2), ['clearPercent/clearPercentText', 'clearPercent/numbers'], 'limit');
+  // Animated sheets alone, the ones whose atlas frames are built during loading too.
+  same(ScriptImageLiterals.animatedSpriteImages(lua), ['clearPercent/numbers', 'spaced/image'], 'animated literals');
+  same(ScriptImageLiterals.animatedSpriteImages("remakeAnimatedLuaSprite('a', 'b')"), [], 'longer identifier');
+  same(ScriptImageLiterals.animatedSpriteImages(null), [], 'null animated source');
   same(ScriptImageLiterals.spriteImages(null), [], 'null source');
   same(ScriptImageLiterals.spriteImages('makeLuaSprite(', 5), [], 'cut off call');
   same(ScriptImageLiterals.spriteImages("makeLuaSprite('a', 'b'"), [], 'unterminated call');
@@ -133,6 +137,18 @@ class ReleaseRuleFixture {
         self.assertIn("ScriptImageLiterals.pngPixels(header)", body)
         # Owner-checked like a script's precacheImage, held on the GPU only.
         self.assertIn("compatPrecacheImageForOwner(owner, image, true, true)", body)
+        # Atlas frames and frame names are built during loading as well, only for
+        # animated sheets that were decoded within the budget above.
+        warm = body[body.index("for (image in warmed) {"):]
+        self.assertLess(body.index("compatPrecacheImageForOwner(owner, image, true, true);\n\t\t\t\twarmed.push(image);"),
+            body.index("for (image in warmed) {"))
+        self.assertIn("ScriptImageLiterals.animatedSpriteImages(source)", body)
+        # Both name lists come from one read of each script.
+        self.assertEqual(body.count("FNFAssets.getText(entry.path)"), 1)
+        self.assertLess(body.index("ScriptImageLiterals.animatedSpriteImages(source)"), body.index("ScriptImageLiterals.withinBudget("))
+        self.assertIn("if (!animated.exists(image) || !compatPsychOwnerFallbackAllowed(owner, image))", warm)
+        self.assertIn("compatPsychPathCall(owner, 'getAtlas', [key])", warm)
+        self.assertIn("compatPsychSpriteFrameNames(owner, key, 'getAtlas')", warm)
         precache = method_body(play, "function compatPrecacheImageForOwner(")
         self.assertIn("gpuOnly && Std.isOfType(graphic, flixel.graphics.FlxGraphic))\n\t\t\tFNFAssets.retainForSongOnGpu(graphic);", precache)
         # A script's own precacheImage keeps its pixels.

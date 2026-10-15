@@ -23,6 +23,11 @@ class ScriptNativeClasses {
 		cached = [
 			entry('Std', 'Std', Std),
 			entry('Math', 'Math', Math),
+			// The HXC module gate accepts these Haxe roots, so every layer must bind them.
+			entry('Json', 'haxe.Json', haxe.Json),
+			entry('Date', 'Date', Date),
+			entry('String', 'String', String),
+			entry('Array', 'Array', Array),
 			entry('StringTools', 'StringTools', StringTools),
 			entry('StringMap', 'haxe.ds.StringMap', haxe.ds.StringMap),
 			entry('IntMap', 'haxe.ds.IntMap', haxe.ds.IntMap),
@@ -37,6 +42,9 @@ class ScriptNativeClasses {
 			entry('FlxSpriteUtil', 'flixel.util.FlxSpriteUtil', flixel.util.FlxSpriteUtil),
 			entry('FlxTween', 'flixel.tweens.FlxTween', flixel.tweens.FlxTween),
 			entry('FlxEase', 'flixel.tweens.FlxEase', flixel.tweens.FlxEase),
+			// A private tween clock the script advances itself (manager.update(elapsed)).
+			// Flixel declares it inside the FlxTween module; scripts import the short path.
+			entry('FlxTweenManager', 'flixel.tweens.FlxTweenManager', flixel.tweens.FlxTween.FlxTweenManager),
 			entry('FlxFlicker', 'flixel.effects.FlxFlicker', flixel.effects.FlxFlicker),
 			entry('FlxEmitter', 'flixel.effects.particles.FlxEmitter', flixel.effects.particles.FlxEmitter.FlxTypedEmitter),
 			entry('FlxBar', 'flixel.ui.FlxBar', flixel.ui.FlxBar),
@@ -45,6 +53,15 @@ class ScriptNativeClasses {
 			entry('FlxTiledSprite', 'flixel.addons.display.FlxTiledSprite', flixel.addons.display.FlxTiledSprite),
 			entry('FlxTrail', 'flixel.addons.effects.FlxTrail', flixel.addons.effects.FlxTrail),
 			entry('ShaderFilter', 'openfl.filters.ShaderFilter', openfl.filters.ShaderFilter),
+			// Menus set its skip flags; the engine's states read the same flags.
+			entry('FlxTransitionableState', 'flixel.addons.transition.FlxTransitionableState',
+				flixel.addons.transition.FlxTransitionableState),
+			entry('FlxGradient', 'flixel.util.FlxGradient', flixel.util.FlxGradient),
+			entry('FlxGraphic', 'flixel.graphics.FlxGraphic', flixel.graphics.FlxGraphic),
+			entry('FlxBitmapFont', 'flixel.graphics.frames.FlxBitmapFont', flixel.graphics.frames.FlxBitmapFont),
+			// Base-game Animate atlas loading and animation registration, shared by
+			// imported character and stage scripts of every engine family.
+			entry('AnimateAtlasUtil', 'AnimateAtlasUtil', AnimateAtlasUtil),
 			// A plain texture-atlas timeline element; it wraps a sprite and reads no files.
 			entry('FlxSpriteElement', 'animate.internal.elements.FlxSpriteElement', animate.internal.elements.FlxSpriteElement)
 		];

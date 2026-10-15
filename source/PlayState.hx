@@ -1464,6 +1464,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			nightmareVisionActiveMods, nightmareVisionActiveDifficulty, compatScriptClock, entry);
 		interp.bindClassParent(PlayState);
 		bindNightmareVisionPixelStage(interp);
+		bindNightmareVisionRatingCounts(interp);
 		if (nightmareVisionLegacyFieldCameras)
 			NightmareVisionLegacyHitBindings.install(interp, this, PlayState,
 				nightmareVisionLegacyGoodNoteHit, nightmareVisionLegacyOpponentNoteHit, nightmareVisionLegacyNoteMiss, nightmareVisionLegacyNoteMissPress);
@@ -1666,8 +1667,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		bindNightmareVisionModifierRenderer(modManager);
 		// Persistent plugin bindings capture only this owner's paths/preferences,
 		// never a PlayState that will be destroyed when another song loads.
+		// A broken update hook fails every frame; the shared repeat filter keeps
+		// the first copies, as for Psych scripts.
 		var scriptReporter = function(name:String, phase:String, error:Dynamic):Void {
-			trace('[nightmare-vision-script-error] ' + root + '/' + name + '#' + phase + ': ' + Std.string(error));
+			var message = '[nightmare-vision-script-error] ' + root + '/' + name + '#' + phase + ': ' + Std.string(error);
+			var shown = RepeatedScriptErrorLog.line(message, message);
+			if (shown != null) trace(shown);
 		};
 		scripts = new NightmareVisionScriptGroup(this, scriptReporter);
 		eventScripts = new NightmareVisionScriptGroup(this, scriptReporter);
@@ -1704,9 +1709,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			SourceStageMetadata.NIGHTMARE_VISION_CREATE);
 		initializeNightmareVisionCharacterGroups();
 		nightmareVisionScripts = new NightmareVisionGameplayScripts(this, plan,
-			File.getContent, seedNightmareVision, function(name, phase, error) {
-				trace('[nightmare-vision-script-error] ' + root + '/' + name + '#' + phase + ': ' + Std.string(error));
-			}, null, nightmareVisionPaths.resolveScript, {
+			File.getContent, seedNightmareVision, scriptReporter, null, nightmareVisionPaths.resolveScript, {
 				main:function() return scripts, setMain:function(value) return scripts = value,
 				events:function() return eventScripts, setEvents:function(value) return eventScripts = value,
 				notes:function() return noteTypeScripts, setNotes:function(value) return noteTypeScripts = value
@@ -2270,6 +2273,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		bindSourceHealthIconClass(interp, nightmare, paths);
 		bindSourceAttachmentClasses(interp, nightmare, paths);
 		if (!nightmare) bindSourceAlphabetClasses(interp, paths);
+		// Psych's receptor constructor takes (x, y, leData, player), not the host's.
+		if (!nightmare) interp.bindConstructorFactory(Strumline.StrumNote,
+			function(args:Array<Dynamic>):Dynamic return PsychSourceStrumNote.create(this, args), null);
 	}
 	function updateSourceHUDIconPositions():Bool {
 		if (sourceHUDIconMode != 0) return true;
@@ -2713,6 +2719,99 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	public var song(get, never):SwagSong;
 	function get_song():SwagSong
 		return SONG;
+	/** V-Slice difficulty id of the chart being played (the engine difficulty name, lowercase). */
+	public var currentDifficulty(get, never):String;
+	function get_currentDifficulty():String {
+		var id = hxcDifficultyId();
+		if (id != '')
+			return id;
+		var names = DifficultyManager.getDifficultyNames();
+		return storyDifficulty >= 0 && storyDifficulty < names.length ? names[storyDifficulty].toLowerCase() : '';
+	}
+	/** V-Slice variation of the chart being played. Imported variations are their
+	 * own installed folders, so the folder decides; a script may override it. */
+	public var currentVariation(get, set):String;
+	var currentVariationOverride:Null<String> = null;
+	/** Scripts read this every frame; the folder lookup is done once per chart. */
+	var currentVariationChart:Dynamic = null;
+	var currentVariationValue:String = 'default';
+	function get_currentVariation():String {
+		if (currentVariationOverride != null)
+			return currentVariationOverride;
+		if (currentVariationChart != SONG) {
+			currentVariationChart = SONG;
+			currentVariationValue = VSliceRegistryCatalog.folderVariation(Song.storageFolder(SONG));
+		}
+		return currentVariationValue;
+	}
+	function set_currentVariation(value:String):String
+		return currentVariationOverride = value;
+	/** V-Slice instrumental id. Each installed variation carries its own
+	 * instrumental, so scripts may record a choice but playback is unchanged. */
+	public var currentInstrumental:String = '';
+	var vsliceChartView:VSliceChartView;
+	/** V-Slice `currentChart`: a read-only SongDifficulty view of SONG, rebuilt
+	 * only when the chart, difficulty or variation changes. */
+	public var currentChart(get, never):VSliceChartView;
+	function get_currentChart():VSliceChartView {
+		if (SONG == null)
+			return null;
+		var difficulty = currentDifficulty;
+		var variation = currentVariation;
+		if (vsliceChartView == null || !vsliceChartView.describes(SONG, difficulty, variation))
+			vsliceChartView = new VSliceChartView(SONG, Song.storageFolder(SONG), difficulty, variation,
+				function():Array<Dynamic> return cast hxcCurrentChartNotes(),
+				VSliceRegistryCatalog.folderDisplay(Song.storageFolder(SONG)));
+		return vsliceChartView;
+	}
+	/** V-Slice's chart-editor playtest flag. Songs here always run as normal
+	 * gameplay (the editor is left first), so scripts keep their normal path. */
+	public var isChartingMode(get, never):Bool;
+	function get_isChartingMode():Bool
+		return false;
+	public var isPracticeMode(get, never):Bool;
+	function get_isPracticeMode():Bool
+		return practiceMode;
+	public var isBotPlayMode(get, never):Bool;
+	function get_isBotPlayMode():Bool
+		return sourceBotPlay();
+	/** V-Slice draws the pause menu on camPause; the engine's top overlay camera plays that role. */
+	public var camPause(get, never):FlxCamera;
+	function get_camPause():FlxCamera
+		return camOther;
+	/** True from a pause-menu resume until the end of the next frame, as in V-Slice. */
+	public var justUnpaused(get, never):Bool;
+	var justUnpausedFlag:Bool = false;
+	function get_justUnpaused():Bool
+		return justUnpausedFlag;
+	function markJustUnpaused():Void {
+		justUnpausedFlag = true;
+		// The pause menu closes during this frame's update, so a postUpdate clear
+		// added now would run before PlayState and its scripts ever see the flag.
+		// Wait for the next frame to start, then clear after its update, which is
+		// when V-Slice clears it.
+		FlxG.signals.preUpdate.addOnce(function() FlxG.signals.postUpdate.addOnce(function() justUnpausedFlag = false));
+	}
+	/** The on-screen pause button exists only on touch builds. */
+	public function togglePauseButton(visible:Bool = false):Void {}
+	/** V-Slice resetCamera: follow the camera target again, optionally restoring
+	 * the stage zoom, cancelling camera tweens and snapping to the target. */
+	public function resetCamera(resetZoom:Bool = true, cancelTweens:Bool = true, snap:Bool = true):Void {
+		if (camGame == null || camFollow == null)
+			return;
+		ensureGameplayCameraBinding();
+		if (cancelTweens) {
+			cancelCameraFollowTween();
+			if (curCamZoom != null)
+				curCamZoom.cancel();
+		}
+		camGame.follow(camFollow, LOCKON, camFollowLerp());
+		camGame.targetOffset.set();
+		if (resetZoom)
+			currentCameraZoom = stageZoom;
+		if (snap)
+			camGame.focusOn(camFollow.getPosition());
+	}
 	// The native HUD text/camera are the closest owned equivalents for the
 	// donor scoreText/camCutscene reads. These aliases are intentionally
 	// read-only so imported modules cannot replace core HUD objects.
@@ -3716,6 +3815,23 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			isPixelStage = curStage.stageData.isPixelStage == true;
 	}
 
+	/** Nightmare Vision keeps sicks, goods, bads and shits on the PlayState
+		instance, so its HUD scripts read them by bare name or through game.
+		Here they are statics; without these routes such a script failed on
+		every update and its score text never refreshed. */
+	function bindNightmareVisionRatingCounts(interp:NightmareVisionScriptInterp):Void {
+		var self = this;
+		var target = function():Dynamic return self;
+		interp.bindLiveValue('sicks', function():Dynamic return PlayState.sicks,
+			function(value:Dynamic):Dynamic return PlayState.sicks = Std.int(value), target);
+		interp.bindLiveValue('goods', function():Dynamic return PlayState.goods,
+			function(value:Dynamic):Dynamic return PlayState.goods = Std.int(value), target);
+		interp.bindLiveValue('bads', function():Dynamic return PlayState.bads,
+			function(value:Dynamic):Dynamic return PlayState.bads = Std.int(value), target);
+		interp.bindLiveValue('shits', function():Dynamic return PlayState.shits,
+			function(value:Dynamic):Dynamic return PlayState.shits = Std.int(value), target);
+	}
+
 	function bindNightmareVisionPixelStage(interp:NightmareVisionScriptInterp):Void {
 		if (!nightmareVisionLegacyFieldCameras) return;
 		var read = function():Dynamic return isPixelStage;
@@ -4510,6 +4626,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var callArgs = sourceArguments ? (args == null ? [] : args) : EngineCompat.callbackArguments(func_name, selectedName, args,
 			hxcPayloadStates.get(usehaxe) == true,
 			Std.isOfType(interp, LuaCompatInterp) && notes != null ? cast notes.members : null);
+		// Psych HScript and Lua files receive the event's strumTime as a fourth argument, as in
+		// Psych. Translated Lua functions drop arguments they do not declare, like real Lua.
+		if (!sourceArguments && func_name == 'onEvent'
+			&& (Std.isOfType(interp, LuaCompatInterp) || interp.variables.get('__psychPlainHscript') == true))
+			callArgs = EngineCompat.psychHscriptEventArguments(callArgs, args);
 		// Some hooks build their event object per scope, so the broadcast reads
 		// stopPropagation() from the object this scope was actually given.
 		var hxcCallPayload:Dynamic = hxcPayloadStates.get(usehaxe) == true ? EngineCompat.hxcPayloadIn(callArgs) : null;
@@ -6766,7 +6887,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (FlxG.sound.music != null)
 			FlxG.sound.music.stop();
 		if (looping) {
-			FlxG.resetState();
+			// The loop modifier retries at once, like the game over would.
+			restartSong();
 		} else if (gitaroo) {
 			// gitaroo man easter egg
 			LoadingState.loadAndSwitchState(new GitarooPause());
@@ -6848,9 +6970,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			if (nightmareVisionPaths == null) throw '[source-gameover] NV owner Paths is unavailable';
 			return nightmareVisionPaths.findFileWithExts((preferSounds ? 'sounds/' : 'music/') + name, ['ogg', 'wav']);
 		}
-		var paths = sourceGameOverPsychPaths();
-		var method = Reflect.field(paths, preferSounds ? 'sound' : 'music');
-		return Reflect.callMethod(paths, method, [name]);
+		// Psych's Paths.sound and Paths.music only hand back a loaded Sound (or
+		// the beep), never a file path, so a Psych owner has no path to give.
+		// Returning that Sound here typed it as a String; callers that need the
+		// audio use sourceGameOverSound.
+		return null;
 	}
 
 	@:keep public function sourceGameOverSound(property:String, preferSounds:Bool):openfl.media.Sound {
@@ -6862,12 +6986,17 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			if (nightmareVisionPaths == null) throw '[source-gameover] NV owner Paths is unavailable';
 			return preferSounds ? nightmareVisionPaths.sound(name) : nightmareVisionPaths.music(name);
 		}
-		var path = sourceGameOverSoundPath(property, preferSounds);
-		if (!FNFAssets.exists(path)) {
-			trace('[psych-gameover-missing-sound] ' + property + '=' + name + ' path=' + path);
+		// Psych's Paths.sound and Paths.music hand back the loaded Sound, or the
+		// beep when the file is missing, not a path. Reading the result as a path
+		// turned every Psych game-over sound into the beep.
+		var paths = sourceGameOverPsychPaths();
+		var method = Reflect.field(paths, preferSounds ? 'sound' : 'music');
+		var sound:Dynamic = Reflect.callMethod(paths, method, [name]);
+		if (!Std.isOfType(sound, openfl.media.Sound)) {
+			trace('[psych-gameover-missing-sound] ' + property + '=' + name);
 			return flixel.system.FlxAssets.getSound('flixel/sounds/beep');
 		}
-		return FNFAssets.getSound(path);
+		return sound;
 	}
 
 	function compatFindObject(name:Dynamic):Dynamic {
@@ -7144,12 +7273,28 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	function compatPsychSpriteFrameNames(ownerRoot:String, key:String, method:String):Array<String> {
 		if (method == 'getAtlas' || method == 'getSparrowAtlas') {
+			// A screen built in one callback asks for the same atlas many times;
+			// the names only change when the files do (pathEpoch). Callers only read them.
+			var epoch = FNFAssets.pathEpoch();
+			if (compatSpriteFrameNamesEpoch != epoch) {
+				compatSpriteFrameNamesCache.clear();
+				compatSpriteFrameNamesEpoch = epoch;
+			}
+			var cacheKey = ownerRoot + '|' + key;
+			var cached = compatSpriteFrameNamesCache.get(cacheKey);
+			if (cached != null)
+				return cached;
 			var xmlPath:Dynamic = compatPsychPathCall(ownerRoot, 'file', ['images/' + key + '.xml']);
-			if (xmlPath != null && FNFAssets.exists(Std.string(xmlPath)))
-				return compatReadSparrowFrameNames(FNFAssets.getText(Std.string(xmlPath)));
+			if (xmlPath != null && FNFAssets.exists(Std.string(xmlPath))) {
+				var names = compatReadSparrowFrameNames(FNFAssets.getText(Std.string(xmlPath)));
+				compatSpriteFrameNamesCache.set(cacheKey, names);
+				return names;
+			}
 		}
 		return [];
 	}
+	var compatSpriteFrameNamesCache:Map<String, Array<String>> = new Map();
+	var compatSpriteFrameNamesEpoch:Int = -1;
 
 	/**
 		Psych keeps animated Lua sprites on Sparrow atlases.  Loading only the PNG
@@ -9155,14 +9300,30 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		setAllHaxeVar('customSubstateName', 'unnamed');
 	}
 
+	/** True while the songRetry callbacks run. */
+	var songRetryDispatching:Bool = false;
+
 	/** Retry the song being played. The pause menu, game over and scripts
 	 * all come through here, so every retry tells the song's scripts first
 	 * and leaves no video, flash or shader behind for the next attempt. */
 	@:keep public function restartSong(?skipTransition:Bool = false):Void {
+		// A songRetry callback that restarts or resets the song itself (script
+		// FlxG.resetState comes here too) would dispatch songRetry again without
+		// end. The retry already under way covers it.
+		if (songRetryDispatching)
+			return;
 		// V-Slice modules receive a final retry hook before the old state is
 		// replaced. EngineCompat adapts this to a mutable HXC lifecycle payload
 		// while ordinary HScript keeps its empty-argument callback ABI.
-		callAllHScript('songRetry', [], false, null, [EngineCompat.hxcSongRetryPayload(hxcDifficultyId())]);
+		songRetryDispatching = true;
+		try {
+			callAllHScript('songRetry', [], false, null, [EngineCompat.hxcSongRetryPayload(hxcDifficultyId())]);
+		} catch (error:Dynamic) {
+			// A later retry must still be possible after a failed one.
+			songRetryDispatching = false;
+			throw error;
+		}
+		songRetryDispatching = false;
 		#if cpp
 		stopCompatEventVideo();
 		#end
@@ -9178,7 +9339,22 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		paused = false;
 		compatCustomSubstateOpen = false;
 		skipNextSongTransition(skipTransition);
-		LoadingState.loadAndSwitchState(new PlayState());
+		// The same chart and difficulty skips the loading screen and keeps what
+		// this attempt loaded while the files are unchanged (SongRetry). Another
+		// chart or difficulty needs the full load.
+		if (SongRetry.request(SONG, storyDifficulty, haxe.Timer.stamp()))
+			LoadingState.switchStateNow(new PlayState());
+		else
+			LoadingState.loadAndSwitchState(new PlayState());
+	}
+
+	/** FlxG.resetState() from a script. Resetting a song is a retry, so it
+	 * takes the same path as the pause menu and game over. */
+	@:keep public static function resetCurrentState():Void {
+		if (instance != null && FlxG.state == instance)
+			restartCurrentSong();
+		else
+			FlxG.resetState();
 	}
 
 	/** Retry from anywhere, including a substate that outlived its song. */
@@ -9230,6 +9406,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			DifficultyManager.getDifficultyNames(), DifficultyManager.getDefaultDiff());
 		if (target == null)
 			return false;
+		// Loading the chart being played is a retry of it. The chart is still
+		// read again, as the source engines do, but the rest stays loaded.
+		var retry = instance != null && FlxG.state == instance && SONG != null
+			&& SongFlow.sameChart(target, SONG.song, storyDifficulty, DifficultyManager.getDifficultyNames(),
+				DifficultyManager.getDefaultDiff());
 		try {
 			var loaded = Song.loadFromJson(target.chart, target.song.toLowerCase());
 			if (loaded == null)
@@ -9239,6 +9420,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		} catch (error:Dynamic) {
 			trace('loadSong failed for ' + target.song + ' (' + target.chart + '): ' + error);
 			return false;
+		}
+		if (retry) {
+			SongRetry.chartReloaded(SONG);
+			instance.restartSong(skipTransition);
+			return true;
 		}
 		skipNextSongTransition(skipTransition);
 		LoadingState.loadAndSwitchState(new PlayState());
@@ -9884,14 +10070,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			interp.variables.set('hxcCoalesce', hxcCoalesce);
 			interp.variables.set('hxcMap', hxcMap);
 			interp.variables.set('hxcCharacterCache', {h: []});
-		interp.variables.set('hxcCacheTexture', function(_asset:Dynamic) return null);
-		// FunkinMemory.cacheSound preloads through the scoped donor-sound loader
-		// so the first play is warm, matching the donor's cache-then-play flow.
-		interp.variables.set('hxcCacheSound', function(_asset:Dynamic) {
-			try HxcCompatRuntime.loadFunkinSound(Std.string(interp.variables.get('hxcAssetRoot')), _asset)
-			catch (_:Dynamic) {}
-			return null;
-		});
+		// Same warm-up pair as PluginManager, for interpreters made elsewhere.
+		HxcCompatRuntime.bindAssetWarmups(interp.variables);
 		// V-Slice's ScriptedFlxRuntimeShader exposes pause/resume helpers through
 		// a utility singleton. Keep those calls on native tween objects only.
 		interp.variables.set('FlxTweenUtil', {
@@ -10598,20 +10778,31 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			return FNFAssets.getText(normalized);
 		if (lower.endsWith('.hx') && FNFAssets.exists(normalized)
 			&& compatPsychOwnerForScript(normalized) != null) {
-			var converted = PsychHscriptCompat.normalize(FNFAssets.getText(normalized), true);
+			var text = FNFAssets.getText(normalized);
+			// A fast retry reuses the translation of the attempt before it (SongRetry).
+			var converted = SongRetry.translation('psych-hx|' + normalized, text,
+				function() return PsychHscriptCompat.normalize(text, true));
 			for (diagnostic in converted.diagnostics) trace(diagnostic + ' (' + normalized + ')');
 			// A rejected source must not count as a loaded stage or suppress a valid
 			// sibling Lua file. Callers already handle missing compatible modules.
 			return converted.supported ? converted.source : null;
 		}
 		if (lower.endsWith('.lua') && FNFAssets.exists(normalized)) {
-			var converted = LuaCompat.translate(FNFAssets.getText(normalized), normalized, compatPsychOwnerForScript(normalized) != null);
+			var text = FNFAssets.getText(normalized);
+			var psychOwned = compatPsychOwnerForScript(normalized) != null;
+			var converted = SongRetry.translation('lua|' + psychOwned + '|' + normalized, text,
+				function() return LuaCompat.translate(text, normalized, psychOwned));
 			for (diagnostic in converted.diagnostics)
 				trace(diagnostic);
 			return converted.hscript;
 		}
 		if (lower.endsWith('.hxc') && FNFAssets.exists(normalized)) {
-			var converted = HxcCompat.translate(FNFAssets.getText(normalized), normalized);
+			var text = FNFAssets.getText(normalized);
+			// A character also reads its base classes from other files, so it is
+			// never carried, the same rule HxcCompat's own memo uses.
+			var converted = SongRetry.translation('hxc|' + normalized, text,
+				function() return HxcCompat.translate(text, normalized),
+				function(result:Dynamic):Bool return result == null || result.kind != 'character');
 			if (metadataSink != null)
 				Reflect.setField(metadataSink, 'result', converted);
 			for (diagnostic in converted.diagnostics)
@@ -10639,7 +10830,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			luaPath += '.lua';
 		if (!FNFAssets.exists(luaPath))
 			return null;
-		var converted = LuaCompat.translate(FNFAssets.getText(luaPath), luaPath, compatPsychOwnerForScript(luaPath) != null);
+		var luaText = FNFAssets.getText(luaPath);
+		var luaPsychOwned = compatPsychOwnerForScript(luaPath) != null;
+		var converted = SongRetry.translation('lua|' + luaPsychOwned + '|' + luaPath, luaText,
+			function() return LuaCompat.translate(luaText, luaPath, luaPsychOwned));
 		for (diagnostic in converted.diagnostics)
 			trace(diagnostic);
 		return converted.hscript;
@@ -13536,6 +13730,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			return;
 		var plan = PsychScriptDiscovery.discover(owner, Song.storageFolder(SONG), SONG, songEvents);
 		var names:Array<String> = [];
+		// Animated sheets also get their atlas frames built below. Collected in
+		// the same pass so each script is read from disk once.
+		var animated = new Map<String, Bool>();
 		for (entry in plan.scripts) {
 			if (entry == null || entry.scope != PsychScriptDiscovery.GLOBAL || entry.path == null)
 				continue;
@@ -13543,9 +13740,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			try source = FNFAssets.getText(entry.path) catch (_:Dynamic) continue;
 			for (image in ScriptImageLiterals.spriteImages(source))
 				if (names.indexOf(image) < 0) names.push(image);
+			for (image in ScriptImageLiterals.animatedSpriteImages(source))
+				animated.set(image, true);
 		}
 		var paths:Dynamic = PsychOwnerPaths.create(owner, psychStageLibrary);
 		var ownedPath = Reflect.field(paths, '__sourceOwnedPath');
+		var warmed:Array<String> = [];
 		for (image in ScriptImageLiterals.withinBudget(names, function(image:String):Int {
 			var owned:Dynamic = null;
 			try owned = Reflect.callMethod(paths, ownedPath, ['images/' + compatPsychAssetKey(image, '.png') + '.png'])
@@ -13558,10 +13758,28 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				input.close();
 			} catch (_:Dynamic) {}
 			return ScriptImageLiterals.pngPixels(header);
-		}))
+		})) {
 			// Held for the end of the song only to be drawn, so in video memory
 			// alone: keeping the decoded pixels too cost every song about 70 MB.
-			try compatPrecacheImageForOwner(owner, image, true, true) catch (_:Dynamic) {}
+			try {
+				compatPrecacheImageForOwner(owner, image, true, true);
+				warmed.push(image);
+			} catch (_:Dynamic) {}
+		}
+		// The same callback then turns each animated sheet into frames, which
+		// reads its XML and probes the owner's folders. Build them now as well, so
+		// that callback finds them in the atlas and frame-name caches.
+		// Only sheets decoded above: building frames for another image would
+		// decode it with its pixels kept, the memory the budget is there to cap.
+		for (image in warmed) {
+			if (!animated.exists(image) || !compatPsychOwnerFallbackAllowed(owner, image))
+				continue;
+			var key = compatPsychAssetKey(image, '.png');
+			try {
+				if (compatPsychPathCall(owner, 'getAtlas', [key]) != null)
+					compatPsychSpriteFrameNames(owner, key, 'getAtlas');
+			} catch (_:Dynamic) {}
+		}
 		#end
 	}
 
@@ -14698,6 +14916,26 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 		#end
 		return null;
+	}
+
+	/** Psych takes pixel notes, receptors, countdown and ratings from the stage
+	 * file (isPixelStage, or a pixel stageUI), not from the chart. Here all of
+	 * those are built from SONG.uiType, and the stage file is applied much later
+	 * (applyPsychStageJson cannot flip pixel mode by then), so the stage's choice
+	 * is moved onto the chart before the UI pack is picked. A chart that already
+	 * names a non-normal UI keeps it. */
+	function applyPsychStagePixelUI():Void {
+		if (SONG == null || SONG.stage == null || Judgement.uiJson == null) return;
+		if (SONG.uiType != null && SONG.uiType != 'normal') return;
+		if (!Reflect.hasField(Judgement.uiJson, 'pixel')) return;
+		var root = selectedPsychSkinRoot();
+		var path = root == null ? null : psychStageMetadataPath(root, Std.string(SONG.stage));
+		if (path == null || !FNFAssets.exists(path)) return;
+		var meta:SourceStageMetadata = null;
+		try meta = SourceStageMetadata.parse(CoolUtil.parseJson(FNFAssets.getText(path))) catch (_:Dynamic) {}
+		if (meta == null || !stageUIIsPixel(meta.stageUI)) return;
+		SONG.uiType = 'pixel';
+		trace('[psych-stage-ui] Stage ' + SONG.stage + ' is a Psych pixel stage; the song uses the pixel UI.');
 	}
 
 	function applyOwnedPsychStageMetadataOnly(?selectedOwnerRoot:String):Bool {
@@ -16054,6 +16292,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	override public function create() {
 		if (guardMissingSongBeforeCreate()) return;
+		// A fast retry takes back what the attempt before it loaded.
+		SongRetry.beginAttempt();
 		// Scripts written for the source engines assume menu music exists before the song.
 		SongMusicSlot.ensure();
 		// Each song reports its own script errors again, even ones a previous song hid.
@@ -16072,7 +16312,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		instance = this;
 		// Before the loading handoff collection, so that collection already
 		// sets the song's next trigger point from the larger free space.
-		EngineMemory.enterSong(this);
+		EngineMemory.enterSong(this, OptionsHandler.options.lowMemoryMode);
 		// startingPosition is the editor's one-shot launch request. Capture it on
 		// the owning state before HXC callbacks run, then clear the static scratch
 		// value so a later Freeplay/retry launch of the same song starts at zero.
@@ -16113,6 +16353,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		#end
 		universalVar = new Map<String, Dynamic>();
 		Judgement.uiJson = CoolUtil.parseJson(FNFAssets.getText('assets/images/custom_ui/ui_packs/ui.json'));
+		applyPsychStagePixelUI();
 		uiSmelly = Reflect.field(Judgement.uiJson, SONG.uiType);
 		misses = bads = goods = sicks = shits = 0;
 		performanceMaxCombo = 0; performancePlayerNotes = 0;
@@ -16955,6 +17196,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		callAllHScript('stateChangeEnd', [EngineCompat.hxcLifecyclePayload('stateChangeEnd', {targetState: this})]);
 		RuntimeSmokeHarness.markStep('playstate:create:stateChangeEnd-complete');
 		SongLoadingScreen.workUnit();
+		// What a later retry compares against to know nothing changed.
+		SongRetry.finishAttempt(SONG, storyDifficulty, FNFAssets.pathEpoch());
 		RuntimeSmokeHarness.markPlayStateReady(SONG);
 		if (runtimeSmokeActorTracking()) RuntimeSmokeHarness.markCodenameActorSnapshot(runtimeSmokeActorSummary());
 		runtimeSmokeCameraSnapshot('playstate-ready');
@@ -17767,6 +18010,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return true;
 	}
 
+	/** The imported script cutscene currently playing, controlled through V-Slice's VideoCutscene facade. */
+	#if cpp
+	public var hxcActiveVideo(default, null):VideoCutscene;
+	#else
+	public var hxcActiveVideo(default, null):Dynamic;
+	#end
 	@:keep public function hxcPlayImportedVideo(filename:Dynamic, ?ending:Bool = false):Bool {
 		var clean = hxcResolveImportedVideoPath(filename);
 		if (clean == null)
@@ -17776,6 +18025,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		video = new VideoCutscene(clean, function() {
 			remove(video);
 			video.destroy();
+			if (hxcActiveVideo == video)
+				hxcActiveVideo = null;
+			VSliceVideoCutscene.onVideoEnded.dispatch();
 			if (ending)
 				endForReal();
 			else
@@ -17783,6 +18035,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		});
 		video.onSkipAhead = function(ms:Float) advanceScriptTimersPastCutscene(ms / 1000);
 		add(video);
+		hxcActiveVideo = video;
+		VSliceVideoCutscene.onVideoStarted.dispatch();
 		return true;
 		#else
 		trace('Video cutscenes are not supported on this target: ' + clean);
@@ -20796,6 +21050,15 @@ void main(void) {
 		return true;
 	}
 
+	/** Event time in milliseconds as a Float, the type Psych passes for strumTime. */
+	static function eventStrumTime(e:Dynamic):Float {
+		var time:Dynamic = e == null ? null : e.time;
+		if (time == null) return 0;
+		if (Std.isOfType(time, Float) || Std.isOfType(time, Int)) return time;
+		var parsed = Std.parseFloat(Std.string(time));
+		return Math.isNaN(parsed) ? 0 : parsed;
+	}
+
 	function fireNativeSongEvent(e:Dynamic, ?suppressHistoricalNotification:Void->Void) {
 		var psychStageEvent:Dynamic = e;
 		var eventNameLower = e == null || e.name == null ? ''
@@ -20818,7 +21081,8 @@ void main(void) {
 		// rejects short calls, while extra args are truncated harmlessly.
 		trace('event: ${e.name} @ ${Math.round(e.time)}ms v1=${e.v1} v2=${e.v2}');
 		// Historical source scripts receive onEvent after effects through their live registry.
-		callAllHScript('onEvent', [e.name, e.v1, e.v2, e.v3 == null ? '' : e.v3],
+		// The fifth slot is the event time, which Psych HScript files receive as strumTime.
+		callAllHScript('onEvent', [e.name, e.v1, e.v2, e.v3 == null ? '' : e.v3, eventStrumTime(e)],
 			false, null, null, nightmareVisionLegacyFieldCameras, nightmareVisionLegacyFieldCameras);
 		// HXC/V-Slice song scripts use onSongEvent(event) and receive a single
 		// structured payload. Keep that lifecycle alongside the legacy Psych
@@ -21836,14 +22100,20 @@ void main(void) {
 		if (opponentPcm != null) opponentPcm.release();
 	}
 
+	/** Normalized and plain decodes of one file are different tracks. */
+	static function songTrackVariant():String {
+		return OptionsHandler.options.normalizeSongAudio ? 'normalized' : 'plain';
+	}
+
 	private function loadVocalTrack(path:String, ?prefetchedSound:Sound):FlxSound {
 		if (path == null || !FNFAssets.exists(path))
 			return null;
 		try {
 			#if sys
-			return new FlxSound().loadEmbedded(SongAudioNormalizer.prepare(
-				prefetchedSound == null ? FNFAssets.getSound(path) : prefetchedSound,
-				path, OptionsHandler.options.normalizeSongAudio));
+			return new FlxSound().loadEmbedded(SongRetry.songTrack(path, songTrackVariant(), function():Sound
+				return SongAudioNormalizer.prepare(
+					prefetchedSound == null ? FNFAssets.getSound(path) : prefetchedSound,
+					path, OptionsHandler.options.normalizeSongAudio)));
 			#else
 			return new FlxSound().loadEmbedded(path);
 			#end
@@ -21905,7 +22175,9 @@ void main(void) {
 			// Decode the two common split stems independently. All asset resolution,
 			// existence checks, wrappers, normalization and Flixel objects stay on
 			// this thread; the worker only receives real in-scope Ogg/WAV filenames.
-			if (splitPaths.length == 2 && ImportIO.current() == null) {
+			// A retry already has both stems decoded; see loadVocalTrack.
+			if (splitPaths.length == 2 && ImportIO.current() == null
+				&& !SongRetry.hasCarriedTrack(splitPaths[0].path, songTrackVariant())) {
 				var decodePaths:Array<String> = [];
 				var runtimeRoot = Path.normalize(FileSystem.absolutePath(
 					Main.cwd == null ? Sys.getCwd() : Main.cwd));
@@ -22164,8 +22436,10 @@ void main(void) {
 		if (RuntimeSmokeHarness.enabled()) @:privateAccess RuntimeSmokeHarness.emit('resolved_song_audio',
 			{song:SONG.song, difficulty:storyDifficultyText, instrumental:useInst, vocals:useVocals, stems:SONG.vocalStems});
 		
-		inst = SongAudioNormalizer.prepare(Sound.fromFile(useInst), useInst,
-			OptionsHandler.options.normalizeSongAudio);
+		// A retry gets the decode of the attempt before it back.
+		inst = SongRetry.songTrack(useInst, songTrackVariant(), function():Sound
+			return SongAudioNormalizer.prepare(Sound.fromFile(useInst), useInst,
+				OptionsHandler.options.normalizeSongAudio));
 		RuntimeSmokeHarness.markLoadPhase('instrument_loaded');
 		SongLoadingWork.complete(true);
 
@@ -22913,6 +23187,16 @@ void main(void) {
 		}
 	}
 	/** Source feedback follows the selected field, including bank replacement. */
+	static function syncComboBreakLanes(group:FlxTypedGroup<FlxSprite>, line:Strumline):Void {
+		if (group == null || line == null) return;
+		var count = group.members.length < line.members.length ? group.members.length : line.members.length;
+		for (i in 0...count) {
+			var sprite = group.members[i];
+			var strum = line.members[i];
+			if (sprite != null && strum != null) sprite.x = strum.x;
+		}
+	}
+
 	function syncNightmareVisionComboBreakGeometry(player:Int):Void {
 		var group = player == 1 ? playerComboBreak : enemyComboBreak;
 		if (group == null || group.members == null) return;
@@ -23965,6 +24249,7 @@ void main(void) {
 			dispatchPsychCompiledStage('closeSubState', []);
 		}
 		if (paused) {
+			markJustUnpaused();
 			// Nothing below reads `paused` or the song clock, so clearing the pause
 			// and resyncing first is the same as doing it after the timers.
 			resumeGameplayFromSubstate(!psychSourcePause || canResync, false);
@@ -24581,12 +24866,11 @@ void main(void) {
 				syncNightmareVisionComboBreakGeometry(1);
 				syncNightmareVisionComboBreakGeometry(0);
 			} else {
-				for (i in 0...playerStrums.members.length)  {
-					playerComboBreak.members[i].x = playerStrums.members[i].x;
-				}
-				for (i in 0...enemyStrums.members.length) {
-					enemyComboBreak.members[i].x = enemyStrums.members[i].x;
-				}
+				// Scripts can add receptors (Psych's `new StrumNote` for an extra
+				// key), and the combo-break sprites were made for the chart's lanes
+				// only. Reading past them crashed the game natively.
+				syncComboBreakLanes(playerComboBreak, playerStrums);
+				syncComboBreakLanes(enemyComboBreak, enemyStrums);
 			}
 		}
 		var properHealth = opponentPlayer ? 100 - Math.round(health*50) : Math.round(health*50);
@@ -26737,6 +27021,13 @@ void main(void) {
 		refreshSourceAccuracy();
 	}
 
+	/** The counted miss Psych and modern Nightmare Vision share: score it, then
+	 * tell rating listeners. The two families differ only in when they call it. */
+	function countSourceMiss():Void {
+		applySourceMiss();
+		notifyPsychRatingChange(true);
+	}
+
 	function refreshSourceAccuracy():Void {
 		accuracy = totalPlayed == 0 ? 0 : Math.max(0, Math.min(1, totalNotesHit / totalPlayed)) * 100;
 		setAllHaxeVar('accuracy', accuracy);
@@ -28142,8 +28433,7 @@ void main(void) {
 				var previousCombo = combo;
 				combo = 0;
 				applySourceMissHealth(note, playerOne, true);
-				applySourceMiss();
-				notifyPsychRatingChange(true);
+				countSourceMiss();
 				sourceMissAnimation(direction, note, actingOn);
 				reactGirlfriendToComboBreak(previousCombo, sourceMissPerformer(note, actingOn), false);
 				setSourceVocalVolume('player', 0);
@@ -28173,8 +28463,7 @@ void main(void) {
 				// The kill mutes the player's track itself before the death check.
 				if (instakillOnMiss) killOnSourceMiss(false);
 				else setSourceVocalVolume('player', 0);
-				applySourceMiss();
-				notifyPsychRatingChange(true);
+				countSourceMiss();
 			}
 			// NV's noteMissPress broadcast is owned by the key-input router once
 			// all affected fields have delivered their local handlers.
@@ -29666,6 +29955,18 @@ void main(void) {
 		super.startOutro(onOutroComplete);
 	}
 
+	/**
+		HUD texts the state builds but only shows on request. super.destroy()
+		frees members only, so a text that was never added (or was removed
+		again) kept its cached text graphic after every song and every retry.
+		A text that was added is already destroyed by now: no graphic left.
+	**/
+	function releaseDetachedHudTexts():Void {
+		for (text in [healthTxt, accuracyTxt, botplayTxt, currentTimingShown])
+			if (text != null && text.graphic != null)
+				text.destroy();
+	}
+
 	override public function destroy() {
 		RuntimeSongExitProbe.mark("destroy-begin");
 		SongLoadingScreen.beginWork('cleanup', 7, 0.05, 0.5);
@@ -29900,6 +30201,7 @@ void main(void) {
 		super.destroy();
 		RuntimeSongExitProbe.mark("after-native-destroy");
 		Note.flushRetiredLegacyRows();
+		releaseDetachedHudTexts();
 		SongLoadingScreen.workUnit();
 		// A script may have mounted an initial ghost; native teardown already owns it then.
 		for(sprite in nightmareVisionLegacyGhosts) if(sprite.animation!=null) sprite.destroy();

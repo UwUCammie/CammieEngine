@@ -2421,6 +2421,10 @@ class ImportRefreshManager {
 						ImportEngine.NIGHTMARE_VISION, member.namespace);
 				}
 		}
+		cooperateImportWork(cancel);
+		// Content packages outside the recorded roots keep the namespace they had,
+		// even when this import captured the source into a new snapshot.
+		ImportPackageNamespaces.retain(io, source, record, previous);
 			// Registry baselines describe this import's contribution, not a claim
 			// on every entry in a shared registry. Undo that contribution in staging
 			// before converting again, then preserve unrelated installed entries.
@@ -2525,6 +2529,7 @@ class ImportRefreshManager {
 			cooperateImportWork(cancel);
 			var familyCatalog = ImportPackageFamilyCatalog.capturePublished(Path.directory(source), record, io);
 			if (familyCatalog != null) Reflect.setField(record, "packageFamilyCatalog", familyCatalog);
+			ImportPackageNamespaces.capture(io, source, record);
 			var outputs:Array<ImportRefreshStagedOutput> = [];
 			var baselines:Array<ImportRefreshManifestFile> = [];
 			var nextRegistries:Array<Dynamic> = [];
@@ -2631,6 +2636,15 @@ class ImportRefreshManager {
 				throw "Import refresh " + applied.status + ": " + [for (c in applied.conflicts) c.path + " (" + c.reason + ")"].join(", ");
 			ImportWorkScheduler.cooperate();
 			var committed = committedManifest(state, owner);
+			// Storage upkeep after a durable commit: never fail the import over it.
+			try {
+				var pruned = ImportPackageNamespaces.pruneEmptyNamespaces(install, previous, committed);
+				var shared = NightmareVisionSharedCore.linkCommitted(install, committed);
+				if (pruned > 0 || shared.linked > 0)
+					trace("[import-shared-core] linked " + shared.linked + " identical core files ("
+						+ Math.round(shared.bytesShared / 1048576) + " MB stored once), removed "
+						+ pruned + " empty namespace folders");
+			} catch (upkeep:Dynamic) trace("[import-shared-core] storage upkeep skipped: " + Std.string(upkeep));
 			var committedRoots = familyOwnerRootsForRecord(record, ownerRootsForRecord(record));
 			var importedHistoryRoots = ownerRootsForRecord(record);
 			mutex.acquire();
@@ -3192,9 +3206,10 @@ class ImportRefreshManager {
 	static function startNext():Void {
 		mutex.acquire();
 		if (removalToken != "" || active || inspectionPending || queue.length == 0) { mutex.release(); return; }
-		var index = 0;
-		while (index < queue.length && runtimeOwnersBusyLocked(queuedRuntimeRoots(queue[index]))) index++;
-		if (index >= queue.length) { mutex.release(); return; }
+		var index = ImportRefreshQueueOrder.nextIndex(queue,
+			function(record:Dynamic) return runtimeOwnersBusyLocked(queuedRuntimeRoots(record)),
+			function(record:Dynamic) return ImportRefreshProgress.estimatedWorkUnits(Reflect.field(record,"estimatedWorkUnits")));
+		if (index < 0) { mutex.release(); return; }
 		var record = queue.splice(index,1)[0];
 		var token = "refresh:" + Std.string(record.id);
 		var owner = "retained-import:" + Std.string(record.id);

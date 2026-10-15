@@ -8,6 +8,11 @@ class SourceScriptTextBindings {
 	final color:String->Dynamic;
 	final borderStyle:(Dynamic,String)->Void;
 	final missing:String->Void;
+	/** Tags already reported, by method. Scripts often poll a text that was
+		never made (for example getTextString from onUpdate), and one warning per
+		frame flooded the log with thousands of identical lines. Psych only
+		prints these in luaDebugMode, so one report per tag keeps the hint. */
+	final reported:Map<String, Map<String, Bool>> = new Map();
 	public function new(legacy:Bool, resolve:String->Dynamic, font:String->String, color:String->Dynamic,
 		borderStyle:(Dynamic,String)->Void, missing:String->Void) {
 		this.legacy = legacy;this.resolve = resolve;this.font = font;this.color = color;
@@ -15,7 +20,15 @@ class SourceScriptTextBindings {
 	}
 	function result(ok:Bool, method:String, tag:String):Dynamic {
 		if (legacy) return null;
-		if (!ok) missing(method + ': Object ' + tag + " doesn't exist!");
+		if (!ok) {
+			var tags = reported.get(method);
+			if (tags == null) reported.set(method, tags = new Map());
+			var key = tag == null ? '' : tag;
+			if (!tags.exists(key)) {
+				tags.set(key, true);
+				missing(method + ': Object ' + tag + " doesn't exist!");
+			}
+		}
 		return ok;
 	}
 	function write(tag:String, field:String, value:Dynamic, method:String):Dynamic {

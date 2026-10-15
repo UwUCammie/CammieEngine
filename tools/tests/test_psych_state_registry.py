@@ -22,6 +22,7 @@ class PsychMusicBeatSubstate {}
 class PsychBaseStageCompat {public function new(){}}
 class PsychStageConstruction {public static function createNative(context:Dynamic):PsychBaseStageCompat return new PsychBaseStageCompat();}
 class PsychObjectProviders {public static function stageContext():Dynamic return null;}
+class LegacyVideoHandler {public static final SCRIPT_PATHS:Array<String>=['hxcodec.flixel.FlxVideo','vlc.MP4Handler'];}
 
 class PlayState extends MusicBeatState {public var enemyStrums:Dynamic={members:[]};public var nightmareVisionLegacyFieldCameras:Bool=false;public function new(){super();}__ALIAS__}
 class NightmareVisionScriptInterp {
@@ -45,6 +46,7 @@ class Main {
   check(first.imports.get('backend.MusicBeatState')==MusicBeatState&&first.sourceClassScope().resolveClass('states.PlayState')==PlayState,'native source class identities');
   check(first.imports.get('backend.MusicBeatSubstate')==PsychMusicBeatSubstate&&first.sourceClassScope().resolveClass('backend.MusicBeatSubstate')==PsychMusicBeatSubstate,'source substate class identity');
   check(first.constructorType==PsychMusicBeatSubstate,'source constructor identity overrides the native short-name collision');
+  check(first.imports.get('hxcodec.flixel.FlxVideo')==LegacyVideoHandler&&first.imports.get('vlc.MP4Handler')==LegacyVideoHandler,'legacy video imports reach the engine player');
   var constructed:MusicBeatState=first.sourceClassScope().createInstance(MusicBeatState,[]);check(constructed.psychSourceTiming&&!a.psychSourceTiming,'source construction is scoped, native host remains unchanged');
   check(first.sourceClassScope().read(constructed,'controls')=='source'&&second.sourceClassScope().read(constructed,'controls')=='source','source controls apply across interpreter scopes');
   check(first.sourceClassScope().read(a,'controls')=='native'&&constructed.controls=='native','native typed controls stay isolated');
@@ -60,7 +62,7 @@ class Main {
 '''.replace('__NATIVE__',native).replace('__SOURCE__',(source_get+'\n'+source_state).replace('MusicBeatState','DonorMusicBeatState').replace('FlxG','DonorFlxG')).replace('__ALIAS__',alias)
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
    work=FixturePath(folder)
-   for name in ['FlxG','DonorFlxG','MusicBeatState','DonorMusicBeatState','PlayState','PsychControlsCompat','PsychCustomSubstate','PsychMusicBeatSubstate','PsychBaseStageCompat','PsychStageConstruction','PsychObjectProviders','NightmareVisionScriptInterp','Main']:(work/(name+'.hx')).write_text(extract_method(fixture,'class '+name+' '))
+   for name in ['FlxG','DonorFlxG','MusicBeatState','DonorMusicBeatState','PlayState','PsychControlsCompat','PsychCustomSubstate','PsychMusicBeatSubstate','PsychBaseStageCompat','PsychStageConstruction','PsychObjectProviders','LegacyVideoHandler','NightmareVisionScriptInterp','Main']:(work/(name+'.hx')).write_text(extract_method(fixture,'class '+name+' '))
    for name in ['SourceClassAccess','SourceNativeClassScope','PsychStateClassBindings']:(work/(name+'.hx')).write_text((ROOT/'source'/(name+'.hx')).read_text())
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(work),'-main','Main','--interp'],text=True,capture_output=True,timeout=60)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)

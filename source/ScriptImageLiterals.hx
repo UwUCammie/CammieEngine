@@ -53,9 +53,20 @@ class ScriptImageLiterals {
 		return (bytes.get(at) << 24) | (bytes.get(at + 1) << 16) | (bytes.get(at + 2) << 8) | bytes.get(at + 3);
 
 	static final CONSTRUCTORS:Array<String> = ['makeLuaSprite', 'makeAnimatedLuaSprite'];
+	static final ANIMATED_CONSTRUCTORS:Array<String> = ['makeAnimatedLuaSprite'];
 
 	/** Distinct image names, in first-seen order, at most `limit` of them. */
 	public static function spriteImages(source:String, limit:Int = DEFAULT_LIMIT):Array<String> {
+		return literalImages(source, limit, CONSTRUCTORS);
+	}
+
+	/** The names spriteImages finds in makeAnimatedLuaSprite calls only: the
+		sheets that also get their atlas frames built. */
+	public static function animatedSpriteImages(source:String, limit:Int = DEFAULT_LIMIT):Array<String> {
+		return literalImages(source, limit, ANIMATED_CONSTRUCTORS);
+	}
+
+	static function literalImages(source:String, limit:Int, constructors:Array<String>):Array<String> {
 		var found:Array<String> = [];
 		if (source == null || limit <= 0)
 			return found;
@@ -64,7 +75,7 @@ class ScriptImageLiterals {
 		while (index < source.length && found.length < limit) {
 			var next = -1;
 			var nameLength = 0;
-			for (name in CONSTRUCTORS) {
+			for (name in constructors) {
 				var at = source.indexOf(name + '(', index);
 				// Neither name occurs inside the other, so the nearest match is
 				// the next call.

@@ -52,6 +52,10 @@ class PsychRuntimeBindings {
 }'''.replace('__MODULE__', method(runtime, 'function module():SourceIrisBridge')).replace('__PRESET__', method(runtime, 'function installHscriptPreset('))
         files['PsychCustomSubstate.hx'] = "class PsychCustomSubstate {public static var name='unnamed';public static var instance:Dynamic;}"
         files['PsychCamera.hx'] = 'class PsychCamera {}'
+        # bindSourceBarClass also binds Psych's receptor constructor; the
+        # receptor itself is covered by test_psych_source_strum_note.
+        files['Strumline.hx'] = 'class Strumline {} class StrumNote {}'
+        files['PsychSourceStrumNote.hx'] = 'class PsychSourceStrumNote {public static function create(h:Dynamic,a:Array<Dynamic>):Dynamic return null;}'
         files['PsychBaseStageActorGroupCompat.hx'] = 'class PsychBaseStageActorGroupCompat {}'
         files['PsychOwnerPaths.hx'] = 'class PsychOwnerPaths {public static function create(r:String,?l:String):Dynamic return {};}'
         files['DynamicSprite.hx'] = 'typedef DynamicAtlasFrames = flixel.graphics.frames.FlxAtlasFrames;'

@@ -2120,6 +2120,47 @@ class Main {{
             result = self.run_fixture(main, fixture)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_native_sparrow_primary_fills_the_converted_character_folder(self):
+        """A base-game Sparrow atlas the package omits fills an otherwise empty folder.
+
+        The character loader treats an empty character folder as no visual, so a
+        native fallback with no icon used to load as Dad. When an icon or donor
+        atlas lands there, the native sheet is still not copied.
+        """
+        with tempfile.TemporaryDirectory() as folder:
+            fixture = Path(folder)
+            fixture.mkdir(exist_ok=True)
+            main = f'''class Main {{
+  static function fail(value:String):Void throw value;
+  static function main() {{
+    var data:Dynamic = {{
+      version: "1.0.0", name: "Native Sparrow", renderType: "sparrow",
+      assetPath: "characters/senpai",
+      animations: [{{name: "idle", prefix: "Angry Senpai Idle"}}]
+    }};
+    var converted = VSliceImporter.convertCharacter(data, {haxe_string(str(fixture))}, "native-sparrow");
+    var native = false;
+    for (finding in converted.diagnostics)
+      if (finding.code == "native-character-asset") native = true;
+    if (!native) fail("native sparrow fallback was not used");
+    var copied = new Map<String, String>();
+    for (mapping in converted.assets) copied.set(mapping.destination, StringTools.replace(mapping.source, "\\\\", "/"));
+    if (copied.get("char.png") != "assets/images/custom_chars/senpai/char.png"
+      || copied.get("char.xml") != "assets/images/custom_chars/senpai/char.xml")
+      fail("native sheet was not copied into the character folder: " + [for (k in copied.keys()) k + "=" + copied.get(k)].join(","));
+    // With an icon in the folder it is not empty, so the native sheet stays uncopied.
+    sys.FileSystem.createDirectory({haxe_string(str(fixture))} + "/images/icons");
+    sys.io.File.saveContent({haxe_string(str(fixture))} + "/images/icons/icon-native-sparrow.png", "icon");
+    var withIcon = VSliceImporter.convertCharacter(data, {haxe_string(str(fixture))}, "native-sparrow");
+    for (mapping in withIcon.assets)
+      if (mapping.destination == "char.png" || mapping.destination == "char.xml")
+        fail("native sheet was copied although the icon fills the folder");
+  }}
+}}
+'''
+            result = self.run_fixture(main, fixture)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_multisparrow_missing_primary_falls_back_to_native_and_keeps_donor_extras(self):
         """A missing primary atlas resolves to the destination-native character the
         donor assumed the base game would supply, while prefixes the native atlas

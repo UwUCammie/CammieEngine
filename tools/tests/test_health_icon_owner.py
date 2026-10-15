@@ -155,8 +155,13 @@ class Main {
             "function clearDeferredIconDiagnostic(",
             "function handleMissingIconDiagnostic(",
             "function reportDeferredIconDiagnostic(",
+            "static function reportMenuIconFallback(",
+            "static function songIsRunning(",
         ))
-        fixture = '''class EngineCompat {
+        fixture = '''class PlayState {
+ public function new() {}
+}
+class EngineCompat {
  public static var reports:Array<Dynamic> = [];
  public static function reportVisualFallback(plan:Dynamic):String {
   reports.push(plan); return "reported";
@@ -165,6 +170,8 @@ class Main {
 class Main {
  var deferMissingIconDiagnostic:Bool = false;
  var deferredMissingIconDiagnostic:Dynamic = null;
+ var isNormal:Bool = false;
+ static var reportedMenuIconFallbacks:Map<String, Bool> = new Map();
  public function new() {}
 ''' + methods + '''
  static function check(ok:Bool, why:String):Void if (!ok) throw why;
@@ -184,15 +191,35 @@ class Main {
    "still-missing HXC icon was not reported on its first update");
 
   var nativeIcon = new Main();
+  nativeIcon.isNormal = true;
   nativeIcon.handleMissingIconDiagnostic({id:"native-missing-icon"});
   check(EngineCompat.reports.length == 2
    && EngineCompat.reports[1].id == "native-missing-icon",
    "native missing-icon diagnostics stopped being immediate");
+
+  // Menu rows are built while the list scrolls; they note the fallback once
+  // per icon instead of filing a runtime missing dependency.
+  var menuIcon = new Main();
+  menuIcon.handleMissingIconDiagnostic({id:"menu-missing-icon", requested:"menu-missing-icon"});
+  new Main().handleMissingIconDiagnostic({id:"menu-missing-icon", requested:"menu-missing-icon"});
+  check(EngineCompat.reports.length == 2, "menu icon fallback was filed as a runtime missing dependency");
+  check(reportedMenuIconFallbacks.exists("menu-missing-icon"), "menu icon fallback was not noted");
+
+  // A plain icon a song script builds still belongs to that song's report.
+  flixel.FlxG.state = new PlayState();
+  new Main().handleMissingIconDiagnostic({id:"script-missing-icon", requested:"script-missing-icon"});
+  check(EngineCompat.reports.length == 3 && EngineCompat.reports[2].id == "script-missing-icon",
+   "an icon built during a song was treated as a menu icon");
+  check(!reportedMenuIconFallbacks.exists("script-missing-icon"), "in-song icon was noted as a menu fallback");
+  flixel.FlxG.state = null;
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             path = Path(scratch)
             (path / "Main.hx").write_text(fixture, newline='\n')
+            (path / "flixel").mkdir()
+            (path / "flixel" / "FlxG.hx").write_text(
+                "package flixel;\nclass FlxG {\n public static var state:Dynamic = null;\n}\n", newline='\n')
             result = subprocess.run([*HAXE_COMMAND, "-cp", str(path),
                                      "-main", "Main", "--interp"], cwd=ROOT,
                                     text=True, capture_output=True, timeout=30)

@@ -518,6 +518,7 @@ class RepairFixture {{
                 "static function findImportFile",
                 "static function findChildDirectory",
                 "static function findVSliceHxcAssetByBasename",
+                "static function findVSliceLibraryFile",
                 "static function findVSliceHxcAsset(sourceRoot",
             )
         )
@@ -1126,6 +1127,8 @@ class ImportRootScanner {
             (donor / "songs/title/audio").mkdir()
             (donor / "songs/title/audio/Inst.ogg").write_text("audio", newline='\n')
             (donor / "songs/title/chart.json").write_text("{{}}", newline='\n')
+            (Path(folder) / "ImportRuntimeFileFilter.hx").write_text(
+                (ROOT / "source/ImportRuntimeFileFilter.hx").read_text(), newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder, "--run", "RepairFixture", str(donor)],
                 cwd=folder,

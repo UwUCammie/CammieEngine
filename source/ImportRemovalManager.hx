@@ -32,6 +32,9 @@ class ImportRemovalManager {
 	static var retryPublished:Bool = false;
 	static var workerCommitted:Bool = false;
 	static var removedRoots:Array<String> = [];
+	// Whether the running recovery found a removal an earlier session left
+	// unfinished, so finishing it may have changed installed files.
+	static var recoveryHadWork:Bool = false;
 	#end
 
 	public static function install():Void {
@@ -54,10 +57,33 @@ class ImportRemovalManager {
 		value.label = 'Checking interrupted mod removals...';
 		Thread.create(function() {
 			var errors:Array<String>;
+			var hadWork = unfinishedRemovals(installRoot);
 			try errors = ImportRemovalTransaction.recover(installRoot) catch (error:Dynamic) errors = [Std.string(error)];
-			mutex.acquire(); pendingRecovery = errors; mutex.release();
+			mutex.acquire(); pendingRecovery = errors; recoveryHadWork = hadWork; mutex.release();
 		});
 		return true;
+	}
+	/**
+		True when a removal transaction still has something to finish. A
+		finished one (receipt written, no backups, staging or retired files
+		left) is kept as history and recovery leaves the install untouched.
+		Publishing such a recovery as a change moved the import generation on
+		every launch, so every song image and atlas cached before it was
+		treated as stale and decoded again.
+	**/
+	static function unfinishedRemovals(root:String):Bool {
+		try {
+			var directory = haxe.io.Path.join([root, ImportRemovalTransaction.STATE, 'transactions']);
+			if (!sys.FileSystem.exists(directory)) return false;
+			for (name in sys.FileSystem.readDirectory(directory)) {
+				if (!StringTools.startsWith(name, 'txn-')) continue;
+				var txn = haxe.io.Path.join([directory, name]);
+				if (!sys.FileSystem.exists(txn + '/receipt.json')) return true;
+				for (leftover in ['backups', 'staging', 'retired'])
+					if (sys.FileSystem.exists(txn + '/' + leftover)) return true;
+			}
+			return false;
+		} catch (_:Dynamic) return true;
 	}
 	static function cancelled():Bool { mutex.acquire(); var result = cancelRequested; mutex.release(); return result; }
 	static function activeRoots():Array<String> {
@@ -151,7 +177,9 @@ class ImportRemovalManager {
 			recoveryRunning = false;
 			if (recovery.length == 0) {
 				try {
-					ImportRefreshManager.finishRemovalReservation(token,removedRoots,true); token = ''; recoveryReady = true;
+					// A retry follows a removal this session started, which published.
+					var changed = recoveryWasRetry || recoveryHadWork;
+					ImportRefreshManager.finishRemovalReservation(token,removedRoots,changed); token = ''; recoveryReady = true;
 					value.busy = false; value.published = recoveryWasRetry && retryPublished;
 					value.phase = recoveryWasRetry ? value.published ? 'complete' : 'cancelled' : 'idle';
 					value.label = recoveryWasRetry ? 'Managed recovery and cleanup finished.' : '';

@@ -117,6 +117,9 @@ class Main {static function main() {
  embedded.evaluate("import objects.Alphabet.AlphaCharacter; import Reflect; import Type; glyph=Type.createInstance(Type.resolveClass('objects.AlphaCharacter'),[]); map=Reflect.field(AlphaCharacter,'allLetters');","embedded");
  if(!Std.isOfType(embedded.variables.get("glyph"),PsychSourceAlphaCharacter)||embedded.variables.get("map")==null)throw "embedded actualsource scope";
  var rejected=false;try embedded.bindLibrary("AlphaCharacter","objects.AlphaCharacter") catch(error:Dynamic) rejected=true;if(!rejected)throw "runtime type alias must not invent Haxe module import";
+ // Older Psych named its classes at the top level: addHaxeLibrary('AlphaCharacter') is the seeded class.
+ if(embedded.bindLibrary("AlphaCharacter","AlphaCharacter")!=embedded.variables.get("AlphaCharacter"))throw "top-level Psych class name must bind the seeded class";
+ if(embedded.variables.get("Boyfriend")!=PsychLegacyBoyfriend)throw "older Psych Boyfriend class must be bound";
  embedded.release();
 }}
 '''

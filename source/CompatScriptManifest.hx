@@ -74,19 +74,29 @@ class CompatScriptManifest {
 		}
 		#end
 		var normalized = normalizeSource(sourceRoot);
-		var base = Path.withoutDirectory(normalized);
-		if (base == null || StringTools.trim(base) == '')
-			base = 'root';
-		var label = slug(engine) + '-' + slug(base);
-		if (label == '-' || label == '')
-			label = 'imported-root';
-		var legacyNamespace = label + '-' + Md5.encode(normalized).substr(0, 10);
+		var legacyNamespace = labelFor(normalized, engine) + '-' + Md5.encode(normalized).substr(0, 10);
 		var resolved = ImportSongOwnership.priorNamespace(sourceRoot, engine, legacyNamespace);
 		#if sys
 		var context = ImportIO.current();
 		if (context != null) context.recordResolvedNamespace(sourceRoot, engine, resolved);
 		#end
 		return resolved;
+	}
+
+	/** The readable `<engine>-<folder>` start of a namespace, before the hash of
+	 * the source path. Re-imports use it to recognise a package's earlier
+	 * namespace when the source moved to a new retained snapshot. */
+	public static function namespaceLabel(sourceRoot:String, engine:String):String
+		return labelFor(normalizeSource(sourceRoot), engine);
+
+	static function labelFor(normalized:String, engine:String):String {
+		var base = Path.withoutDirectory(normalized);
+		if (base == null || StringTools.trim(base) == '')
+			base = 'root';
+		var label = slug(engine) + '-' + slug(base);
+		if (label == '-' || label == '')
+			label = 'imported-root';
+		return label;
 	}
 
 	public static function destinationRoot(sourceRoot:String, engine:String):String {

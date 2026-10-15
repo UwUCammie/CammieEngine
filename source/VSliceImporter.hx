@@ -3,6 +3,7 @@ package;
 import haxe.Json;
 import haxe.io.Path;
 import VSliceAstcAdapter.VSliceAstcHeader;
+import VSliceAstcAdapter.DdsTextureDecoder;
 
 #if sys
 import sys.FileSystem;
@@ -958,7 +959,12 @@ class VSliceImporter {
 		var renderType = stringValue(field(data, 'renderType'), 'sparrow').toLowerCase();
 		var isMultiSparrow = renderType == 'multisparrow';
 		var isPacker = isSpriteSheetPackerType(renderType);
-		if (renderType != 'sparrow' && !isMultiSparrow && !isPacker) {
+		// Animate exports are a folder (Animation.json plus spritemaps), loaded
+		// through the same flixel-animate path the engine uses for Psych,
+		// Nightmare Vision and Codename atlases.
+		var isMultiAnimate = renderType == 'multianimateatlas';
+		var isAnimate = renderType == 'animateatlas' || isMultiAnimate;
+		if (renderType != 'sparrow' && !isMultiSparrow && !isPacker && !isAnimate) {
 			findings.push(makeDiagnostic('warning', 'unsupported-character-render-type',
 				'V-Slice character ' + name + ' uses unsupported renderType ' + renderType
 				+ '; the converter will use the single-atlas Sparrow path.', root));
@@ -967,13 +973,16 @@ class VSliceImporter {
 			if (!containsString(['version', 'name', 'assetPath', 'singTime', 'isPixel', 'cameraOffsets', 'offsets',
 				'scale', 'healthIcon', 'animations', 'flipX', 'startingAnimation', 'danceEvery',
 				'no_antialiasing', 'healthbar_colors', 'renderType', 'death', 'camera_position', 'position',
-				'costumes', 'costumelist', 'doesLoop',
+				'costumes', 'costumelist', 'doesLoop', 'atlasSettings', 'applyStageMatrix',
 				'Made_With'], fieldName))
 				findings.push(makeDiagnostic('warning', 'unsupported-character-field',
 					'V-Slice character field ' + fieldName + ' is not represented by the native character API.', root));
 		}
 		var assets:Array<VSliceAssetMapping> = [];
 		var mainBundle:Dynamic = null;
+		// Set when the primary Animate export is base-game art the package does
+		// not ship; the engine's own implementation of that character is used.
+		var nativeBase:Dynamic = null;
 		var atlasBundles:Array<Dynamic> = [];
 		var animationAssets:Array<Dynamic> = [];
 		var unavailableAnimations:Array<String> = [];
@@ -991,6 +1000,27 @@ class VSliceImporter {
 		if (assetPath == '') {
 			findings.push(makeDiagnostic('warning', 'missing-character-asset',
 				'V-Slice character ' + name + ' has no assetPath.', root));
+		} else if (isAnimate) {
+			var findingsBeforeAtlas = findings.length;
+			mainBundle = appendAnimateAtlasBundle(root, assetPath, 'char', 'character', assets, findings, diagnosticPath);
+			if (mainBundle != null)
+				atlasBundles.push(mainBundle);
+			else {
+				nativeBase = resolveNativeAnimateBaseCharacter(root, assetPath);
+				if (nativeBase != null) {
+					// The missing export is the base game's own art, not a gap in
+					// the package, so the missing-asset warning would be wrong.
+					findings.splice(findingsBeforeAtlas, findings.length - findingsBeforeAtlas);
+					findings.push(makeDiagnostic('info', 'native-base-character',
+						'V-Slice character ' + name + ' uses the base-game Animate atlas ' + assetPath
+						+ ', which the package does not ship; it uses the engine\'s own '
+						+ Std.string(nativeBase.name) + ' character instead.', diagnosticPath));
+					mainBundle = {name: nativeBase.name, native: true, destinationBase: 'char'};
+					for (file in (cast nativeBase.files:Array<String>))
+						assets.push({source: Path.join([Std.string(nativeBase.folder), file]), destination: file,
+							kind: 'character', supported: true});
+				}
+			}
 		} else {
 			mainBundle = appendAssetBundle(root, assetPath, 'char', 'character', assets, findings, true,
 				isPacker ? '.txt' : '.xml', requiredPrefixes, diagnosticPath);
@@ -1006,7 +1036,12 @@ class VSliceImporter {
 		}
 
 		var mainAssetKey = stripAssetExtension(assetPath).toLowerCase();
-		var primaryAtlasUsable = mainBundle != null && atlasSupported(mainBundle, isPacker);
+		var primaryAtlasUsable = mainBundle != null && (isAnimate || atlasSupported(mainBundle, isPacker));
+		// The engine's own character draws every animation from its own sheets,
+		// so no secondary Animate part can be combined with it.
+		if (isAnimate && nativeBase == null)
+			planAnimateAtlasParts(root, cast animations, mainAssetKey, primaryAtlasUsable, isMultiAnimate, assets, findings,
+				atlasBundles, unavailableAnimations, diagnosticPath);
 		// A destination-native primary atlas may cover fewer authored frame labels
 		// than the donor wrote (base atlases drift across game versions).  Mark the
 		// affected primary animations unavailable before the loop below so the
@@ -1016,6 +1051,10 @@ class VSliceImporter {
 		var alternateAssetKeys = new Map<String, Bool>();
 		var deathAssetCount = 0;
 		for (animation in (cast animations:Array<Dynamic>)) {
+			// Animate atlas parts were planned above; the loop below handles
+			// Sparrow and packer sheets only.
+			if (isAnimate)
+				break;
 			var animationAsset = stringValue(field(animation, 'assetPath'), '');
 			var animationName = stringValue(field(animation, 'name'), 'animation');
 			if (animationAsset == '' || stripAssetExtension(animationAsset).toLowerCase() == mainAssetKey) {
@@ -1117,6 +1156,22 @@ class VSliceImporter {
 			findings.push(makeDiagnostic('info', 'health-icon-alias',
 				'V-Slice health icon ' + iconId + ' was resolved from donor asset ' + iconBundle.fallback + '.', iconBundle.fallback));
 		}
+		// A base-game Sparrow atlas the package omits draws from the engine's own
+		// sheet, which is not copied. When nothing else (an icon or a donor extra
+		// atlas) lands in the converted character folder, that folder is empty,
+		// and the character loader reads an empty folder as no visual and loads
+		// Dad. Only then does the sheet get copied, so the folder is never empty.
+		if (mainBundle != null && mainBundle.native == true && mainBundle.png != null
+			&& mainBundle.xml != null) {
+			// Unsupported mappings (an undecodable texture) are never copied.
+			var folderFilled = false;
+			for (mapping in assets)
+				if (mapping.supported == true)
+					folderFilled = true;
+			if (!folderFilled)
+				for (pair in [[Std.string(mainBundle.png), 'char.png'], [Std.string(mainBundle.xml), 'char.xml']])
+					assets.push({source: pair[0], destination: pair[1], kind: 'character', supported: true});
+		}
 		if (icon != null && numberValue(field(icon, 'scale'), 1) != 1)
 			findings.push(makeDiagnostic('warning', 'health-icon-scale',
 				'Health-icon scale is retained in conversion metadata but native HealthIcon does not apply it.', root));
@@ -1125,6 +1180,10 @@ class VSliceImporter {
 				'Health-icon flipX is retained in conversion metadata but native HealthIcon does not expose it.', root));
 
 		var healthbarColor = healthbarColorString(field(data, 'healthbar_colors'), findings);
+		// A character drawn by the engine's own base implementation keeps that
+		// character's bar colour unless the package authored one.
+		if (healthbarColor == null && nativeBase != null && nativeBase.colors != null)
+			healthbarColor = nativeBase.colors;
 		var authoredCostumes:Dynamic = field(data, 'costumes');
 		var authoredCostumeList:Dynamic = field(data, 'costumelist');
 		var authoredDoesLoop:Bool = field(data, 'doesLoop') == true;
@@ -1150,8 +1209,9 @@ class VSliceImporter {
 			Reflect.setField(registryEntry, 'nativeIconIdentity',
 				Std.string(Reflect.field(mainBundle, 'name')));
 		}
-		var hscript = generateCharacterHScript(data, name, mainBundle, atlasBundles, animationAssets,
-			unavailableAnimations, isMultiSparrow, isPacker, findings);
+		var hscript = nativeBase != null ? Std.string(nativeBase.script)
+			: generateCharacterHScript(data, name, mainBundle, atlasBundles, animationAssets,
+				unavailableAnimations, isMultiSparrow, isPacker, findings, isAnimate);
 		var availableAnimationCount = 0;
 		for (animation in (cast animations:Array<Dynamic>)) {
 			var animationName = stringValue(field(animation, 'name'), '');
@@ -1233,11 +1293,14 @@ class VSliceImporter {
 			return za < zb ? -1 : za > zb ? 1 : 0;
 		});
 		var propIndex = 0;
+		// Several props often show different labels of one Animate export;
+		// copy each export once and let the props share it.
+		var animatePropBundles = new Map<String, Dynamic>();
 		for (prop in propList) {
 			for (fieldName in safeFields(prop)) {
 				if (!containsString(['zIndex', 'position', 'scale', 'animType', 'name', 'isPixel', 'startingAnimation',
 					'assetPath', 'scroll', 'animations', 'alpha', 'blend', 'blendMode', 'flipX', 'flipY', 'angle',
-					'color', 'danceEvery'], fieldName))
+					'color', 'danceEvery', 'atlasSettings'], fieldName))
 					findings.push(makeDiagnostic('warning', 'unsupported-stage-prop-field',
 						'V-Slice stage prop field ' + fieldName + ' is not represented by the native stage API.', root));
 			}
@@ -1266,9 +1329,20 @@ class VSliceImporter {
 				var propAnimType = stringValue(field(prop, 'animType'), 'sparrow').toLowerCase();
 				var expectsAtlas = propAnimType != 'none'
 					&& Std.isOfType(propAnimations, Array) && (cast propAnimations:Array<Dynamic>).length > 0;
-				bundle = appendAssetBundle(root, propAsset, 'prop-' + safeIdentifier(propName) + '-' + propIndex,
-					'stage-prop', assets, findings, expectsAtlas,
-					isSpriteSheetPackerType(propAnimType) ? '.txt' : '.xml', null, diagnosticPath);
+				if (propAnimType == 'animateatlas') {
+					var animateKey = stripAssetExtension(propAsset).toLowerCase();
+					if (animatePropBundles.exists(animateKey))
+						bundle = animatePropBundles.get(animateKey);
+					else {
+						bundle = appendAnimateAtlasBundle(root, propAsset, 'prop-' + safeIdentifier(propName) + '-' + propIndex,
+							'stage-prop', assets, findings, diagnosticPath);
+						animatePropBundles.set(animateKey, bundle);
+					}
+				} else {
+					bundle = appendAssetBundle(root, propAsset, 'prop-' + safeIdentifier(propName) + '-' + propIndex,
+						'stage-prop', assets, findings, expectsAtlas,
+						isSpriteSheetPackerType(propAnimType) ? '.txt' : '.xml', null, diagnosticPath);
+				}
 			}
 			if (bundle == null) {
 				propIndex++;
@@ -1300,7 +1374,7 @@ class VSliceImporter {
 	static function generateCharacterHScript(data:Dynamic, name:String, mainBundle:Dynamic,
 		atlasBundles:Array<Dynamic>, animationAssets:Array<Dynamic>, unavailableAnimations:Array<String>, isMultiSparrow:Bool,
 		isPacker:Bool,
-		findings:Array<VSliceDiagnostic>):String {
+		findings:Array<VSliceDiagnostic>, ?isAnimate:Bool = false):String {
 		var lines:Array<String> = [];
 		var isPixel = field(data, 'isPixel') == true;
 		var scale = numberValue(field(data, 'scale'), 1);
@@ -1397,7 +1471,26 @@ class VSliceImporter {
 		lines.push('function init(char) {');
 		if (hasDanceEvery)
 			lines.push('    char.danceEvery = ' + Std.string(Std.int(danceEvery)) + ';');
-		if (isMultiSparrow && atlasBundles != null && atlasBundles.length > 0) {
+		if (isAnimate) {
+			// V-Slice MultiAnimateAtlasCharacter concatenates the primary atlas
+			// with every per-animation atlas (Animate or Sparrow) in authored
+			// order; a single Animate character uses its primary folder only.
+			var parts:Array<String> = [];
+			if (atlasBundles != null)
+				for (bundle in atlasBundles) {
+					var base = hscriptQuote(Std.string(field(bundle, 'destinationBase')));
+					if (field(bundle, 'sparrow') == true)
+						parts.push('FlxAtlasFrames.fromSparrow(hscriptPath + "' + base + '.png", hscriptPath + "' + base + '.xml")');
+					else
+						parts.push('AnimateAtlasUtil.folder(hscriptPath + "' + base + '")');
+				}
+			lines.push('    char.frames = ' + (parts.length == 1 ? parts[0] : 'AnimateAtlasUtil.combine([' + parts.join(', ') + '])') + ';');
+			var atlasSettings:Dynamic = field(data, 'atlasSettings');
+			if (field(atlasSettings, 'useRenderTexture') == true)
+				lines.push('    char.useRenderTexture = true;');
+			if (field(atlasSettings, 'applyStageMatrix') == true)
+				lines.push('    char.applyStageMatrix = true;');
+		} else if (isMultiSparrow && atlasBundles != null && atlasBundles.length > 0) {
 			lines.push('    var vSliceAtlases = [];');
 			for (bundle in atlasBundles) {
 				var nativeRoot = stringValue(field(bundle, 'nativeRoot'), '');
@@ -1507,7 +1600,23 @@ class VSliceImporter {
 			if (frameRate <= 0)
 				frameRate = 24;
 			var loop = animationLoops(animName, animation);
-			if (hasIndices) {
+			// Only the multi-atlas character honours a per-animation renderType
+			// sparrow (prefix lookup on a concatenated Sparrow sheet).  A single
+			// Animate character registers every animation on its export.
+			var animateRegistration = isAnimate
+				&& (stringValue(field(data, 'renderType'), '').toLowerCase() != 'multianimateatlas'
+					|| stringValue(field(animation, 'renderType'), '').toLowerCase() != 'sparrow');
+			if (animateRegistration) {
+				// AnimationData.animType picks frame label or nested symbol. An
+				// unauthored type tries the label first, which is the V-Slice
+				// default, and falls back to a symbol of that name.
+				var animType = stringValue(field(animation, 'animType'), '');
+				lines.push('    AnimateAtlasUtil.addAnimation(char, "' + hscriptQuote(animName) + '", "' + hscriptQuote(prefix) + '", '
+					+ (hasIndices ? hscriptIntArray(cast indices) : 'null') + ', ' + formatNumber(frameRate) + ', '
+					+ (loop ? 'true' : 'false') + ', ' + (animType == '' ? 'null' : '"' + hscriptQuote(animType) + '"') + ', '
+					+ (field(animation, 'flipX') == true ? 'true' : 'false') + ', '
+					+ (field(animation, 'flipY') == true ? 'true' : 'false') + ');');
+			} else if (hasIndices) {
 				lines.push('    char.animation.addByIndices("' + hscriptQuote(animName) + '", "' + hscriptQuote(prefix) + '", '
 					+ hscriptIntArray(cast indices) + ', "", ' + formatNumber(frameRate) + ', ' + (loop ? 'true' : 'false') + ');');
 			} else if (prefix == '') {
@@ -1517,15 +1626,18 @@ class VSliceImporter {
 				lines.push('    char.animation.addByPrefix("' + hscriptQuote(animName) + '", "' + hscriptQuote(prefix) + '", '
 					+ formatNumber(frameRate) + ', ' + (loop ? 'true' : 'false') + ');');
 			}
-			lines.push('    char.registerVSliceAnimationAsset("' + hscriptQuote(animName) + '", "", "", "'
-				+ hscriptQuote(prefix) + '", ' + (hasIndices ? hscriptIntArray(cast indices) : '[]') + ', '
-				+ formatNumber(frameRate) + ', ' + (loop ? 'true' : 'false') + ');');
+			// Animate characters keep one combined frame set, so there is no
+			// per-animation sheet to switch back to.
+			if (!isAnimate)
+				lines.push('    char.registerVSliceAnimationAsset("' + hscriptQuote(animName) + '", "", "", "'
+					+ hscriptQuote(prefix) + '", ' + (hasIndices ? hscriptIntArray(cast indices) : '[]') + ', '
+					+ formatNumber(frameRate) + ', ' + (loop ? 'true' : 'false') + ');');
 			var animOffsets = numberPair(field(animation, 'offsets'));
 			if (animOffsets == null)
 				animOffsets = [0, 0];
 			lines.push('    char.addOffset("' + hscriptQuote(animName) + '", ' + formatNumber(animOffsets[0]) + ', ' + formatNumber(animOffsets[1]) + ');');
 		}
-		if (!isMultiSparrow && animationAssets != null)
+		if (!isMultiSparrow && !isAnimate && animationAssets != null)
 			for (asset in animationAssets) {
 				if (asset == null || field(asset, 'bundle') == null)
 					continue;
@@ -1668,8 +1780,18 @@ class VSliceImporter {
 		var atlasExtension = isPacker ? '.txt' : '.xml';
 		var assetName = bundle.destinationBase;
 		declarations.push('var ' + identifier + ';');
-		lines.push('    ' + identifier + ' = new FlxSprite();');
-		if (bundle.solidColor != null) {
+		// V-Slice Stage.loadTextureAtlas builds an Animate sprite on the export
+		// and applies the prop's own atlasSettings.
+		var animateProp = field(bundle, 'animate') == true;
+		lines.push('    ' + identifier + (animateProp ? ' = new FlxAnimate();' : ' = new FlxSprite();'));
+		if (animateProp) {
+			lines.push('    ' + identifier + '.frames = AnimateAtlasUtil.folder(hscriptPath + "' + hscriptQuote(assetName) + '");');
+			var propAtlasSettings:Dynamic = field(prop, 'atlasSettings');
+			if (field(propAtlasSettings, 'useRenderTexture') == true)
+				lines.push('    ' + identifier + '.useRenderTexture = true;');
+			if (field(propAtlasSettings, 'applyStageMatrix') == true)
+				lines.push('    ' + identifier + '.applyStageMatrix = true;');
+		} else if (bundle.solidColor != null) {
 			lines.push('    ' + identifier + '.makeGraphic(1, 1, ' + Std.string(bundle.solidColor) + ');');
 		} else if (atlasSupported(bundle, isPacker) && animType != 'none') {
 			if (isPacker)
@@ -1722,7 +1844,14 @@ class VSliceImporter {
 				var fps = animationFrameRate(animation);
 				var loop = animationLoopValue(animation, false);
 				animationNames.push(animName);
-				if (hasIndices)
+				if (animateProp) {
+					var propAnimType = stringValue(field(animation, 'animType'), '');
+					lines.push('    AnimateAtlasUtil.addAnimation(' + identifier + ', "' + hscriptQuote(animName) + '", "' + hscriptQuote(prefix) + '", '
+						+ (hasIndices ? hscriptIntArray(cast indices) : 'null') + ', ' + formatNumber(fps) + ', '
+						+ (loop ? 'true' : 'false') + ', ' + (propAnimType == '' ? 'null' : '"' + hscriptQuote(propAnimType) + '"') + ', '
+						+ (field(animation, 'flipX') == true ? 'true' : 'false') + ', '
+						+ (field(animation, 'flipY') == true ? 'true' : 'false') + ');');
+				} else if (hasIndices)
 					lines.push('    ' + identifier + '.animation.addByIndices("' + hscriptQuote(animName) + '", "' + hscriptQuote(prefix) + '", '
 						+ hscriptIntArray(cast indices) + ', "", ' + formatNumber(fps) + ', ' + (loop ? 'true' : 'false') + ');');
 				else
@@ -1798,6 +1927,10 @@ class VSliceImporter {
 			if (astc.found)
 				return appendAstcBundle(astc.path, destinationBase, kind, assets, findings,
 					xml.found ? xml.path : null, txt.found ? txt.path : null, atlasExtension);
+			var dds = resolveVSliceAsset(root, normalizedAsset, '.dds');
+			if (dds.found)
+				return appendDdsBundle(dds.path, destinationBase, kind, assets, findings,
+					xml.found ? xml.path : null, txt.found ? txt.path : null, atlasExtension);
 			// Donor precedence: this branch only runs when the donor root has no
 			// PNG for the authored path.  V-Slice omits base-game atlases from mods
 			// because the original game owns them, so both a character's primary
@@ -1842,6 +1975,135 @@ class VSliceImporter {
 		return {destinationBase: destinationBase, xmlSupported: xmlSupported, txtSupported: txtSupported,
 			atlasSupported: atlasSupported, atlasExtension: atlasExtension, png: png.path,
 			xml: xml.path, txt: txt.path};
+	}
+
+	/**
+		Plan one Adobe Animate export: the folder holding Animation.json, its
+		spritemap JSON/PNG pairs and, for unoptimised exports, metadata.json
+		plus the LIBRARY tree.  Every file is copied below `destinationBase/`
+		so the generated script can hand that folder to flixel-animate.  A
+		folder without a spritemap is not a usable export and stays missing.
+	*/
+	static function appendAnimateAtlasBundle(root:String, assetPath:String, destinationBase:String, kind:String,
+		assets:Array<VSliceAssetMapping>, findings:Array<VSliceDiagnostic>, ?diagnosticPath:String):Dynamic {
+		var findingPath = diagnosticPath == null || StringTools.trim(diagnosticPath) == '' ? root : diagnosticPath;
+		var normalizedAsset = stripAssetExtension(assetPath);
+		while (normalizedAsset.endsWith('/'))
+			normalizedAsset = normalizedAsset.substr(0, normalizedAsset.length - 1);
+		if (normalizedAsset == '')
+			return null;
+		// Pure conversion fixtures have no source tree to copy from.
+		if (root == '')
+			return {destinationBase: destinationBase, animate: true};
+		#if sys
+		var manifest = resolveVSliceAsset(root, normalizedAsset + '/Animation', '.json');
+		if (manifest.found == true) {
+			var folder = Path.directory(Std.string(manifest.path));
+			var expectedName = normalizedAsset.substr(normalizedAsset.lastIndexOf('/') + 1);
+			if (expectedName.indexOf(':') >= 0)
+				expectedName = expectedName.substr(expectedName.indexOf(':') + 1);
+			// The basename fallback may pick an Animation.json in a nested folder;
+			// only the authored export folder itself counts.
+			if (Path.withoutDirectory(folder).toLowerCase() == expectedName.toLowerCase()) {
+				var files:Array<String> = [];
+				collectAnimateAtlasFiles(folder, '', files, 0);
+				var hasSpritemap = false;
+				for (relative in files) {
+					var lower = relative.toLowerCase();
+					if (lower.startsWith('spritemap') && lower.endsWith('.json'))
+						hasSpritemap = true;
+				}
+				if (hasSpritemap) {
+					for (relative in files)
+						assets.push({source: Path.join([folder, relative]), destination: destinationBase + '/' + relative,
+							kind: kind, supported: true});
+					return {destinationBase: destinationBase, animate: true, folder: folder};
+				}
+			}
+		}
+		#end
+		findings.push(makeDiagnostic('warning', 'missing-asset',
+			'V-Slice ' + kind + ' Animate atlas (Animation.json with spritemaps) could not be found for ' + assetPath
+			+ '. Search root: ' + root + '.', findingPath));
+		return null;
+	}
+
+	#if sys
+	/** List the JSON and PNG files of an Animate export, LIBRARY included. */
+	static function collectAnimateAtlasFiles(folder:String, prefix:String, files:Array<String>, depth:Int):Void {
+		if (depth > 8 || files.length > 4096)
+			return;
+		var entries:Array<String>;
+		try {
+			entries = FileSystem.readDirectory(prefix == '' ? folder : Path.join([folder, prefix]));
+		} catch (_:Dynamic) {
+			return;
+		}
+		entries.sort(function(a, b) return Reflect.compare(a, b));
+		for (entry in entries) {
+			if (entry.startsWith('.'))
+				continue;
+			var relative = prefix == '' ? entry : prefix + '/' + entry;
+			if (FileSystem.isDirectory(Path.join([folder, relative]))) {
+				collectAnimateAtlasFiles(folder, relative, files, depth + 1);
+				continue;
+			}
+			var lower = entry.toLowerCase();
+			if (lower.endsWith('.json') || lower.endsWith('.png'))
+				files.push(relative);
+		}
+	}
+	#end
+
+	/**
+		Plan the extra atlases of an Animate character.  V-Slice's single
+		Animate character ignores per-animation assetPath and reads every label
+		from its primary export.  The multi variant concatenates each distinct
+		per-animation atlas (another Animate export, or a Sparrow sheet when the
+		animation says renderType sparrow) after the primary one.  Animations
+		whose atlas is missing are left out instead of becoming empty aliases.
+	*/
+	static function planAnimateAtlasParts(root:String, animations:Array<Dynamic>, mainAssetKey:String,
+		primaryUsable:Bool, multi:Bool, assets:Array<VSliceAssetMapping>, findings:Array<VSliceDiagnostic>,
+		atlasBundles:Array<Dynamic>, unavailable:Array<String>, ?diagnosticPath:String):Void {
+		if (animations == null)
+			return;
+		var partBundles = new Map<String, Dynamic>();
+		for (animation in animations) {
+			var animationName = stringValue(field(animation, 'name'), '');
+			if (animationName == '')
+				continue;
+			var animationAsset = stringValue(field(animation, 'assetPath'), '');
+			var key = stripAssetExtension(animationAsset).toLowerCase();
+			var onPrimary = !multi || animationAsset == '' || key == mainAssetKey;
+			if (!primaryUsable || onPrimary) {
+				if (!primaryUsable && unavailable.indexOf(animationName) < 0)
+					unavailable.push(animationName);
+				continue;
+			}
+			var bundle:Dynamic = null;
+			if (partBundles.exists(key))
+				bundle = partBundles.get(key);
+			else {
+				var sparrow = stringValue(field(animation, 'renderType'), '').toLowerCase() == 'sparrow';
+				var destination = 'part' + Std.string(atlasBundles.length);
+				if (sparrow) {
+					bundle = appendAssetBundle(root, animationAsset, destination, 'character-animation', assets, findings,
+						true, '.xml', null, diagnosticPath);
+					if (bundle != null && (bundle.astcOnly == true || bundle.xmlSupported != true))
+						bundle = null;
+					if (bundle != null)
+						Reflect.setField(bundle, 'sparrow', true);
+				} else
+					bundle = appendAnimateAtlasBundle(root, animationAsset, destination, 'character-animation', assets,
+						findings, diagnosticPath);
+				partBundles.set(key, bundle);
+				if (bundle != null)
+					atlasBundles.push(bundle);
+			}
+			if (bundle == null && unavailable.indexOf(animationName) < 0)
+				unavailable.push(animationName);
+		}
 	}
 
 	/**
@@ -1974,6 +2236,77 @@ class VSliceImporter {
 		return null;
 	}
 
+	/**
+		Resolve the engine's own implementation of a base-game character whose
+		V-Slice Animate export a package references but does not ship.
+
+		V-Slice mods point at `shared:characters/<id>` (or an export folder
+		inside it, such as `characters/<id>/<export>`) because the game itself
+		supplies those atlases. Their frame labels belong to the newer Animate
+		art, so the Sparrow prefix proof used by resolveNativeCharacterAtlas
+		cannot match; instead the whole native character (script and sheets) is
+		used, the same thing the chart would get from the base character id.
+		Only the known base-library ids cross the boundary, and the native
+		registry row, script and atlas must all exist. The health icon is left
+		to nativeIconIdentity rather than copied.
+	*/
+	static function resolveNativeAnimateBaseCharacter(root:String, assetPath:String):Dynamic {
+		#if sys
+		if (root == null || root == '' || assetPath == null)
+			return null;
+		var path = stripAssetExtension(StringTools.trim(StringTools.replace(assetPath, '\\', '/')));
+		var candidates = EngineCompat.vSliceNativeCharacterCandidates(path);
+		// An export folder inside the base character's library folder names the
+		// same character; walk up to `characters/<id>`.
+		while ((candidates == null || candidates.length == 0) && path.lastIndexOf('/') > 0) {
+			path = path.substr(0, path.lastIndexOf('/'));
+			candidates = EngineCompat.vSliceNativeCharacterCandidates(path);
+		}
+		if (candidates == null || candidates.length == 0)
+			return null;
+		var registry:Dynamic = readNativeCharacterRegistry();
+		if (registry == null)
+			return null;
+		for (candidate in candidates) {
+			var entry = registryEntryCaseInsensitive(registry, candidate);
+			if (entry == null)
+				continue;
+			var like = stringValue(field(entry, 'like'), candidate);
+			if (like == '' || !isSafeNativeCharacterName(like))
+				continue;
+			var scriptPath = Path.join(['assets', 'images', 'custom_chars', like + '.hscript']);
+			var folder = Path.join(['assets', 'images', 'custom_chars', like]);
+			if (!FileSystem.exists(scriptPath) || FileSystem.isDirectory(scriptPath)
+				|| !FileSystem.exists(Path.join([folder, 'char.png'])))
+				continue;
+			var files:Array<String> = [];
+			try {
+				for (entryName in FileSystem.readDirectory(folder)) {
+					var lower = entryName.toLowerCase();
+					if (entryName.startsWith('.') || lower == 'icons.png'
+						|| FileSystem.isDirectory(Path.join([folder, entryName])))
+						continue;
+					files.push(entryName);
+				}
+			} catch (_:Dynamic) {
+				continue;
+			}
+			files.sort(function(a, b) return Reflect.compare(a, b));
+			var script:String;
+			try {
+				script = File.getContent(scriptPath);
+			} catch (_:Dynamic) {
+				continue;
+			}
+			var colors:Dynamic = field(entry, 'colors');
+			var color:String = Std.isOfType(colors, Array) && (cast colors:Array<Dynamic>).length > 0
+				&& Std.isOfType((cast colors:Array<Dynamic>)[0], String) ? (cast colors:Array<Dynamic>)[0] : null;
+			return {name: candidate, like: like, folder: folder, files: files, script: script, colors: color};
+		}
+		#end
+		return null;
+	}
+
 	static function readNativeCharacterRegistry():Dynamic {
 		for (path in ['assets/images/custom_chars/custom_chars.jsonc',
 			'assets/images/custom_chars/custom_chars.json']) {
@@ -2089,6 +2422,40 @@ class VSliceImporter {
 			'V-Slice ' + kind + ' cannot be imported as a native PNG: ' + detail, source));
 		return {destinationBase: destinationBase, xmlSupported: false, astcOnly: true,
 			astcConverted: false};
+	}
+
+	/**
+		Plan a DDS sheet (DXT1/3/5 or plain pixels) as a PNG the import phase
+		decodes with DdsTextureDecoder. A DDS the decoder cannot read stays an
+		unsupported mapping with a warning, the same as an undecodable ASTC.
+	*/
+	static function appendDdsBundle(source:String, destinationBase:String, kind:String,
+		assets:Array<VSliceAssetMapping>, findings:Array<VSliceDiagnostic>, ?xmlPath:String,
+		?txtPath:String, atlasExtension:String = '.xml'):Dynamic {
+		#if sys
+		var header = DdsTextureDecoder.inspectFile(source);
+		if (!header.valid) {
+			assets.push({source: source, destination: destinationBase + '.dds', kind: kind,
+				supported: false, requiresConversion: true});
+			findings.push(makeDiagnostic('warning', 'dds-unsupported',
+				'V-Slice ' + kind + ' DDS texture cannot be converted to PNG: ' + header.error, source));
+			return {destinationBase: destinationBase, xmlSupported: false, astcOnly: true, astcConverted: false};
+		}
+		#end
+		assets.push({source: source, destination: destinationBase + '.png', kind: kind,
+			supported: true, requiresConversion: true});
+		var atlasIsTxt = atlasExtension.toLowerCase() == '.txt';
+		var atlasPath = atlasIsTxt ? txtPath : xmlPath;
+		var atlasSupported = atlasPath != null && StringTools.trim(atlasPath) != '';
+		if (xmlPath != null && StringTools.trim(xmlPath) != '')
+			assets.push({source: xmlPath, destination: destinationBase + '.xml', kind: kind, supported: true});
+		if (txtPath != null && StringTools.trim(txtPath) != '')
+			assets.push({source: txtPath, destination: destinationBase + '.txt', kind: kind, supported: true});
+		return {destinationBase: destinationBase, xmlSupported: !atlasIsTxt && atlasSupported,
+			txtSupported: atlasIsTxt && atlasSupported, atlasSupported: atlasSupported,
+			atlasExtension: atlasExtension, png: source,
+			xml: !atlasIsTxt && atlasSupported ? xmlPath : null,
+			txt: atlasIsTxt && atlasSupported ? txtPath : null, astcOnly: false, astcConverted: true};
 	}
 
 	/**
@@ -2422,6 +2789,19 @@ class VSliceImporter {
 	}
 	#end
 
+	/** `path` below `root` when its first segment names the root folder itself. */
+	static function libraryRelativeAsset(root:String, path:String):Null<String> {
+		var slash = path.indexOf('/');
+		if (slash <= 0 || slash == path.length - 1)
+			return null;
+		var folder = StringTools.replace(root, '\\', '/');
+		while (folder.endsWith('/'))
+			folder = folder.substr(0, folder.length - 1);
+		var name = folder.substr(folder.lastIndexOf('/') + 1);
+		return name != '' && name.toLowerCase() == path.substr(0, slash).toLowerCase()
+			? path.substr(slash + 1) : null;
+	}
+
 	static function resolveVSliceAsset(root:String, assetPath:String, extension:String):Dynamic {
 		var clean = assetPath == null ? '' : StringTools.trim(StringTools.replace(assetPath, '\\', '/'));
 		while (clean.startsWith('./'))
@@ -2461,6 +2841,12 @@ class VSliceImporter {
 					candidates.push(joinPath(root, 'shared/images/' + clean.substr('shared/'.length) + extension));
 					candidates.push(joinPath(root, 'images/' + clean.substr('shared/'.length) + extension));
 				} else {
+					// Builds that keep each asset library in its own folder write
+					// paths from the library name down (`gameplay/characters/x/x`
+					// inside the `gameplay` folder), with no images/ level.
+					var inLibrary = libraryRelativeAsset(root, clean);
+					if (inLibrary != null)
+						candidates.push(joinPath(root, inLibrary + extension));
 					candidates.push(joinPath(root, 'images/' + clean + extension));
 					candidates.push(joinPath(root, 'shared/images/' + clean + extension));
 				}
@@ -2524,6 +2910,11 @@ class VSliceImporter {
 				candidates.push(joinPath(root, 'sounds/' + defaultPath + cleanExtension));
 				candidates.push(joinPath(root, 'music/' + defaultPath + cleanExtension));
 			} else {
+				// Per-library builds write audio paths from the library folder down,
+				// beside the files that use them (`gameplay/notestyles/x/introGO`).
+				var inLibrary = libraryRelativeAsset(root, clean);
+				if (inLibrary != null)
+					candidates.push(joinPath(root, inLibrary + cleanExtension));
 				candidates.push(joinPath(root, 'sounds/' + clean + cleanExtension));
 				candidates.push(joinPath(root, 'music/' + clean + cleanExtension));
 			}
@@ -3114,7 +3505,7 @@ class VSliceImporter {
 		var normalized = stripAssetExtension(StringTools.replace(assetPath.trim(), '\\', '/')).toLowerCase();
 		var separator = normalized.indexOf(':');
 		if (separator <= 0)
-			return '';
+			return libraryFunkinNoteStyleFallback(normalized, kind);
 		var namespace = normalized.substr(0, separator);
 		if (namespace != 'shared' && namespace != 'default')
 			return '';
@@ -3145,6 +3536,34 @@ class VSliceImporter {
 		return '';
 	}
 
+	/**
+		Native stand-ins for the base game's own `funkin` note style when a
+		per-library build names it from its library folder
+		(`gameplay/notestyles/funkin/popup/sick`). Mods do not ship these files.
+	*/
+	static function libraryFunkinNoteStyleFallback(logical:String, kind:String):String {
+		var prefix = 'gameplay/notestyles/funkin/';
+		if (!logical.startsWith(prefix))
+			return '';
+		var stem = logical.substr(prefix.length);
+		if (kind == 'note-style-splash')
+			return stem == 'note-splashes' ? 'assets/images/custom_ui/ui_packs/normal/noteSplashes.png' : '';
+		if (!stem.startsWith('popup/'))
+			return '';
+		stem = stem.substr('popup/'.length);
+		if (kind == 'note-style-judgement')
+			return switch (stem) {
+				case 'sick' | 'good' | 'bad' | 'shit': 'assets/images/judgements/normal/' + stem + '.png';
+				default: '';
+			};
+		if (kind == 'note-style-combo' && stem.length == 7 && stem.startsWith('digit-')) {
+			var digit = stem.charCodeAt(6);
+			if (digit >= '0'.code && digit <= '9'.code)
+				return 'assets/images/num' + stem.charAt(6) + '.png';
+		}
+		return '';
+	}
+
 	/** Copy one optional image resource from the authored style document. */
 	static function appendNoteStyleImage(root:String, resource:Dynamic, destination:String,
 		kind:String, assets:Array<VSliceAssetMapping>, findings:Array<VSliceDiagnostic>):Dynamic {
@@ -3160,7 +3579,8 @@ class VSliceImporter {
 			// source library truly omitted the resource.
 			var sourcePng = resolveVSliceAsset(root, assetPath, '.png');
 			var sourceAstc = resolveVSliceAsset(root, assetPath, '.astc');
-			if (!sourcePng.found && !sourceAstc.found)
+			var sourceDds = resolveVSliceAsset(root, assetPath, '.dds');
+			if (!sourcePng.found && !sourceAstc.found && !sourceDds.found)
 				return {native: true, fallback: nativeFallback};
 		}
 		// V-Slice's stock countdown images live in the base/shared library and

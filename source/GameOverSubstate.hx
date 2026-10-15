@@ -292,12 +292,14 @@ class GameOverSubstate extends MusicBeatSubstate {
 		var resolveSound = Reflect.field(paths, 'sound');
 		if (!Reflect.isFunction(resolveSound))
 			throw '[source-gameover] Psych owner sound resolver is unavailable';
-		var path:Dynamic = Reflect.callMethod(paths, resolveSound, [name]);
-		if (path == null || !FNFAssets.exists(Std.string(path))) {
-			trace('[source-gameover-missing-sound] ' + name + ' path=' + Std.string(path));
+		// Psych's Paths.sound returns the loaded Sound (the beep when missing),
+		// not a path, so it is played as is.
+		var sound:Dynamic = Reflect.callMethod(paths, resolveSound, [name]);
+		if (sound == null) {
+			trace('[source-gameover-missing-sound] ' + name);
 			return flixel.system.FlxAssets.getSound('flixel/sounds/beep');
 		}
-		return FNFAssets.getSound(Std.string(path));
+		return sound;
 	}
 
 	function playPsychTankGameOverVoice():Void {

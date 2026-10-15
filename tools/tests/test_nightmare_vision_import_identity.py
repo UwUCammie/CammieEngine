@@ -163,6 +163,11 @@ class NightmareVisionImportIdentityTest(unittest.TestCase):
         normalize_source = extract_method(source, "static function normalizeSource")
         slug = extract_method(source, "static function slug")
         namespace = extract_method(source, "public static function namespaceFor")
+        namespace += "\n" + extract_method(source, "static function labelFor")
+        namespace += "\n  public static function namespaceLabel(sourceRoot:String, engine:String):String\n"
+        namespace += "    return labelFor(normalizeSource(sourceRoot), engine);\n"
+        self.assertIn("public static function namespaceLabel(sourceRoot:String, engine:String):String\n"
+                      "\t\treturn labelFor(normalizeSource(sourceRoot), engine);", source)
         fixture = """import haxe.crypto.Md5;
 import haxe.io.Path;
 import sys.FileSystem;
@@ -180,6 +185,12 @@ class CompatScriptManifest {
     if (psych == nmv) throw 'NMV reused Psych owner path';
     if (psych.indexOf('psych-engine-') != 0 || nmv.indexOf('nightmare-vision-') != 0)
       throw 'engine labels missing from owner paths: ' + psych + ' / ' + nmv;
+    var label = CompatScriptManifest.namespaceLabel('/mods/Shared Root', 'Nightmare Vision');
+    if (label != 'nightmare-vision-shared-root')
+      throw 'namespace label is not the readable start of the namespace: ' + label;
+    var full = CompatScriptManifest.namespaceFor('/mods/Shared Root', 'Nightmare Vision');
+    if (full.indexOf(label + '-') != 0 || full.length != label.length + 11)
+      throw 'namespace is not label plus a ten character hash: ' + full;
   }
 }
 '''

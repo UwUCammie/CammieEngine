@@ -349,6 +349,7 @@ class ImportWorkflow {{
                 "static function cachedDependencyCandidates",
                 "static function rememberDependencyCandidates",
                 "static function charCandidates",
+                "static function libraryAssetParent(",
                 "static function stageCandidates",
             )
         )
@@ -1160,12 +1161,14 @@ class ScanDiagnosticLabelFixture {{
         source = self.source
         methods = "\n".join(
             extract_method(source, marker)
-            for marker in ("static function pathWithin", "static function dependencyRootsForChart")
+            for marker in ("static function pathWithin", "static function dependencyRootsForChart",
+                           "static function chartPackageRoot")
         )
         fixture = f'''import haxe.io.Path;
 using StringTools;
 typedef ImportRoot = {{ var root:String; var contentRoot:String; var data:String; }};
 class ScopedDependencyFixture {{
+  static function normalized(path:String):String return Path.normalize(path);
   static function pathKey(path:String):String return Path.normalize(path).toLowerCase();
   static function uniquePush(items:Array<String>, value:String):Void {{
     for (item in items) if (pathKey(item) == pathKey(value)) return;
@@ -1366,7 +1369,8 @@ class Main {{
     sourceRoot:null, engine:null, importSourceInfo:null
   }};
   static function normalizeSourceVocalRoles(songData:SongImport):Void {{}}
-  static function findImportVocalStems(basePath:String, combinedPlaysAsPlayer:Bool = false):Array<Dynamic> return [];
+  static function findImportVocalStems(basePath:String, combinedPlaysAsPlayer:Bool = false,
+    namedStemsFollowCharacters:Bool = false):Array<Dynamic> return [];
   static function validateAndRecordSongImport(collector:SongImportRejectionCollector, songData:SongImport,
       sourceRoot:String, dataFolder:String, engine:String):Bool return songData != null;
   static function importSongFolderName(songData:SongImport):String return songData.name;
@@ -1534,6 +1538,7 @@ class CoolUtil {
                 "static function cachedDependencyCandidates",
                 "static function rememberDependencyCandidates",
                 "static function charCandidates",
+                "static function libraryAssetParent(",
                 "static function stageCandidates",
                 "static function uiCandidates",
                 "static function cutsceneCandidates",

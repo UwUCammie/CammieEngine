@@ -922,6 +922,7 @@ METHODS = (
     "static function discoverLegacySongImportsFromRoot",
     "static function ensureDirectory",
     "static function vSliceMappingDestination",
+    "static function importWriteTarget",
     "static function mergeVSliceMapping",
     "static function chooseVSliceRegistry",
     "static function registryHasVSliceKey",
@@ -1467,6 +1468,9 @@ def main() -> int:
         # graph identical to the native importer instead of stubbing that
         # dependency away.
         (temp / "VSliceAstcAdapter.hx").write_text((ROOT / "source" / "VSliceAstcAdapter.hx").read_text())
+        # The diagnostic writes into its own temporary tree without an import
+        # stage, so the staged-write lookup never has an active context.
+        (temp / "ImportIO.hx").write_text("class ImportIO {\n  public static function current():Dynamic return null;\n}\n")
         # V-Slice note-kind conversion shares the engine-level note-type
         # aliases with PlayState. Include that helper in the isolated scanner
         # fixture so diagnostics exercise the same graph as the importer.

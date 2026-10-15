@@ -177,26 +177,17 @@ class NightmareVisionScriptDiscovery {
 		return plan;
 	}
 
-	/** Stable unsupported-script diagnostics for the importer to persist. */
+	/** Stable script diagnostics for the importer to persist. Every scope this
+	 * plan selects (stage, global, character, character changes, song, note type
+	 * and event) is loaded by the gameplay runtime, so a planned script is not a
+	 * problem worth reporting. Only the parts of the source loader the plan cannot
+	 * see ahead of time are listed. */
 	public static function unsupportedDiagnostics(plan:NightmareVisionScriptPlan):Array<String> {
 		var result:Array<String> = [];
 		if (plan == null) return result;
-		var seen:Map<String, Bool> = new Map();
-		if (plan.scripts != null) for (entry in plan.scripts) {
-			if (entry == null || entry.relative == null || entry.relative == '') continue;
-			appendDiagnostic(result, seen, entry.scope, entry.relative);
-		}
 		for (note in plan.coverageNotes)
 			result.push('[nightmare-vision-script-inventory-incomplete] ' + note);
 		return result;
-	}
-
-	static function appendDiagnostic(result:Array<String>, seen:Map<String, Bool>, scope:String, relative:String):Void {
-		var clean = relative.replace('\\', '/');
-		var key = scope + '|' + clean;
-		if (seen.exists(key)) return;
-		seen.set(key, true);
-		result.push('[nightmare-vision-unsupported-script] scope=' + scope + ' path=' + clean);
 	}
 
 	#if sys

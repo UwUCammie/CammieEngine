@@ -222,7 +222,9 @@ class Main {
     def test_dropped_statement_leaves_parseable_empty_branch(self):
         # An unsupported super call is stripped; the guarded branch must still
         # parse instead of failing the whole file with EUnexpected(}).  The
-        # repaired body keeps an explicit empty block as the branch body.
+        # repaired body keeps an empty branch body: either an explicit empty
+        # block from the statement strip or the `null;` empty statement the
+        # super-call lowering writes for a call standing alone after `if`.
         for method_name in ('onUpdate', 'onNoteMiss'):
             body = self.translate_character_body(
                 '\n'
@@ -231,8 +233,9 @@ class Main {
                 method_name, 'event')
             self.assertNotIn("super.actuallyDance", body)
             self.assertIn("if (event != null)", body)
-            self.assertTrue(body.rstrip().endswith("{}"),
-                            "dangling branch must end with an empty block: " + repr(body))
+            compact = "".join(body.split())
+            self.assertTrue(compact.endswith("if(event!=null){}") or compact.endswith("if(event!=null)null;"),
+                            "dangling branch must end with an empty statement: " + repr(body))
 
     def test_character_default_note_miss_bridge_plays_the_miss_sing(self):
         runtime = (ROOT / "source/HxcCompatRuntime.hx").read_text()

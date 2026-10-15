@@ -91,8 +91,11 @@ class Main {
   check(!FreeplaySongAvailability.ownerReadiness(null,owner).ready,
    'an absent snapshot cannot prove an imported package ready');
   snapshot.pendingOwnerRoots=[other];
-  check(!FreeplaySongAvailability.ownerReadiness(snapshot,'assets/imported_mods/unknown').ready,
-   'an unchecked owner must stay locked during another queued refresh');
+  var unreserved=FreeplaySongAvailability.ownerReadiness(snapshot,'assets/imported_mods/unknown');
+  check(unreserved.ready && unreserved.state=='unmanaged',
+   'an owner the queued refresh did not reserve stays playable while it runs');
+  check(!FreeplaySongAvailability.ownerReadiness(snapshot,other).ready,
+   'the owner the queued refresh reserved stays locked');
   check(FreeplaySongAvailability.ownerReadiness(snapshot,owner).ready,
    'a checked owner stays playable while another package refreshes');
   snapshot.pendingOwnerRoots=[];
@@ -108,8 +111,10 @@ class Main {
 
   snapshot.pendingOwnerRoots=[other];
   snapshot.refreshInProgress=true;
-  check(!FreeplaySongAvailability.ownerReadiness(snapshot,owner).ready,
-   'unmanaged imports stay locked while active refresh work remains');
+  check(FreeplaySongAvailability.ownerReadiness(snapshot,owner).ready,
+   'an unmanaged import outside the active refresh reservations stays playable');
+  check(!FreeplaySongAvailability.songReadiness(snapshot,owner,true,'assets/data/shared').ready,
+   'active refresh output still locks an unmanaged song whose data it rewrites');
   snapshot.refreshInProgress=false;
   check(FreeplaySongAvailability.ownerReadiness(snapshot,owner).ready,
    'a stopped unrelated failure must not permanently gate a legacy import');

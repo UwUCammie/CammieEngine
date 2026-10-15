@@ -20,6 +20,7 @@ class ImportRemovalManagerTest(unittest.TestCase):
 }''',
               'ImportRemovalTransaction.hx': '''typedef ImportRemovalResult={var status:String;var blockers:Array<String>;var affectedOwners:Array<String>;var transactionId:String;}
  class ImportRemovalTransaction {
+ public static inline var STATE='import-cache/removal-state';
  public static var mode='cancel';public static var recoveryError=false;
  public static function recover(root:String):Array<String>{Sys.sleep(.02);return recoveryError?['locked rollback']:[];}
  public static function preview(root:String, owners:Array<String>,protected:Array<String>,active:Array<String>,cancel:Void->Bool):ImportRemovalPlan {
@@ -47,6 +48,20 @@ class ImportRemovalManagerTest(unittest.TestCase):
  static function preview():Void {check(ImportRemovalManager.beginPreview('assets/imported_mods/alpha'),'preview denied');check(!ImportRemovalManager.confirm(),'confirmed unvalidated preview');check(wait().phase=='preview','preview failed');}
  static function main(){
  ImportRemovalManager.install();check(ImportRefreshManager.reserved,'startup recovery unreserved');check(!ImportRemovalManager.beginPreview('assets/imported_mods/alpha'),'preview raced recovery');wait();check(!ImportRefreshManager.reserved,'startup lease retained');
+ // Nothing was left to recover, so nothing changed: no import generation move.
+ check(ImportRefreshManager.commits==0,'no-op startup recovery published a change');
+ var txns=haxe.io.Path.join([Sys.getCwd(),ImportRemovalTransaction.STATE,'transactions']);
+ var done=txns+'/txn-1';sys.FileSystem.createDirectory(done);sys.io.File.saveContent(done+'/receipt.json','{}');
+ check(!@:privateAccess ImportRemovalManager.unfinishedRemovals(Sys.getCwd()),'finished removal history counted as work');
+ sys.FileSystem.createDirectory(done+'/backups');
+ check(@:privateAccess ImportRemovalManager.unfinishedRemovals(Sys.getCwd()),'pending cleanup ignored');
+ sys.FileSystem.deleteDirectory(done+'/backups');sys.FileSystem.createDirectory(txns+'/txn-2');
+ check(@:privateAccess ImportRemovalManager.unfinishedRemovals(Sys.getCwd()),'unreceipted removal ignored');
+ // A launch that finds an interrupted removal may have changed installed files, so it still publishes.
+ check(@:privateAccess ImportRemovalManager.startRecovery(false),'startup recovery with work denied');wait();check(!ImportRefreshManager.reserved,'working startup lease retained');
+ check(ImportRefreshManager.commits==1,'startup recovery that finished a removal did not publish');
+ sys.FileSystem.deleteDirectory(txns+'/txn-2');sys.FileSystem.deleteFile(done+'/receipt.json');sys.FileSystem.deleteDirectory(done);
+ check(@:privateAccess ImportRemovalManager.startRecovery(false),'startup recovery denied');wait();check(ImportRefreshManager.commits==1,'later no-op startup recovery published a change');
  check(!ImportRemovalManager.beginPreview(BundledImportOwnership.RESULTS_ROOT),'host namespace accepted');
  preview();ImportedMenuEntry.roots=['assets/imported_mods/alpha'];check(!ImportRemovalManager.confirm(),'active lease ignored');ImportedMenuEntry.roots=[];
  preview();check(ImportRemovalManager.confirm()&&ImportRefreshManager.reserved,'confirmation unreserved');ImportRemovalManager.cancel();var cancelled=wait();check(cancelled.phase=='cancelled'&&!cancelled.published&&!ImportRefreshManager.reserved,'cancel not rolled back before release');

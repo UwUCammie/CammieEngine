@@ -1069,6 +1069,8 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		try {
 			var ownerImages = ownerRoot + '/images/';
 			var coreImages = ownerRoot + '/__nmv_core/images/';
+			// The core's shared library holds Nightmare Vision's base cast.
+			var coreSharedImages = ownerRoot + '/__nmv_core/shared/images/';
 			var ownerPaths = new NightmareVisionPaths(ownerRoot);
 			var atlasRoots = imageRoot.split(',');
 			var atlases:Array<FlxAtlasFrames> = [];
@@ -1077,16 +1079,21 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 				var atlasRoot = StringTools.trim(authoredRoot);
 				var atlasKey:String;
 				var checkOwner:Bool;
+				var library:String = null;
 				if (StringTools.startsWith(atlasRoot, ownerImages)) {
 					atlasKey = atlasRoot.substr(ownerImages.length);
 					checkOwner = true;
 				} else if (StringTools.startsWith(atlasRoot, coreImages)) {
 					atlasKey = atlasRoot.substr(coreImages.length);
 					checkOwner = false;
+				} else if (StringTools.startsWith(atlasRoot, coreSharedImages)) {
+					atlasKey = atlasRoot.substr(coreSharedImages.length);
+					checkOwner = false;
+					library = 'shared';
 				} else
 					return false;
 
-				var atlas = ownerPaths.getTextureAtlas(atlasKey, null, true, checkOwner);
+				var atlas = ownerPaths.getTextureAtlas(atlasKey, library, true, checkOwner);
 				if (atlas == null)
 					return false;
 				var hasAnimateManifest = FileSystem.exists(atlasRoot + '/Animation.json');

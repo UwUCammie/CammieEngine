@@ -100,9 +100,23 @@ class EngineMemoryPolicyTest(unittest.TestCase):
   if (EngineMemory.enterSong(songA)) fail("song free space was applied twice");
   if (tuned.join(",") != EngineMemory.SONG_MIN_FREE_MB + ":0") fail("wrong song value: " + tuned.join(","));
   if (EngineMemory.SONG_MIN_FREE_MB > EngineMemory.MAX_MIN_FREE_MB) fail("song value overflows the collector");
+  // Each collection's pause grows with the headroom; at 512 MB measured
+  // collections passed 50 ms, at 256 MB and below none did.
+  if (EngineMemory.SONG_MIN_FREE_MB > 256) fail("song headroom above the measured 50 ms limit");
+  // Below the collector's own trigger (all of the live small heap, about
+  // 100 MB in a song) the value would change nothing.
+  if (EngineMemory.LOW_MEMORY_SONG_MIN_FREE_MB < 128) fail("low memory headroom is below the collector's own trigger");
   if (!EngineMemory.leaveSong(songA)) fail("song free space was not restored");
   if (EngineMemory.leaveSong(songA)) fail("restored twice");
   if (tuned.join(",") != EngineMemory.SONG_MIN_FREE_MB + ":0," + EngineMemory.DEFAULT_MIN_FREE_MB + ":0") fail("wrong restore: " + tuned.join(","));
+
+  // Low Memory Mode keeps the smaller headroom, and restores the same default.
+  tuned = [];
+  if (!EngineMemory.enterSong(songA, true)) fail("low memory song value was not applied");
+  EngineMemory.leaveSong(songA);
+  if (tuned.join(",") != EngineMemory.LOW_MEMORY_SONG_MIN_FREE_MB + ":0," + EngineMemory.DEFAULT_MIN_FREE_MB + ":0")
+   fail("wrong low memory value: " + tuned.join(","));
+  if (EngineMemory.LOW_MEMORY_SONG_MIN_FREE_MB >= EngineMemory.SONG_MIN_FREE_MB) fail("low memory value is not smaller");
 
   // A retry builds the next song before the old one is destroyed.
   tuned = [];
@@ -133,14 +147,136 @@ class EngineMemoryPolicyTest(unittest.TestCase):
   EngineMemory.applyStartupTuning(["--gc-song-min-free-mb=0"]);
   if (EngineMemory.enterSong(songA) || EngineMemory.leaveSong(songA) || tuned.length != 0) fail("song value could not be switched off");
   EngineMemory.reset();
-  EngineMemory.applyStartupTuning(["--gc-song-min-free-mb=512"]);
+  EngineMemory.applyStartupTuning(["--gc-song-min-free-mb=384"]);
   EngineMemory.enterSong(songA);
-  if (tuned.join(",") != "512:0") fail("song override ignored: " + tuned.join(","));
+  if (tuned.join(",") != "384:0") fail("song override ignored: " + tuned.join(","));
+  // A measured command-line value also wins over Low Memory Mode.
+  EngineMemory.leaveSong(songA);
+  tuned = [];
+  EngineMemory.enterSong(songB, true);
+  if (tuned.join(",") != "384:0") fail("low memory overrode the command line: " + tuned.join(","));
   EngineMemory.reset();
   tuned = [];
   EngineMemory.applyStartupTuning(["--gc-song-min-free-mb=999999"]);
   EngineMemory.enterSong(songA);
   if (tuned.join(",") != EngineMemory.MAX_MIN_FREE_MB + ":0") fail("song override not clamped: " + tuned.join(","));
+''')
+
+    def test_heavy_small_heap_gets_more_headroom_once_per_song(self):
+        self.run_fixture("EngineHeavySongFixture", r'''
+  var tuned:Array<String> = [];
+  var collects:Array<Bool> = [];
+  var small = 250.0 * 1024 * 1024;
+  // Readings queued here come first, one per read, before `small`.
+  var readings:Array<Float> = [];
+  EngineMemory.tuner = function(mb:Int, percent:Int) tuned.push(mb + ":" + percent);
+  EngineMemory.environment = function(name:String) return null;
+  EngineMemory.collector = function(major:Bool) collects.push(major);
+  EngineMemory.smallBytesProvider = function() return readings.length > 0 ? readings.shift() : small;
+  EngineMemory.reset();
+  var song = 'a', songB = 'b', songC = 'c', songD = 'd';
+  var normal = EngineMemory.SONG_MIN_FREE_MB + ":0";
+  var heavy = EngineMemory.HEAVY_SONG_MIN_FREE_MB + ":0";
+  var restored = EngineMemory.DEFAULT_MIN_FREE_MB + ":0";
+  // Measured on a song keeping about 223 MB of small objects: 256 MB gave 5
+  // collections of 60 to 73 ms, 512 MB gave 2 of 69 to 84 ms.
+  if (EngineMemory.HEAVY_SONG_MIN_FREE_MB <= EngineMemory.SONG_MIN_FREE_MB
+   || EngineMemory.HEAVY_SONG_MIN_FREE_MB > EngineMemory.MAX_MIN_FREE_MB) fail("heavy headroom out of range");
+
+  // The first full collection of the song (the loading handoff) sees a heavy
+  // heap, confirms it with a second collection, raises the headroom and
+  // collects once more so it is in force.
+  EngineMemory.enterSong(song);
+  EngineMemory.collectNow(true, 'loading-handoff', true);
+  if (tuned.join(",") != normal + "," + heavy) fail("heavy song headroom not raised: " + tuned.join(","));
+  if (collects.join(",") != "true,true,true") fail("heavy heap not confirmed and put in force: " + collects.join(","));
+  if (!EngineMemory.heavySong) fail("heavy song not reported");
+  // Later collections in the same song do not look again.
+  EngineMemory.collectNow(true, 'pause', true);
+  if (collects.length != 4 || tuned.length != 2) fail("headroom was checked twice in one song");
+  EngineMemory.leaveSong(song);
+  if (tuned[tuned.length - 1] != restored || EngineMemory.heavySong) fail("default not restored after a heavy song");
+
+  // A normal heap keeps the song value and collects once.
+  small = 150.0 * 1024 * 1024;
+  tuned = []; collects = [];
+  EngineMemory.enterSong(songB);
+  EngineMemory.collectNow(true, 'loading-handoff', true);
+  if (tuned.join(",") != normal || collects.length != 1 || EngineMemory.heavySong) fail("normal song changed: " + tuned.join(","));
+  EngineMemory.leaveSong(songB);
+
+  // Over the line after one collection but under it after a second (objects
+  // the first one could not free yet): the normal headroom stays.
+  readings = [190.0 * 1024 * 1024, 153.0 * 1024 * 1024];
+  tuned = []; collects = [];
+  EngineMemory.enterSong(songB);
+  EngineMemory.collectNow(true, 'loading-handoff', true);
+  if (tuned.join(",") != normal || collects.length != 2 || EngineMemory.heavySong)
+   fail("a heap that only looked heavy raised the headroom: " + tuned.join(",") + " / " + collects.length);
+  EngineMemory.leaveSong(songB);
+  if (readings.length != 0) fail("the second reading was not taken");
+
+  // A retry or next song created before the old state is destroyed looks
+  // again at its own first full collection.
+  small = 250.0 * 1024 * 1024;
+  tuned = []; collects = [];
+  EngineMemory.enterSong(song);
+  EngineMemory.collectNow(true, 'loading-handoff', true);
+  if (tuned.join(",") != normal + "," + heavy) fail("first heavy song not raised: " + tuned.join(","));
+  // Same heavy heap: the raised value stays and no extra collection runs.
+  tuned = []; collects = [];
+  EngineMemory.enterSong(songB);
+  EngineMemory.leaveSong(song);
+  EngineMemory.collectNow(true, 'loading-handoff', true);
+  if (tuned.length != 0 || collects.length != 1 || !EngineMemory.heavySong)
+   fail("heavy retry changed the headroom: " + tuned.join(",") + " / " + collects.length);
+  // A lighter song taking over gets the normal value back.
+  small = 150.0 * 1024 * 1024;
+  tuned = []; collects = [];
+  EngineMemory.enterSong(songC);
+  EngineMemory.leaveSong(songB);
+  EngineMemory.collectNow(true, 'loading-handoff', true);
+  if (tuned.join(",") != normal || collects.length != 1 || EngineMemory.heavySong)
+   fail("a lighter song kept the heavy headroom: " + tuned.join(","));
+  // A heavy song taking over from a normal one is raised.
+  small = 250.0 * 1024 * 1024;
+  tuned = []; collects = [];
+  EngineMemory.enterSong(songD);
+  EngineMemory.leaveSong(songC);
+  EngineMemory.collectNow(true, 'loading-handoff', true);
+  if (tuned.join(",") != heavy || collects.length != 3 || !EngineMemory.heavySong)
+   fail("a heavy song taking over was not raised: " + tuned.join(","));
+  EngineMemory.leaveSong(songD);
+  if (tuned[tuned.length - 1] != restored) fail("default not restored after a takeover chain");
+
+  // A minor collection does not decide; the next full one does.
+  small = 250.0 * 1024 * 1024;
+  tuned = []; collects = [];
+  EngineMemory.enterSong(songC);
+  EngineMemory.collectNow(false, 'minor', true);
+  if (tuned.length != 1) fail("a minor collection decided the headroom");
+  EngineMemory.collectNow(true, 'loading-handoff', true);
+  if (tuned.join(",") != normal + "," + heavy) fail("full collection after a minor one did not decide: " + tuned.join(","));
+  EngineMemory.leaveSong(songC);
+
+  // Low Memory Mode keeps its smaller headroom.
+  tuned = []; collects = [];
+  EngineMemory.enterSong(songD, true);
+  EngineMemory.collectNow(true, 'loading-handoff', true);
+  if (tuned.join(",") != EngineMemory.LOW_MEMORY_SONG_MIN_FREE_MB + ":0" || collects.length != 1) fail("low memory raised: " + tuned.join(","));
+  EngineMemory.leaveSong(songD);
+
+  // A measured command-line value wins, and so does no song tuning at all.
+  EngineMemory.reset();
+  tuned = []; collects = [];
+  EngineMemory.applyStartupTuning(["--gc-song-min-free-mb=256"]);
+  EngineMemory.enterSong(song);
+  EngineMemory.collectNow(true, 'loading-handoff', true);
+  if (tuned.join(",") != "256:0" || collects.length != 1) fail("command-line value overridden: " + tuned.join(","));
+  EngineMemory.reset();
+  tuned = []; collects = [];
+  EngineMemory.collectNow(true, 'pause', true);
+  if (tuned.length != 0 || collects.length != 1) fail("headroom changed outside a song");
 ''')
 
     def test_probe_reports_large_heap_around_the_collection(self):
@@ -157,7 +293,7 @@ class EngineMemoryPolicyTest(unittest.TestCase):
     def test_song_states_enter_and_leave_the_song_policy(self):
         play = (ROOT / "source/PlayState.hx").read_text(encoding="utf-8")
         create = play[play.index("override public function create() {"):]
-        self.assertIn("EngineMemory.enterSong(this);", create[:create.index("startTimestamp = consumeStartingPosition();")])
+        self.assertIn("EngineMemory.enterSong(this, OptionsHandler.options.lowMemoryMode);", create[:create.index("startTimestamp = consumeStartingPosition();")])
         destroy = play[play.index("override public function destroy() {"):]
         self.assertIn("EngineMemory.leaveSong(this);", destroy[:destroy.index('RuntimeSongExitProbe.mark("destroy-complete");')])
         self.assertEqual(play.count("EngineMemory.enterSong("), 1)

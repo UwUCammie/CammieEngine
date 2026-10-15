@@ -113,11 +113,19 @@ class Main extends Sprite {
 		FlxG.signals.preStateCreate.add(function(_state:FlxState) {
 			RuntimeSongExitProbe.mark("pre-state-create");
 			syncImportForegroundForState(_state);
+			// A retry of the same song keeps its held images and atlases for the
+			// next attempt instead of decoding them all again (see SongRetry).
+			var retryKeepsAssets = leavingPlayState
+				&& SongRetry.keepsSongAssets(Std.isOfType(_state, PlayState), FNFAssets.pathEpoch());
 			if (leavingPlayState) {
 				// The song's own holds go first. A held graphic has a use count,
 				// so the sweep below would otherwise keep every one of them.
-				SongGraphicRetention.end();
-				DynamicSprite.DynamicAtlasFrames.releaseAll();
+				// A kept retry leaves them, and the sweep then only frees what
+				// nothing holds (texts, one-off images), as after any song.
+				if (!retryKeepsAssets) {
+					SongGraphicRetention.end();
+					DynamicSprite.DynamicAtlasFrames.releaseAll();
+				}
 				if (SongLoadingScreen.active) pruneSongBitmapCache();
 				else FlxG.bitmap.clearCache();
 			}
@@ -127,7 +135,9 @@ class Main extends Sprite {
 				// Low memory mode keeps only what scripts precache on purpose.
 				SongGraphicRetention.maxHeldBytes = OptionsHandler.options.lowMemoryMode
 					? 0 : SongGraphicRetention.DEFAULT_MAX_HELD_BYTES;
-				SongGraphicRetention.begin(FNFAssets.pathEpoch());
+				// A kept retry carries on with the holds it already has.
+				if (!retryKeepsAssets)
+					SongGraphicRetention.begin(FNFAssets.pathEpoch());
 			}
 		});
 		FlxG.signals.postStateSwitch.add(function() {
@@ -139,6 +149,9 @@ class Main extends Sprite {
 			while (i-- > 0)
 				if (corpses[i] == null || !corpses[i].exists)
 					corpses.splice(i, 1);
+			// The group keeps its own length, which only add and remove update.
+			// Without this it grew by every pruned sound and never came back.
+			@:privateAccess FlxG.sound.list.length = corpses.length;
 		});
 
 		SongLoadingScreen.install();

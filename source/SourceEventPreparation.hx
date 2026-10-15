@@ -67,15 +67,8 @@ class SourceEventPreparation {
 			if (hooks.firstPush != null)
 				hooks.firstPush(event);
 		}
-		if (hooks.earlyOffset != null) {
-			// The time is read before any script runs: an early-trigger callback
-			// that moves the event does not change what is subtracted from. The
-			// name is read after: both Nightmare Vision revisions pick the built-in
-			// default by the name the event has once its scripts have answered.
-			var time = event.strumTime;
-			var answer = hooks.earlyOffset(event);
-			event.strumTime = time - earlyOffsetFor(event.event, answer);
-		}
+		if (hooks.earlyOffset != null)
+			applyEarlyOffset(event, hooks.earlyOffset);
 		if (hooks.push != null)
 			hooks.push(event);
 	}
@@ -83,6 +76,20 @@ class SourceEventPreparation {
 	/** The deferred half of prepare, for engines that ask for offsets later. */
 	public static function applyEarlyOffsets(views:Array<SourceEventNote>, earlyOffset:SourceEventNote->Null<Float>):Void {
 		for (event in views)
-			event.strumTime -= earlyOffsetFor(event.event, earlyOffset(event));
+			applyEarlyOffset(event, earlyOffset);
+	}
+
+	/**
+		One row's early trigger, the same step whether it runs inline or deferred.
+		The time is read before any script runs: an early-trigger callback that
+		moves the event does not change what is subtracted from. The name is read
+		after: both Nightmare Vision revisions pick the built-in default by the
+		name the event has once its scripts have answered. Spelling the order out
+		matters because `strumTime -= f()` leaves it to the target compiler.
+	**/
+	static function applyEarlyOffset(event:SourceEventNote, earlyOffset:SourceEventNote->Null<Float>):Void {
+		var time = event.strumTime;
+		var answer = earlyOffset(event);
+		event.strumTime = time - earlyOffsetFor(event.event, answer);
 	}
 }

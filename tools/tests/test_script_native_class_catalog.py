@@ -20,8 +20,9 @@ STUB_CLASSES = {
     'flixel/util/FlxSort': 'class FlxSort {}',
     'flixel/util/FlxStringUtil': 'class FlxStringUtil {}',
     'flixel/util/FlxSpriteUtil': 'class FlxSpriteUtil {}',
-    'flixel/tweens/FlxTween': 'class FlxTween {}',
+    'flixel/tweens/FlxTween': 'class FlxTween {}\nclass FlxTweenManager {}',
     'flixel/tweens/FlxEase': 'class FlxEase {}',
+
     'flixel/effects/FlxFlicker': 'class FlxFlicker {}',
     'flixel/effects/particles/FlxEmitter': 'class FlxTypedEmitter<T> {}',
     'flixel/ui/FlxBar': 'class FlxBar {}\nenum FlxBarFillDirection { LEFT_TO_RIGHT; }',
@@ -29,7 +30,12 @@ STUB_CLASSES = {
     'flixel/addons/display/FlxTiledSprite': 'class FlxTiledSprite {}',
     'flixel/addons/effects/FlxTrail': 'class FlxTrail {}',
     'openfl/filters/ShaderFilter': 'class ShaderFilter {}',
+    'flixel/addons/transition/FlxTransitionableState': 'class FlxTransitionableState {}',
+    'flixel/util/FlxGradient': 'class FlxGradient {}',
+    'flixel/graphics/FlxGraphic': 'class FlxGraphic {}',
+    'flixel/graphics/frames/FlxBitmapFont': 'class FlxBitmapFont {}',
     'animate/internal/elements/FlxSpriteElement': 'class FlxSpriteElement {}',
+    'AnimateAtlasUtil': 'class AnimateAtlasUtil {}',
 }
 
 MAIN = r'''class Main {
@@ -52,6 +58,14 @@ MAIN = r'''class Main {
    'texture atlas sprite elements are shared under both spellings');
   check(names.get('FlxFlicker') == flixel.effects.FlxFlicker && paths.get('flixel.effects.FlxFlicker') == flixel.effects.FlxFlicker,
    'FlxFlicker is shared under both spellings');
+  check(names.get('FlxTransitionableState') == flixel.addons.transition.FlxTransitionableState
+   && paths.get('flixel.addons.transition.FlxTransitionableState') == flixel.addons.transition.FlxTransitionableState,
+   'every layer gets the real transition class, so its skip flags reach the engine states');
+  check(names.get('FlxTweenManager') == flixel.tweens.FlxTween.FlxTweenManager
+   && paths.get('flixel.tweens.FlxTweenManager') == flixel.tweens.FlxTween.FlxTweenManager,
+   'scripts can build a private tween manager they advance themselves');
+  check(names.get('AnimateAtlasUtil') == AnimateAtlasUtil,
+   'imported character and stage scripts of every layer load Animate atlases through the shared helper');
   var onlyNames=new Map<String,Dynamic>();
   ScriptNativeClasses.seed(function(n, v) onlyNames.set(n, v));
   check(onlyNames.exists('FlxSort'), 'a layer without import paths still gets the bare names');

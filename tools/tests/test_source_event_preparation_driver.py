@@ -46,6 +46,29 @@ class Main {
   check(deferred[0].strumTime == 105 && deferred[1].strumTime == -80 && deferred[3].strumTime == 400,
    'deferred offsets ' + [for (e in deferred) e.strumTime]);
 
+  // The deferred step keeps the inline order: the time is read before the
+  // script answers, the built-in default follows the name it leaves behind.
+  var moved:Array<SourceEventNote> = [];
+  SourceEventPreparation.prepare(rows(), 0, moved, {});
+  SourceEventPreparation.applyEarlyOffsets(moved, function(e):Null<Float> {
+   if (e.event == 'Scripted') {
+    e.strumTime = 9999;
+    e.event = 'Kill Henchmen';
+   }
+   return null;
+  });
+  check(moved[3].strumTime == 120 && moved[3].event == 'Kill Henchmen',
+   'deferred step must subtract from the time read before the callback: ' + moved[3].strumTime);
+  var inlined:Array<SourceEventNote> = [];
+  SourceEventPreparation.prepare(rows(), 0, inlined, {earlyOffset:function(e):Null<Float> {
+   if (e.event == 'Scripted') {
+    e.strumTime = 9999;
+    e.event = 'Kill Henchmen';
+   }
+   return null;
+  }});
+  check(inlined[3].strumTime == moved[3].strumTime, 'inline and deferred offsets must agree');
+
   // A script answer always beats the built-in default.
   check(SourceEventPreparation.earlyOffsetFor('Kill Henchmen', 40) == 40, 'script answer overrides the default');
   check(SourceEventPreparation.earlyOffsetFor('Kill Henchmen', null) == 280, 'no answer uses the default');

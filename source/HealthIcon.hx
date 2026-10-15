@@ -270,8 +270,34 @@ class HealthIcon extends FlxSprite {
 	function handleMissingIconDiagnostic(plan:Dynamic):Void {
 		if (deferMissingIconDiagnostic)
 			deferredMissingIconDiagnostic = plan;
+		else if (!isNormal && !songIsRunning())
+			reportMenuIconFallback(plan);
 		else
 			EngineCompat.reportVisualFallback(plan);
+	}
+
+	/** Song scripts also build plain (not HUD) icons. Those belong to the song
+	 * that made them, so only icons built outside a song count as menu icons. */
+	static function songIsRunning():Bool {
+		return Std.isOfType(flixel.FlxG.state, PlayState);
+	}
+
+	static var reportedMenuIconFallbacks:Map<String, Bool> = new Map();
+
+	/**
+		Menu icons (Freeplay rows and browser cards) are built while the list
+		scrolls, in whatever order the player moves. Reporting them as runtime
+		missing dependencies put them in the log of whichever song ran next, as
+		if that song had a problem. The import report already lists an icon the
+		package does not ship, so a menu only notes the fallback once per icon.
+	**/
+	static function reportMenuIconFallback(plan:Dynamic):Void {
+		var requested:Dynamic = plan == null ? null : Reflect.field(plan, 'requested');
+		var id = requested == null ? '' : Std.string(requested);
+		if (reportedMenuIconFallbacks.exists(id))
+			return;
+		reportedMenuIconFallbacks.set(id, true);
+		trace('[menu-icon-fallback] ' + id + ' has no icon; showing the neutral icon grid');
 	}
 
 	function reportDeferredIconDiagnostic():Void {

@@ -78,8 +78,10 @@ class NightmareVisionModchartTransform {
 			var entry = registry.executionEntry == null ? null : registry.executionEntry(name);
 			if (registry.executionEntry != null && entry == null) continue;
 			if (entry != null && entry.builtin == null) {
-				pos = entry.getPosition(time == null ? object.kind == NightmareVisionModchartObject.NOTE ? object.strumTime : 0 : time,
-					visualDiff, timeDiff, beat, pos, object.data, object.player, object.nativeObject);
+				var at = time == null ? object.kind == NightmareVisionModchartObject.NOTE ? object.strumTime : 0 : time;
+				pos = entry.calls != null
+					? entry.calls.getPos(at, visualDiff, timeDiff, beat, pos, object.data, object.player, object.nativeObject)
+					: entry.getPosition(at, visualDiff, timeDiff, beat, pos, object.data, object.player, object.nativeObject);
 				var readsOnly = entry.positionReadsOnly == true;
 				if (object.readLive != null && !(liveRead && readsOnly)) {
 					object.readLive();
@@ -119,7 +121,8 @@ class NightmareVisionModchartTransform {
 			if (registry.executionEntry != null && entry == null) continue;
 			if (entry != null && entry.builtin == null) {
 				if (object.flushLive != null) object.flushLive();
-				entry.updateObject(beat, object.nativeObject, position, object.player, object.kind);
+				if (entry.calls != null) entry.calls.updateObjectOfKind(beat, object.nativeObject, position, object.player, object.kind);
+				else entry.updateObject(beat, object.nativeObject, position, object.player, object.kind);
 				if (object.readLive != null) object.readLive();
 				continue;
 			}
@@ -279,7 +282,8 @@ class NightmareVisionModchartTransform {
 	function instancePathPosition(object:NightmareVisionModchartObject, pos:NightmareVisionModchartVector,
 		visualDiff:Float, timeDiff:Float):NightmareVisionModchartVector {
 		var state = currentFormulaEntry.state;
-		var value = currentFormulaEntry.value(object.player);
+		var value = currentFormulaEntry.calls != null ? currentFormulaEntry.calls.getValue(object.player)
+			: currentFormulaEntry.value(object.player);
 		if (value == 0 || state.pathData.length == 0) return pos;
 		var path = state.pathData[object.data % state.pathData.length];
 		var total = state.totalDists[object.data % state.pathData.length];
@@ -303,13 +307,14 @@ class NightmareVisionModchartTransform {
 
 	function get(family:String, player:Int):Float {
 		if (currentFormulaEntry != null && currentFormulaEntry.value != null)
-			return currentFormulaEntry.value(player);
+			return currentFormulaEntry.calls != null ? currentFormulaEntry.calls.getValue(player) : currentFormulaEntry.value(player);
 		return registry.value(family, player);
 	}
 
 	function sub(family:String, name:String, player:Int):Float {
 		if (currentFormulaEntry != null && currentFormulaEntry.subValue != null)
-			return currentFormulaEntry.subValue(name, player);
+			return currentFormulaEntry.calls != null ? currentFormulaEntry.calls.getSubmodValue(name, player)
+				: currentFormulaEntry.subValue(name, player);
 		return registry.getSubmodValue(family, name, player);
 	}
 

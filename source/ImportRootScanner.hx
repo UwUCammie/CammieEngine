@@ -1477,6 +1477,14 @@ class ImportRootScanner {
 		// `preload` library, so charts live below assets/preload/data while the
 		// audio stays at assets/songs.  Only consult it when the ordinary and
 		// shared lookups missed, so existing layouts keep their exact roots.
+		// Builds that split assets into per-library folders keep each song's
+		// metadata and chart beside its audio (`songs/<id>/<id>-chart.json`) and
+		// have no data folder. The library folder then plays the data role, so
+		// data/songs, data/characters and data/stages resolve below it. Only a
+		// Polymod mod's library counts: the same build ships its own base game
+		// in assets/<library>, which is not part of the mod.
+		if (data == '' && audio != '' && isPolymodLibraryFolder(root) && hasVSlicelikeCharts(contentRoot))
+			data = contentRoot;
 		var preloadPath = findDirectory(entries, contentRoot, 'preload');
 		if (preloadPath != '') {
 			var preloadEntries = readDirectory(preloadPath);
@@ -1494,6 +1502,24 @@ class ImportRootScanner {
 			scripts:scripts,
 			supplementalAssetRoots:supplementalAssetRoots
 		};
+	}
+
+	/** True when `folder` or its parent is a Polymod mod (holds _polymod_meta.json). */
+	static function isPolymodLibraryFolder(folder:String):Bool {
+		if (folder == null || folder == '')
+			return false;
+		// Path.directory of `mods/x/lib/` is `mods/x/lib`, so the trailing
+		// separator goes first or the mod folder is never checked.
+		folder = Path.removeTrailingSlashes(folder);
+		for (candidate in [folder, Path.directory(folder)]) {
+			if (candidate == null || candidate == '')
+				continue;
+			try {
+				if (FileSystem.exists(Path.join([candidate, '_polymod_meta.json'])))
+					return true;
+			} catch (_:Dynamic) {}
+		}
+		return false;
 	}
 
 	static function hasVSlicelikeCharts(dataPath:String):Bool {

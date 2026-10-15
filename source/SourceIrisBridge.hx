@@ -255,8 +255,11 @@ class SourceIrisBridge extends hscript.Interp {
 		else
 			value = evaluator.getOrImportClass(packagePath);
 
+		// Older Psych kept its classes at the top level (addHaxeLibrary('HealthIcon')),
+		// so a bare name that matches a seeded short name is that seeded class.
+		var seededTopLevel = packagePath.indexOf('.') < 0 && shortName == packagePath && variables.exists(shortName);
 		if (value != null && evaluator.nativeClassScope != null && evaluator.nativeClassScope.ownsClass(value)
-			&& !evaluator.importBindings.exists(packagePath))
+			&& !evaluator.importBindings.exists(packagePath) && !seededTopLevel)
 			throw '[psych-hscript-import] Unregistered source module path: ' + packagePath;
 		if (value == null)
 			throw '[psych-hscript-import] No seeded or resolvable binding for `' + packagePath + '`';

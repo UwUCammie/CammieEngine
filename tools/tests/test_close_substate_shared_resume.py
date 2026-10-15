@@ -102,6 +102,8 @@ class Main {
  function sourceHUDHealthPercent():Float return 50;
  function resumePsychCustomTimeline()timeline++;
  function setCodenameScriptsPaused(v:Bool)codenamePaused=v;
+ // The V-Slice justUnpaused flag sits outside the resume block both copies share.
+ function markJustUnpaused()observe('justUnpaused');
  public function observe(what:String)
   Log.lines.push(what+'|'+paused+'|'+vars.get('paused')+'|'+resyncs+'|'+SourcePauseTasks.active+'|'+(startTimer==null?'-':''+startTimer.active)+'|'+demoRate+'|'+controls.scheme);
  function finalState():String

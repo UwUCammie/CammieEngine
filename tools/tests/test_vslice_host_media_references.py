@@ -54,7 +54,7 @@ class VSliceHostMediaReferencesTest(unittest.TestCase):
         module = MODULE.read_text(encoding='utf-8')
         methods = '\n'.join(extract_method(module, 'static function ' + name + '(') for name in (
             'findChildDirectory', 'normalizedImportFileName', 'findImportFile', 'isImportFile',
-            'findVSliceHxcAssetByBasename', 'findVSliceHxcAsset', 'vSliceHostMediaExists'))
+            'findVSliceHxcAssetByBasename', 'findVSliceLibraryFile', 'findVSliceHxcAsset', 'vSliceHostMediaExists'))
         with tempfile.TemporaryDirectory(dir=TEST_TMP) as folder:
             work = Path(folder)
             for relative in ('assets/sounds/thunder_1.ogg', 'assets/shared/music/breakfast.ogg',

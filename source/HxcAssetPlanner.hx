@@ -58,6 +58,8 @@ private typedef HxcFunctionRegion = {
 	var bodyStart:Int;
 	var bodyEnd:Int;
 	var body:String;
+	/** Declared with a return type (`):FlxSprite {`). */
+	@:optional var typed:Bool;
 }
 
 private typedef HxcFiniteLoop = {
@@ -86,6 +88,11 @@ class HxcAssetPlanner {
 			// leading slash so the importer still rejects absolute asset paths.
 			while (clean.indexOf('//') >= 0)
 				clean = StringTools.replace(clean, '//', '/');
+			// A key ending in a separator names a folder: it is the literal prefix of
+			// a path finished at run time ('taunt/' + name with name still ''), not a
+			// file the importer can copy or report as missing.
+			if (clean.endsWith('/'))
+				return;
 			var identity = kind + ':' + clean.toLowerCase();
 			if (seen.exists(identity))
 				return;
@@ -388,6 +395,12 @@ class HxcAssetPlanner {
 		var region = containingFunction(source, callPosition);
 		if (region == null)
 			return null;
+		// Typed helpers are scoped here so their parameters bind per call site.
+		// A path built only from locals of a typed function keeps the file-wide
+		// table it always used: block-level guards inside a long body are not
+		// tracked, and the table keeps every literal those locals can hold.
+		if (region.typed == true && !expressionUsesParameter(expression, region.parameters))
+			return null;
 		var globalValues = readFiniteArrays(source);
 		var contexts = functionCallContexts(source, region, globalValues);
 		if (contexts.length == 0)
@@ -495,7 +508,11 @@ class HxcAssetPlanner {
 	}
 
 	static function containingFunction(source:String, position:Int):Null<HxcFunctionRegion> {
-		var declaration = new EReg('function\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(([^)]*)\\)\\s*\\{', 'g');
+		// A return type (`):FlxSprite {`) is common in HXC; without it in the
+		// pattern a typed helper had no region, and its parameter fell back to the
+		// file-wide table that merges same-named parameters of other helpers.
+		var declaration = new EReg('function\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(([^)]*)\\)'
+			+ '\\s*(:\\s*[A-Za-z_][A-Za-z0-9_.]*(?:<[^{};]*>)?)?\\s*\\{', 'g');
 		var remaining = source;
 		var offset = 0;
 		var attempts = 0;
@@ -503,6 +520,8 @@ class HxcAssetPlanner {
 		while (attempts++ < 1024 && declaration.match(remaining)) {
 			var functionName = declaration.matched(1);
 			var parameterText = declaration.matched(2);
+			var returnType:String = null;
+			try returnType = declaration.matched(3) catch (_:Dynamic) {}
 			var matchPosition = declaration.matchedPos();
 			var declarationStart = offset + matchPosition.pos;
 			var open = declarationStart + matchPosition.len - 1;
@@ -531,7 +550,8 @@ class HxcAssetPlanner {
 						parameters: parameters,
 						bodyStart: bodyStart,
 						bodyEnd: bodyEnd,
-						body: source.substr(bodyStart, bodyEnd - bodyStart)
+						body: source.substr(bodyStart, bodyEnd - bodyStart),
+						typed: returnType != null && returnType != ''
 					};
 				}
 			}
@@ -542,6 +562,16 @@ class HxcAssetPlanner {
 			remaining = source.substr(offset);
 		}
 		return best;
+	}
+
+	static function expressionUsesParameter(expression:String, parameters:Array<HxcFunctionParameter>):Bool {
+		if (expression == null || parameters == null)
+			return false;
+		for (parameter in parameters)
+			if (parameter != null && parameter.name != null && parameter.name != ''
+				&& new EReg('\\b' + parameter.name + '\\b', '').match(expression))
+				return true;
+		return false;
 	}
 
 	static function functionCallContexts(source:String, region:HxcFunctionRegion,
@@ -1241,7 +1271,7 @@ class HxcAssetPlanner {
 		while (attempts++ < 4096 && assignmentPattern.match(remaining)) {
 			var variable = assignmentPattern.matched(1);
 			var rhs = StringTools.trim(assignmentPattern.matched(2));
-			var incoming = quotedValues(rhs);
+			var incoming = assignedStringValues(rhs, values);
 			for (symbol in values.keys())
 				if (new EReg('\\b' + symbol + '\\s*\\[', '').match(rhs))
 					for (value in values.get(symbol))
@@ -1363,6 +1393,70 @@ class HxcAssetPlanner {
 		return values;
 	}
 
+	/**
+		Literal strings one assignment can store. A concatenation is all or
+		nothing: `'rank' + rank.toUpperCase() + '-x'` has a runtime middle, so its
+		pieces are not separate values. Strings passed to a call on the right
+		(`name.split('_')[0]`) are arguments, not values either.
+	*/
+	static function assignedStringValues(rhs:String, values:Map<String, Array<String>>):Array<String> {
+		if (splitTopLevel(rhs, '+').length > 1) {
+			// The finite evaluator knows literal random ranges and ternaries
+			// ('carPass' + FlxG.random.int(0, 1)); the alias table covers the rest.
+			var finite = expandFiniteStringExpression(rhs, values);
+			return finite.length > 0 ? finite : expandStringExpression(rhs, values);
+		}
+		return quotedValues(withoutCallArguments(rhs));
+	}
+
+	/** The expression with the argument lists of its calls removed. */
+	static function withoutCallArguments(source:String):String {
+		if (source == null || source.indexOf('(') < 0)
+			return source;
+		var output = new StringBuf();
+		var quote = '';
+		var escaped = false;
+		var index = 0;
+		var previous = '';
+		while (index < source.length) {
+			var current = source.charAt(index);
+			if (quote != '') {
+				output.add(current);
+				if (escaped) escaped = false;
+				else if (current == '\\') escaped = true;
+				else if (current == quote) quote = '';
+				index++;
+				continue;
+			}
+			if (current == '"' || current == "'") {
+				quote = current;
+			} else if (current == '(' && isCallTarget(previous)) {
+				var call = readBalanced(source, index, '(', ')');
+				if (call != null) {
+					output.add('()');
+					index += call.consumed;
+					previous = ')';
+					continue;
+				}
+			}
+			output.add(current);
+			if (current != ' ' && current != '\t')
+				previous = current;
+			index++;
+		}
+		return output.toString();
+	}
+
+	/** True when a '(' after this character opens an argument list, not a group. */
+	static function isCallTarget(previous:String):Bool {
+		if (previous == null || previous == '')
+			return false;
+		var code = previous.charCodeAt(0);
+		return previous == ')' || previous == ']' || previous == '_'
+			|| (code >= 'a'.code && code <= 'z'.code) || (code >= 'A'.code && code <= 'Z'.code)
+			|| (code >= '0'.code && code <= '9'.code);
+	}
+
 	static function readBalanced(source:String, open:Int, opener:String, closer:String):Null<HxcBalanced> {
 		if (source == null || open < 0 || open >= source.length || source.charAt(open) != opener)
 			return null;
@@ -1464,8 +1558,14 @@ class HxcAssetPlanner {
 		var terms = splitTopLevel(expression, '+');
 		var combinations:Array<String> = [''];
 		for (term in terms) {
-			var options:Array<String> = quotedValues(term);
 			var clean = StringTools.trim(term);
+			// A grouped ternary contributes its branch values only; its condition's
+			// strings (`variation == 'pico'`) are not part of the path.
+			var options:Array<String> = clean.startsWith('(') && findTopLevelChar(clean, '?', 0) < 0
+				? expandFiniteStringExpression(clean, values) : [];
+			// `name.split('_')[0]` is a runtime value; its call argument is not one.
+			if (options.length == 0)
+				options = quotedValues(withoutCallArguments(term));
 			if (options.length == 0 && values != null) {
 				var base = clean;
 				var bracket = base.indexOf('[');

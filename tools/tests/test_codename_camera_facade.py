@@ -25,6 +25,10 @@ class FlxRect {
  }
  public function put():Void {}
 }''',
+            # resetState asks PlayState, which resets an ordinary state as before.
+            "PlayState.hx": '''class PlayState {
+ public static function resetCurrentState():Void flixel.FlxG.resetState();
+}''',
             "flixel/FlxState.hx": '''package flixel;
 class FlxState { public function new() {} }''',
             "flixel/FlxCamera.hx": '''package flixel;

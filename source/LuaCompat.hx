@@ -66,6 +66,27 @@ class LuaCompat {
 	/** Translate the safe callback/table/control-flow subset used by imported Lua. */
 	public static function translate(source:String, ?origin:String,
 		?allowEmbeddedHscript:Bool = false):LuaCompatResult {
+		// Every restart translates the song's Lua again. The output depends
+		// only on the text, the origin (named in diagnostics) and the embedded
+		// HScript option, so a repeat gets its own copy of the earlier result.
+		var memoKey = (allowEmbeddedHscript ? 'lua+hx:' : 'lua:') + (origin == null ? '' : origin);
+		var remembered:Dynamic = TranslationMemo.lookup(source, memoKey);
+		if (remembered != null) {
+			// The copy's arrays come back as Array<Dynamic>. On native a typed
+			// Array<String> read of one converts it into a new array on every
+			// access, so a caller adding a diagnostic would lose it; rebuild it typed.
+			var rememberedDiagnostics:Array<Dynamic> = remembered.diagnostics;
+			var diagnostics:Array<String> = rememberedDiagnostics == null ? []
+				: [for (diagnostic in rememberedDiagnostics) (diagnostic : String)];
+			return {hscript: remembered.hscript, supported: remembered.supported == true, diagnostics: diagnostics};
+		}
+		var result = translateSource(source, origin, allowEmbeddedHscript);
+		TranslationMemo.store(source, memoKey, result);
+		return result;
+	}
+
+	static function translateSource(source:String, origin:String,
+		allowEmbeddedHscript:Bool):LuaCompatResult {
 		var diagnostics:Array<String> = [];
 		collectionCounter = 0;
 		var name = origin == null || StringTools.trim(origin) == '' ? 'lua' : origin;
@@ -78,6 +99,8 @@ class LuaCompat {
 		// ASCII Lua syntax. This is an engine-level input boundary, so the same
 		// protection applies to every imported Lua script and not one donor file.
 		source = sanitizeInvalidUtf8(source);
+		// Lua translation leaves dead regular expressions too; see EngineMemory.scriptTranslated.
+		EngineMemory.scriptTranslated(source.length);
 		if (source.length > MAX_SOURCE_LENGTH) {
 			return {
 				hscript: '',
@@ -273,7 +296,7 @@ class LuaCompat {
 			return -1;
 		var count = 0;
 		for (piece in args.split(','))
-			if (~/^[A-Za-z_][A-Za-z0-9_]*$/.match(StringTools.trim(piece)))
+			if (RegexCache.get('^[A-Za-z_][A-Za-z0-9_]*$', '').match(StringTools.trim(piece)))
 				count++;
 		return count;
 	}
@@ -404,7 +427,7 @@ class LuaCompat {
 					if (nameStart < length && isIdentifierStart(source.charAt(nameStart))) {
 						var open = source.indexOf('(', nameStart);
 						var close = open < 0 ? -1 : matchingDelimiter(source, open, '(', ')');
-						if (close >= 0 && ~/^[A-Za-z_][A-Za-z0-9_.:]*\s*$/.match(source.substr(nameStart, open - nameStart))) {
+						if (close >= 0 && RegexCache.get('^[A-Za-z_][A-Za-z0-9_.:]*\\s*$', '').match(source.substr(nameStart, open - nameStart))) {
 							out.add(source.substr(i, close + 1 - i));
 							i = close + 1;
 							breakPending = true;
@@ -504,13 +527,13 @@ class LuaCompat {
 		var text = StringTools.trim(line);
 		if (text == 'do' || text == 'repeat')
 			return text;
-		if (~/^if[^A-Za-z0-9_].*[^A-Za-z0-9_]then$/.match(text))
+		if (RegexCache.get('^if[^A-Za-z0-9_].*[^A-Za-z0-9_]then$', '').match(text))
 			return 'if';
-		if (~/^for[^A-Za-z0-9_].*[^A-Za-z0-9_]do$/.match(text))
+		if (RegexCache.get('^for[^A-Za-z0-9_].*[^A-Za-z0-9_]do$', '').match(text))
 			return 'for';
-		if (~/^while[^A-Za-z0-9_].*[^A-Za-z0-9_]do$/.match(text))
+		if (RegexCache.get('^while[^A-Za-z0-9_].*[^A-Za-z0-9_]do$', '').match(text))
 			return 'while';
-		if (~/^(?:local\s+)?function\s+[A-Za-z_][A-Za-z0-9_.:]*\s*\(.*\)$/.match(text))
+		if (RegexCache.get('^(?:local\\s+)?function\\s+[A-Za-z_][A-Za-z0-9_.:]*\\s*\\(.*\\)$', '').match(text))
 			return 'function';
 		return null;
 	}
@@ -1056,8 +1079,8 @@ class LuaCompat {
 		// Lua permits compact named functions such as
 		// `function mathlerp(a,b,t)return ... end`.  Keep the declaration
 		// assignment-safe for both plain and dotted names.
-		var inlineFunction = ~/^(?:local\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\(([^)]*)\)\s*(.+)\s+end\s*;?$/;
-		if (inlineFunction.match(text)) {
+		var inlineFunction = mayStartLuaFunction(text) ? ~/^(?:local\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\(([^)]*)\)\s*(.+)\s+end\s*;?$/ : null;
+		if (inlineFunction != null && inlineFunction.match(text)) {
 			var inlineName = inlineFunction.matched(1);
 			var inlineArgs = cleanArguments(inlineFunction.matched(2), origin, diagnostics);
 			var inlineBody = convertStatement(inlineFunction.matched(3), origin, diagnostics);
@@ -1089,8 +1112,8 @@ class LuaCompat {
 			return result;
 		}
 
-		var functionMatch = ~/^(?:local\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*(?::[A-Za-z_][A-Za-z0-9_]*)?)\s*\(([^)]*)\)\s*$/;
-		if (functionMatch.match(text)) {
+		var functionMatch = mayStartLuaFunction(text) ? ~/^(?:local\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*(?::[A-Za-z_][A-Za-z0-9_]*)?)\s*\(([^)]*)\)\s*$/ : null;
+		if (functionMatch != null && functionMatch.match(text)) {
 			var functionName = functionMatch.matched(1);
 			var rawArgs = functionMatch.matched(2);
 			if (functionName.indexOf(':') >= 0) {
@@ -1107,14 +1130,14 @@ class LuaCompat {
 				? functionName + ' = luaVarargFunction(' + fixed + ', ' + functionName + ');' : null);
 			return result;
 		}
-		if (~/^(?:local\s+)?function\s+/.match(text)) {
+		if (RegexCache.get('^(?:local\\s+)?function\\s+', '').match(text)) {
 			addDiagnostic(diagnostics, origin, 'lua-function-name', 'Only plain named Lua functions can be routed to HScript: ' + text);
 			result.push('// LuaCompat unsupported function: ' + safeComment(text));
 			return result;
 		}
 
-		var elseifMatch = ~/^elseif\s*(.+)\s*then\s*$/;
-		if (elseifMatch.match(text) && text.length > 6 && !isWord(text.charAt(6))
+		var elseifMatch = StringTools.startsWith(text, 'elseif') ? ~/^elseif\s*(.+)\s*then\s*$/ : null;
+		if (elseifMatch != null && elseifMatch.match(text) && text.length > 6 && !isWord(text.charAt(6))
 			&& StringTools.trim(elseifMatch.matched(1)) != '') {
 			if (blocks.length == 0)
 				addDiagnostic(diagnostics, origin, 'lua-unbalanced-elseif', 'elseif has no open block.');
@@ -1126,8 +1149,8 @@ class LuaCompat {
 			return result;
 		}
 
-		var ifMatch = ~/^if\s*(.+)\s*then\s*$/;
-		if (ifMatch.match(text) && text.length > 2 && !isWord(text.charAt(2))
+		var ifMatch = StringTools.startsWith(text, 'if') ? ~/^if\s*(.+)\s*then\s*$/ : null;
+		if (ifMatch != null && ifMatch.match(text) && text.length > 2 && !isWord(text.charAt(2))
 			&& StringTools.trim(ifMatch.matched(1)) != '') {
 			result.push('if (' + convertExpression(ifMatch.matched(1), origin, diagnostics) + ') {');
 			blocks.push('if');
@@ -1142,8 +1165,8 @@ class LuaCompat {
 			result.push('continue;');
 			return result;
 		}
-		var whileMatch = ~/^while\s+(.+)\s+do\s*$/;
-		if (whileMatch.match(text)) {
+		var whileMatch = StringTools.startsWith(text, 'while') ? ~/^while\s+(.+)\s+do\s*$/ : null;
+		if (whileMatch != null && whileMatch.match(text)) {
 			var guardName = loopGuardName();
 			result.push('var ' + guardName + ' = 0;');
 			result.push('while (' + convertExpression(whileMatch.matched(1), origin, diagnostics) + ') {');
@@ -1152,8 +1175,8 @@ class LuaCompat {
 			return result;
 		}
 
-		var numericFor = ~/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)\s+do\s*$/;
-		var numericBounds:Array<String> = numericFor.match(text) ? splitTopLevel(numericFor.matched(2), ',') : [];
+		var numericFor = StringTools.startsWith(text, 'for') ? ~/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)\s+do\s*$/ : null;
+		var numericBounds:Array<String> = numericFor != null && numericFor.match(text) ? splitTopLevel(numericFor.matched(2), ',') : [];
 		if (numericBounds.length == 2 || numericBounds.length == 3) {
 			var variable = numericFor.matched(1);
 			var first = StringTools.trim(numericBounds[0]);
@@ -1161,7 +1184,7 @@ class LuaCompat {
 			var step = numericBounds.length == 3 ? StringTools.trim(numericBounds[2]) : null;
 			// Whole-number literals count up through a ready-made range. Anything
 			// else may be fractional or run backwards, so it is stepped as a number.
-			if ((step != null && step != '' && step != '1') || !~/^-?[0-9]+$/.match(first)) {
+			if ((step != null && step != '' && step != '1') || !RegexCache.get('^-?[0-9]+$', '').match(first)) {
 				var loopId = collectionCounter++;
 				var startName = '__luaForStart' + loopId;
 				var endName = '__luaForEnd' + loopId;
@@ -1198,8 +1221,8 @@ class LuaCompat {
 			return result;
 		}
 
-		var collectionFor = ~/^for\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*,\s*([A-Za-z_][A-Za-z0-9_]*))?\s+in\s+(pairs|ipairs)\s*\((.+)\)\s+do\s*$/;
-		if (collectionFor.match(text)) {
+		var collectionFor = StringTools.startsWith(text, 'for') ? ~/^for\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*,\s*([A-Za-z_][A-Za-z0-9_]*))?\s+in\s+(pairs|ipairs)\s*\((.+)\)\s+do\s*$/ : null;
+		if (collectionFor != null && collectionFor.match(text)) {
 			var key = collectionFor.matched(1);
 			var value = collectionFor.matched(2);
 			var isPairs = collectionFor.matched(3) == 'pairs';
@@ -1226,8 +1249,8 @@ class LuaCompat {
 
 		// The common Lua split helper uses string.gmatch(input, "([^,]+)").
 		// It is a bounded array iterator, not an arbitrary Lua pattern engine.
-		var stringIteratorFor = ~/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+(string\.gmatch\s*\(.+\))\s+do\s*$/;
-		if (stringIteratorFor.match(text)) {
+		var stringIteratorFor = StringTools.startsWith(text, 'for') ? ~/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+(string\.gmatch\s*\(.+\))\s+do\s*$/ : null;
+		if (stringIteratorFor != null && stringIteratorFor.match(text)) {
 			var iterator = convertExpression(stringIteratorFor.matched(2), origin, diagnostics);
 			result.push('for (' + stringIteratorFor.matched(1) + ' in ' + iterator + ') {');
 			blocks.push('for');
@@ -1236,8 +1259,8 @@ class LuaCompat {
 
 		// Any other `for ... in`: a gmatch with several captures, `next, t`, or
 		// the script's own iterator function, stepped until it returns nil.
-		var genericFor = ~/^for\s+([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)\s+in\s+(.+)\s+do\s*$/;
-		if (genericFor.match(text)) {
+		var genericFor = StringTools.startsWith(text, 'for') ? ~/^for\s+([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)\s+in\s+(.+)\s+do\s*$/ : null;
+		if (genericFor != null && genericFor.match(text)) {
 			var loopNames = [for (loopName in genericFor.matched(1).split(',')) StringTools.trim(loopName)];
 			var sources = [for (part in splitTopLevel(genericFor.matched(2), ',')) convertExpression(StringTools.trim(part), origin, diagnostics)];
 			var iteratorId = collectionCounter++;
@@ -1642,9 +1665,9 @@ class LuaCompat {
 		var needsSlots = false;
 		for (nameRaw in names) {
 			var target = StringTools.trim(nameRaw);
-			if (~/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.match(target))
+			if (RegexCache.get('^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$', '').match(target))
 				targets.push(target);
-			else if (!local && ~/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*|\[.+\])+$/.match(target)) {
+			else if (!local && RegexCache.get('^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*|\\[.+\\])+$', '').match(target)) {
 				// An indexed slot such as `t[i]` reads other values while it is set.
 				targets.push(convertExpression(target, origin, diagnostics));
 				needsSlots = true;
@@ -1681,7 +1704,7 @@ class LuaCompat {
 		var result:Array<String> = [];
 		for (index in 0...names.length) {
 			var name = StringTools.trim(names[index]);
-			if (!~/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.match(name))
+			if (!RegexCache.get('^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$', '').match(name))
 				return null;
 			var value = index < values.length ? StringTools.trim(values[index]) : 'nil';
 			var convertedValue = value == 'nil' ? 'null' : convertExpression(value, origin, diagnostics);
@@ -1810,7 +1833,7 @@ class LuaCompat {
 				addDiagnostic(diagnostics, origin, 'lua-default-arg', 'Lua default arguments are not routed: ' + arg);
 				arg = StringTools.trim(arg.substr(0, equal));
 			}
-			if (!~/^[A-Za-z_][A-Za-z0-9_]*$/.match(arg)) {
+			if (!RegexCache.get('^[A-Za-z_][A-Za-z0-9_]*$', '').match(arg)) {
 				addDiagnostic(diagnostics, origin, 'lua-argument', 'Invalid Lua callback argument: ' + arg);
 				continue;
 			}
@@ -1849,7 +1872,7 @@ class LuaCompat {
 	}
 
 	static function isLocalNamedFunction(source:String):Bool {
-		return source != null && ~/^local\s+function\s+/.match(source);
+		return source != null && RegexCache.get('^local\\s+function\\s+', '').match(source);
 	}
 
 	/** Lower the compact anonymous `function(args)return value end` form. */
@@ -2127,7 +2150,7 @@ class LuaCompat {
 					var receiver = out.substr(chainStart);
 					var method = text.substr(i + 1, nameEnd - i - 1);
 					var args = StringTools.trim(rewriteLuaOperators(text.substr(open + 1, close - open - 1)));
-					out = out.substr(0, chainStart) + (~/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.match(receiver)
+					out = out.substr(0, chainStart) + (RegexCache.get('^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$', '').match(receiver)
 						? receiver + '.' + method + '(' + receiver + (args == '' ? '' : ', ' + args) + ')'
 						: 'luaMethodCall(' + receiver + ", '" + method + "'" + (args == '' ? '' : ', ' + args) + ')');
 					chainEnd = out.length;
@@ -2190,7 +2213,7 @@ class LuaCompat {
 		var length = text.length;
 		if (text.substr(i, 2).toLowerCase() == '0x') {
 			i += 2;
-			while (i < length && ~/[0-9A-Fa-f]/.match(text.charAt(i)))
+			while (i < length && RegexCache.get('[0-9A-Fa-f]', '').match(text.charAt(i)))
 				i++;
 			return i;
 		}
@@ -2289,8 +2312,8 @@ class LuaCompat {
 
 	static function convertStatement(statement:String, origin:String, diagnostics:Array<String>):String {
 		var text = StringTools.trim(statement);
-		var localMatch = ~/^local\s+(.+)$/;
-		if (localMatch.match(text))
+		var localMatch = StringTools.startsWith(text, 'local') ? ~/^local\s+(.+)$/ : null;
+		if (localMatch != null && localMatch.match(text))
 			text = 'var ' + localMatch.matched(1);
 		text = convertExpression(text, origin, diagnostics);
 		// Lua uses newlines as statement separators; HScript's lexer does not.
@@ -2470,7 +2493,14 @@ class LuaCompat {
 		return out.toString();
 	}
 
+	/** Only a line starting with one of these can match the `^(?:local\s+)?function\s+` patterns. */
+	static inline function mayStartLuaFunction(text:String):Bool {
+		return StringTools.startsWith(text, 'function') || StringTools.startsWith(text, 'local');
+	}
+
 	static function legacyStrumAlias(identifier:String):Null<String> {
+		if (identifier == null || !StringTools.startsWith(identifier, 'default'))
+			return null;
 		var match = ~/^default(Player|Opponent)Strum([XY])([0-3])$/;
 		if (!match.match(identifier))
 			return null;
@@ -2557,7 +2587,7 @@ class LuaCompat {
 		// The default strum slots belong to the engine: a script reads them and
 		// never writes them. Every other key is one of the script's own globals.
 		var firstPart = literalStringValue(parts[0]);
-		var engineOwned = firstPart != null && ~/^default(?:Player|Opponent)?Strum/.match(firstPart);
+		var engineOwned = firstPart != null && RegexCache.get('^default(?:Player|Opponent)?Strum', '').match(firstPart);
 		return {startIndex: start, endIndex: cursor, mode: engineOwned ? 'readonly' : 'general', key: key,
 			keyExpression: rawKeyExpression, indexExpression: null, axis: null};
 	}
@@ -2607,7 +2637,7 @@ class LuaCompat {
 				case 'x':
 					if (i + 1 >= body.length) return null;
 					var hex = body.substr(i, 2);
-					if (!~/^[0-9A-Fa-f]{2}$/.match(hex)) return null;
+					if (!RegexCache.get('^[0-9A-Fa-f]{2}$', '').match(hex)) return null;
 					out.addChar(Std.parseInt('0x' + hex));
 					i += 2;
 				default:
@@ -4084,13 +4114,15 @@ class LuaCompat {
 		if (text == '') return null;
 		if (StringTools.startsWith(text, ']]..') && StringTools.endsWith(text, '..[['))
 			return StringTools.trim(text.substr(4, text.length - 8));
-		if (~/^-?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)$/.match(text))
+		if (RegexCache.get('^-?(?:[0-9]+(?:\\\\.[0-9]*)?|\\\\.[0-9]+)$', '').match(text))
 			return text;
 		return null;
 	}
 
 	static function luaIndexValue(value:String):String {
 		if (value == null) return null;
+		if (!StringTools.endsWith(value, ']'))
+			return value;
 		var matcher = new EReg('^([A-Za-z_][A-Za-z0-9_]*)\\[([0-9]+)\\]$', '');
 		if (matcher.match(value))
 			return 'luaTableValue(' + matcher.matched(1) + ', ' + matcher.matched(2) + ')';

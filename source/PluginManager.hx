@@ -147,6 +147,22 @@ class PluginManager {
 		// V-Slice scripts call IntervalShake.shake from timer callbacks, where an
 		// unknown name is not caught by the script runner and stops the game.
 		interp.variables.set("IntervalShake", IntervalShake);
+		// V-Slice helper classes imported scripts use by name. Each is a base-game
+		// class with V-Slice's API; desktop-only ones (haptics, touch) answer the
+		// way V-Slice itself does on desktop so the scripts' fallbacks run.
+		interp.variables.set("HapticUtil", HapticUtil);
+		interp.variables.set("TouchUtil", TouchUtil);
+		interp.variables.set("ReflectUtil", ReflectUtil);
+		interp.variables.set("Preferences", Preferences);
+		interp.variables.set("Sequence", Sequence);
+		interp.variables.set("RetroCameraFade", RetroCameraFade);
+		interp.variables.set("AtlasText", AtlasText);
+		// V-Slice's tiled and repeating sprites take the same constructor
+		// arguments as these engine sprites, which also load script paths.
+		interp.variables.set("FunkinTiledSprite", DynamicSprite.DynamicTiledSprite);
+		interp.variables.set("FunkinBackdrop", DynamicSprite.DynamicBackdrop);
+		// FunkinMemory warm-ups are lowered to these; menus and modules run them too.
+		HxcCompatRuntime.bindAssetWarmups(interp.variables);
 		interp.variables.set("FlxTrail", FlxTrail);
 		// Springless and other imported modcharts construct these chainable
 		// effects directly. Keeping them in the common interpreter prevents a
@@ -194,6 +210,18 @@ class PluginManager {
 			interp.variables.set("DifficultyManager", DifficultyManager);
 			interp.variables.set("CreditsState", CreditsState);
 			interp.variables.set("SaveDataState", SaveDataState);
+			// V-Slice registries and the playlist read the engine's installed songs
+			// and story weeks; LoadingState.loadPlayState starts the chosen chart.
+			VSliceGameBinding.install();
+			interp.variables.set("SongRegistry", VSliceSongRegistry);
+			interp.variables.set("LevelRegistry", VSliceLevelRegistry);
+			interp.variables.set("PlayerRegistry", VSlicePlayerRegistry);
+			interp.variables.set("PlayStatePlaylist", VSlicePlayStatePlaylist);
+			interp.variables.set("LoadingState", LoadingState);
+			interp.variables.set("Type", Type);
+			// Calls the HXC rewrite leaves in place reach the same engine helpers.
+			interp.variables.set("VideoCutscene", VSliceVideoCutscene);
+			interp.variables.set("FunkinSound", VSliceFunkinSound);
 		#if debug
 		interp.variables.set("debug", true);
 		#else
