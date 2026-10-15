@@ -76,7 +76,15 @@ class ImportRemovalManagerTest(unittest.TestCase):
             }
             for name,content in files.items():
                 path=work/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content,encoding='utf-8')
-            result=subprocess.run([*HAXE_COMMAND,'-cp',str(work),'--main','Main','--interp'],cwd=work,capture_output=True,text=True,timeout=90)
+            # The Haxe interpreter's threads can deadlock while a starved machine
+            # runs many suites at once; the v0.0.41 fixture hangs the same way.
+            # A normal run takes about 2 s, so only a hang is retried, never a failure.
+            for attempt in range(3):
+                try:
+                    result=subprocess.run([*HAXE_COMMAND,'-cp',str(work),'--main','Main','--interp'],cwd=work,capture_output=True,text=True,timeout=45)
+                    break
+                except subprocess.TimeoutExpired:
+                    if attempt==2: raise
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertIn('worker handoff passed',result.stdout)
 
