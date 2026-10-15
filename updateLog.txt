@@ -1,8 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.43 development - CammieEngine
-- Development continues after the published v0.0.42 checkpoint; remaining roadmap requirements stay open.
+v0.0.43 alpha - CammieEngine
+- Fixed removing a mod while the mods were still being refreshed after an update leaving a blank screen. The removal popup now says the mods are being refreshed, shows the progress, and goes on to the normal removal question by itself when the refresh finishes; going back to Freeplay shows a message instead of an empty screen.
+- Incremental alpha release after v0.0.42; remaining roadmap requirements stay open.
 
 v0.0.42 alpha - CammieEngine
 - Removing a mod from Freeplay now always goes through the clean removal screen, which closes every mod menu, Freeplay module and mod session first. Before, linked mods held by those sessions showed "Package is active or reserved" and nothing could be removed.
