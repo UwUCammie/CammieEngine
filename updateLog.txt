@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.45 development - CammieEngine
+- Development continues after the published v0.0.44 checkpoint; remaining roadmap requirements stay open.
+
 v0.0.44 alpha - CammieEngine
 - Updated the title screen logo: the CAMMIE letters no longer have the trans flag stripes inside and are now dark with a pink neon outline like ENGINE. Instead, a soft shine in the trans flag colours (light blue, pink and white) sweeps across the neon lettering from left to right every few seconds. The shine is left out when shaders are turned off (Low quality) and when a custom title screen uses its own logo.
 - Moved the song importer from Options (Import Settings...) to the main menu: an Import entry now sits directly under Options. Leaving the importer returns to the main menu with Import still highlighted, and the list keeps the highlighted entry in view, including when more entries (donate or a costume button) are shown.
