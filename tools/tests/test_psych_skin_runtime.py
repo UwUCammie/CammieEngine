@@ -109,13 +109,15 @@ class FNFAssets {
   public static var epoch:Int = 0;
   public static function pathEpoch():Int return epoch;
 }''', newline='\n')
-            (work / 'PlayState.hx').write_text('class PlayState {public static var daPixelZoom:Float = 6;}', newline='\n')
+            (work / 'PlayState.hx').write_text('class PlayState {public static var daPixelZoom:Float = 6; public static var instance:PlayState = null; public function smokeReceptorSide(line:Dynamic):String return "";}', newline='\n')
             (work / 'RuntimeSmokeHarness.hx').write_text('''class RuntimeSmokeHarness {
   public static var phase:String='';
   public static var steps:Array<String>=[];
   public static function enabled():Bool return true;
   public static function setPsychSkinDiagnosticPhase(value:String):Void phase=value;
   public static function markStep(value:String):Void steps.push(value);
+  public static function receptorTraceEnabled():Bool return false;
+  public static function markReceptorAnimation(side:String, lane:Int, animation:String, force:Bool):Void {}
 }''', newline='\n')
             (work / 'PsychRGBShader.hx').write_text('''class PsychRGBShader {
   public var hurt:Bool = false;
@@ -200,6 +202,7 @@ class StrumNote extends Sprite {
   public var rgbShader(get,never):Dynamic;
   public var useRGBShader(default,set):Bool=true;
   public var confirmationGeneration:Int=0;
+  var confirmFromSustain:Bool=false;
   public var ID:Int=0; public var isPixel:Bool=false; public var normalSize:Float=1;
   var usesVSliceGeometry:Bool=false; public var parentLine:Strumline=null;
   public function alignVSliceFrame():Void {}

@@ -17,9 +17,9 @@ class ImportMenuNavigationTest(unittest.TestCase):
 
     def test_actual_navigation_policy_allows_safe_entry_during_work(self):
         self.compile(r"""class Main {static function main(){
- for(action in ['freeplay','options'])if(!ImportMenuNavigationPolicy.mainActionAllowed(true,action))throw action;
+ for(action in ['freeplay','options','import'])if(!ImportMenuNavigationPolicy.mainActionAllowed(true,action))throw action;
  for(action in ['story mode','costumes'])if(ImportMenuNavigationPolicy.mainActionAllowed(true,action))throw action;
- for(action in ['Import Settings...','Controls...','Show FPS Counter','Sound Test...'])if(!ImportMenuNavigationPolicy.optionsActionAllowed(true,action))throw action;
+ for(action in ['Controls...','Show FPS Counter','Sound Test...'])if(!ImportMenuNavigationPolicy.optionsActionAllowed(true,action))throw action;
  for(action in ['Module...','New Character...','New Song...','Sort...'])if(ImportMenuNavigationPolicy.optionsActionAllowed(true,action))throw action;
  if(!ImportMenuNavigationPolicy.optionsActionAllowed(false,'Module...'))throw 'idle editor';
 }}""")

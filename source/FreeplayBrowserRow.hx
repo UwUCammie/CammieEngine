@@ -146,16 +146,16 @@ class FreeplayBrowserRow extends Alphabet {
 	public function new(label:String, rowWidth:Int) {
 		super(24, 0, ''); text = label; this.label = label; this.rowWidth = rowWidth;
 		panel = new FlxSprite().makeGraphic(rowWidth, 1, 0xFFFFFFFF);
-		stripe = new FlxSprite().makeGraphic(5, 1, 0xFFFF66B7);
+		stripe = new FlxSprite().makeGraphic(MenuStyle.STRIPE_WIDTH, 1, MenuStyle.PINK);
 		placeholder = new FlxText(14, 8, 48, '?', 22);
-		placeholder.setFormat('assets/fonts/vcr.ttf', 22, 0xFF8997AD, CENTER);
+		placeholder.setFormat(MenuStyle.FONT, MenuStyle.TITLE_SIZE, 0xFF8997AD, CENTER);
 		title = new FlxText(82, 5, rowWidth - 370, '', 22);
-		title.setFormat('assets/fonts/vcr.ttf', 22, 0xFFFFFFFF, LEFT); title.wordWrap = false;
+		title.setFormat(MenuStyle.FONT, MenuStyle.TITLE_SIZE, MenuStyle.WHITE, LEFT); title.wordWrap = false;
 		favoriteTag = new FlxText(rowWidth - 50, 10, 50, 'FAV', 16);
-		favoriteTag.setFormat('assets/fonts/vcr.ttf', 16, 0xFFFFD166, CENTER);
+		favoriteTag.setFormat(MenuStyle.FONT, 16, MenuStyle.GOLD, CENTER);
 		chartTag = new FlxText(rowWidth - 244, 8, 140, '', 16);
-		chartTag.setFormat('assets/fonts/vcr.ttf', 16, 0xFFCFD8E5, RIGHT); chartTag.wordWrap = false;
-		divider = new FlxSprite().makeGraphic(rowWidth, 1, 0xFF80E3D0); divider.visible = false;
+		chartTag.setFormat(MenuStyle.FONT, 16, MenuStyle.TEXT, RIGHT); chartTag.wordWrap = false;
+		divider = new FlxSprite().makeGraphic(rowWidth, 1, MenuStyle.TEAL); divider.visible = false;
 		add(panel);
 		add(divider); add(stripe); add(placeholder); add(title); add(chartTag); add(favoriteTag);
 	}
@@ -173,7 +173,7 @@ class FreeplayBrowserRow extends Alphabet {
 			panel.scale.y = height; panel.updateHitbox(); panel.setPosition(x, y);
 			stripe.scale.y = height; stripe.updateHitbox(); stripe.setPosition(x, y);
 		}
-		var titleColor = disabled ? 0xFF8B97A8 : (selected ? 0xFFFFF4DC : 0xFFCFD8E5);
+		var titleColor = MenuStyle.titleColor(selected, disabled);
 		var titleChanged = wasSelected == null || wasSelected != selected;
 		var titleAppearanceChanged = titleChanged || title.color != titleColor;
 		title.color = titleColor;
@@ -187,8 +187,8 @@ class FreeplayBrowserRow extends Alphabet {
 		title.offset.set(0, 0); title.origin.set(0, 0);
 		title.setPosition(x + 82, y + 7 + motion.focus * 5);
 		placeholder.y = y + 6 + motion.focus * 19;
-		panel.color = flixel.util.FlxColor.interpolate(0xFF182235, 0xFF354963, motion.focus);
-		panel.alpha = 0.78 + 0.22 * motion.focus; stripe.visible = motion.focus > 0; stripe.alpha = motion.focus;
+		panel.color = flixel.util.FlxColor.interpolate(MenuStyle.CARD, MenuStyle.CARD_SELECTED, motion.focus);
+		panel.alpha = MenuStyle.cardAlpha(motion.focus); stripe.visible = motion.focus > 0; stripe.alpha = motion.focus;
 		favoriteTag.visible = favorite; favoriteTag.alpha = disabled ? 0.5 : 1;
 		if (chartIcon != null) { chartIcon.setPosition(x + 24, y + 3); chartIcon.visible = !selected; chartIcon.color = disabled ? 0xFF858585 : 0xFFFFFFFF; }
 		var spacing = Math.min(36, 196 / Math.max(1, chartStars.length));

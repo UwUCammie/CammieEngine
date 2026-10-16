@@ -76,10 +76,25 @@ class RuntimeStartupProbe {
 		FlxG.signals.postDraw.add(afterDraw);
 		#if (sys && lime)
 		if (Sys.args().indexOf('--profile-startup-enter-menu') >= 0) FlxG.signals.postUpdate.add(enterMenu);
+		if (Sys.args().indexOf('--profile-startup-skip-intro') >= 0) FlxG.signals.postUpdate.add(skipTitleIntro);
+		// Freezes the title logo shine this many seconds into its cycle, so a
+		// screenshot can catch any moment of the sweep.
+		var shineAt = Sys.args().indexOf('--profile-startup-shine-time');
+		if (shineAt >= 0 && shineAt + 1 < Sys.args().length) {
+			var seconds = Std.parseFloat(Sys.args()[shineAt + 1]);
+			if (Math.isFinite(seconds)) TitleLogoShine.frozenTime = seconds;
+		}
 		#end
 	}
 
 	#if (sys && lime)
+	/** Show the title screen proper as soon as it is ready instead of after the intro text. */
+	static function skipTitleIntro():Void {
+		if (finished || !introReady || !Std.isOfType(FlxG.state, TitleState)) return;
+		if (Reflect.field(FlxG.state, 'skippedIntro') == true) return;
+		Reflect.callMethod(FlxG.state, Reflect.field(FlxG.state, 'skipIntro'), []);
+	}
+
 	static function enterMenu():Void {
 		if (finished || menuEntryPhase >= 4 || (haxe.Timer.stamp() - startedAt) < 6) return;
 		if (!Std.isOfType(FlxG.state,TitleState)) return;

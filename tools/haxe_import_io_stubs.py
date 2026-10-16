@@ -39,7 +39,7 @@ class LibraryIdentityArchive {
  public static function load(root:String):LibraryIdentityArchive return new LibraryIdentityArchive();
  public function new(){}
  public function ownerFor(engine:String,identity:String,fingerprint:String):String return null;
- public function destinationFor(engine:String,identity:String,fingerprint:String,source:String):String return null;
+ public function destinationFor(engine:String,identity:String,fingerprint:String,source:String,?planned:String):String return null;
 }
 """
 

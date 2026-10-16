@@ -127,6 +127,7 @@ class Main {
  static function applyWindowResize():Void {}
  static function applySongRate():Void {}
  static function installFrameStats():Void {}
+ static function installCameraTrace():Void {}
  static function installNoteRenderReadback():Void {}
  static function installGameOverClock():Void {}
  static function installSongEndCompletionWatch():Void {}

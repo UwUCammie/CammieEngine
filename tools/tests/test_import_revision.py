@@ -26,10 +26,10 @@ class Main {
    && ImportRevision.assess({schemaVersion:1, commonRevision:3, sourceEngine:"Psych Engine", engineRevision:8},
     "Psych Engine").status == ImportRevision.OUTDATED,
    "older Psych receipts did not request source-profile republishing");
-  check(ImportRevision.current("V-Slice").engineRevision == 6
-    && ImportRevision.assess({schemaVersion:1, commonRevision:5, sourceEngine:"V-Slice", engineRevision:5},
+  check(ImportRevision.current("V-Slice").engineRevision == 8
+    && ImportRevision.assess({schemaVersion:1, commonRevision:5, sourceEngine:"V-Slice", engineRevision:7},
       "V-Slice").status == ImportRevision.OUTDATED,
-    "V-Slice base-game Animate characters and subtitles did not schedule retained-source refresh");
+    "V-Slice script-named images and Animate atlases did not schedule retained-source refresh");
   check(current.sourceEngine == "Psych Engine" && current.commonRevision > 0 && current.engineRevision > 0,
    "explicit common and engine revisions were not recorded");
   check(current.commonRevision == 5

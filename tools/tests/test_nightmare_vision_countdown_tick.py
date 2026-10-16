@@ -40,7 +40,14 @@ class NightmareVisionCountdownTickTest(unittest.TestCase):
         after = countdown.index('callCountdownTickShown(swagCounter);')
         self.assertLess(before, go_sprite)
         self.assertLess(go_sprite, after)
-        self.assertLess(after, countdown.index('swagCounter += 1;'))
+        # The counter moves after the shown tick. The one earlier increment is the
+        # silent lead-in, which skips the step (and so its ticks) on purpose.
+        moves = [i for i in range(len(countdown)) if countdown.startswith('swagCounter += 1;', i)]
+        self.assertGreater(moves[-1], after)
+        silent = countdown.index('if (silentPreRoll) {')
+        for early in moves[:-1]:
+            self.assertGreater(early, silent)
+            self.assertLess(early, before)
         popup = method(self.play, 'public function countdownPopup(')
         for stage, field in ((0, 'countdownReady'), (1, 'countdownSet'), (2, 'countdownGo')):
             self.assertIn('case %d: %s = count;' % (stage, field), popup)

@@ -633,6 +633,28 @@ class StrumNote extends FlxSprite {
 		return animation.curAnim == null ? null : animation.curAnim.name;
 	/** Invalidates delayed reset callbacks whenever a newer note confirms. */
 	public var confirmationGeneration:Int = 0;
+	/** V-Slice lets a finished confirm animation linger this long before the receptor settles. */
+	public static inline var V_SLICE_CONFIRM_HOLD_TIME:Float = 0.15;
+	/** How long the current confirm animation has been finished (V-Slice styles only). */
+	var confirmFinishedTime:Float = 0;
+	/** The current confirm came from a sustain piece, which keeps the receptor lit while the hold lasts. */
+	var confirmFromSustain:Bool = false;
+	/**
+		V-Slice drops a finished tap confirm back to its static pose even with the
+		key still down (PlayState then shows the held key's press pose), while the
+		Psych family keeps the confirm glow until the key is released. Only the
+		imported V-Slice note styles follow the V-Slice behaviour.
+	*/
+	public var settlesConfirm(get, never):Bool;
+	function get_settlesConfirm():Bool
+		return usesVSliceGeometry;
+	/** The current confirm belongs to a sustain that is still being held. */
+	public var holdsSustainConfirm(get, never):Bool;
+	function get_holdsSustainConfirm():Bool
+		return confirmFromSustain;
+	/** The sustain ran out of pieces: its confirm settles like a tap's from here on. */
+	public function endSustainConfirm():Void
+		confirmFromSustain = false;
 	/** Codename onStrumCreation can suppress the later line-entry tween. */
 	@:keep public var codenameIntroAnimationCancelled:Bool = false;
 	@:keep public function cancelCodenameIntroAnimation():Void
@@ -950,8 +972,13 @@ class StrumNote extends FlxSprite {
 		if (parentLine != null && parentLine.noAnims)
 			return;
 
-		if (anim == 'confirm' || anim == 'confirmHold')
+		if (RuntimeSmokeHarness.receptorTraceEnabled())
+			RuntimeSmokeHarness.markReceptorAnimation(PlayState.instance == null ? '' : PlayState.instance.smokeReceptorSide(parentLine),
+				ID, anim, force);
+		if (anim == 'confirm' || anim == 'confirmHold') {
 			confirmationGeneration++;
+			confirmFromSustain = false;
+		}
 		var legacyNote:Note = colorSwap != null && Std.isOfType(reversed, Note) ? cast reversed : null;
 		animation.play(anim, force, reversed == true, frame);
 		refreshPsychRGB();
@@ -1000,7 +1027,29 @@ class StrumNote extends FlxSprite {
 		if (usesVSliceGeometry) {
 			alignVSliceFrame();
 			markReceptorVisual();
+			settleFinishedConfirm(elapsed);
 		}
+	}
+
+	/**
+		V-Slice's receptor does not stay lit once its confirm animation is over:
+		a short hold time after the animation ends it falls back to the static
+		pose, even while the key is still down. Psych keeps the glow until the key
+		is released, so this applies to V-Slice note styles only. A sustain keeps
+		restarting the confirm animation, so a held sustain never gets this far.
+	*/
+	function settleFinishedConfirm(elapsed:Float):Void {
+		var current = animation == null ? null : animation.curAnim;
+		if (confirmFromSustain || current == null || !current.finished
+			|| (current.name != 'confirm' && current.name != 'confirmHold')) {
+			confirmFinishedTime = 0;
+			return;
+		}
+		confirmFinishedTime += elapsed;
+		if (confirmFinishedTime < V_SLICE_CONFIRM_HOLD_TIME)
+			return;
+		confirmFinishedTime = 0;
+		playAnim('static', true);
 	}
 
 	function alignVSliceFrame():Void {
@@ -1032,6 +1081,9 @@ class StrumNote extends FlxSprite {
 	public function playConfirm(hold:Bool = false, force:Bool = true):Void {
 		var target = hold && animation.exists('confirmHold') ? 'confirmHold' : 'confirm';
 		playAnim(target, force);
+		// A sustain piece is hit again every step, so its confirm is never left to
+		// settle between pieces; the lane goes back to static when the key lifts.
+		confirmFromSustain = hold;
 	}
 
 	public function resetStrumSize() {

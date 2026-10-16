@@ -142,6 +142,7 @@ class TitleState extends MusicBeatState {
 	}
 
 	var logoBl:FlxSprite;
+	var logoShine:TitleLogoShine;
 	var gfDance:MetroSprite;
 	var titleText:FlxSprite;
 	function startIntro() {
@@ -226,6 +227,12 @@ class TitleState extends MusicBeatState {
 		logoBl.animation.play('bump');
 		logoBl.antialiasing = true;
 		add(logoBl);
+		// The trans flag shine over the neon lettering of the stock logo only;
+		// attach returns null (logo untouched) for any other logo or when
+		// shaders are off or unavailable.
+		if (logoShine != null)
+			logoShine.release();
+		logoShine = TitleLogoShine.attach(logoBl, path);
 
 		titleText = new FlxSprite(100, FlxG.height * 0.8);
 		titleText.frames = DynamicAtlasFrames.fromSparrow(path + 'titleEnter.png', path + 'titleEnter.xml');
@@ -312,6 +319,9 @@ class TitleState extends MusicBeatState {
 		if (pressedEnter && !skippedIntro && curBeat > 0) {
 			skipIntro();
 		}
+
+		if (logoShine != null)
+			logoShine.update(elapsed);
 
 		super.update(elapsed);
 	}
@@ -425,6 +435,8 @@ class TitleState extends MusicBeatState {
 			FlxG.camera.flash(FlxColor.WHITE, 1);
 			remove(credGroup);
 			skippedIntro = true;
+			if (logoShine != null)
+				logoShine.start();
 		}
 	}
 

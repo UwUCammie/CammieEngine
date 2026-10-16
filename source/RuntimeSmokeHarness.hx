@@ -83,9 +83,17 @@ typedef RuntimeSmokeOptions = {
 	var playerHits:Bool;
 	/** Optional gameplay-time delay for qualifying player-hit smoke callbacks. */
 	var playerHitDelayMs:Float;
+	/** Press the player's lane keys through the stage at each player note, so the real input route runs; implies practice. */
+	var playerKeys:Bool;
+	/** How long each simulated lane key stays down (a sustain keeps it down for its length). */
+	var playerKeyHoldMs:Float;
+	/** Emit every receptor animation change of a focused run with its song position. */
+	var receptorTrace:Bool;
 	/** Exercise the engine's actual demo/botplay route without saving modifiers. */
 	var botplay:Bool;
 	var frameStats:Bool;
+	/** Emit the gameplay camera scroll, follow target and eased point every frame. */
+	var ?cameraTrace:Bool;
 	/** Keep pacing probes free of full scene/bitmap diagnostic allocations. */
 	var ?pacingOnly:Bool;
 	/** Capture one muted native framebuffer after an imported chart's note is visible. */
@@ -103,6 +111,8 @@ typedef RuntimeSmokeOptions = {
 	/** Wall milliseconds after PlayState is ready before one skip press is sent to
 	 * an intro cutscene that is holding the countdown. */
 	var ?introSkipAfterMs:Float;
+	/** Press Enter once through the stage after this long in a PlayState that has not started its countdown (ready screens). */
+	var ?introAcceptAfterMs:Float;
 	/** Number of PlayState creations in one native smoke process (1 or 2). */
 	var playstateVisits:Int;
 	/** Enter ChartingState and run one companion-event save/reload round-trip. */
@@ -159,6 +169,8 @@ class RuntimeSmokeHarness {
 	static var introSkipReadyAt:Float = -1;
 	static var introSkipPressing:Bool = false;
 	static var introSkipTried:Bool = false;
+	static var introAcceptReadyAt:Float = -1;
+	static var introAcceptTried:Bool = false;
 	static var codenameEventVisualMarkers:Int = 0;
 	static var codenameCallbackVisualMarkers:Int = 0;
 	static var codenameMotionMarkers:Int = 0;
@@ -239,8 +251,12 @@ class RuntimeSmokeHarness {
 			tracePlayerHits: false,
 			playerHits: false,
 			playerHitDelayMs: 0,
+			playerKeys: false,
+			playerKeyHoldMs: 120,
+			receptorTrace: false,
 			botplay: false,
 			frameStats: false,
+			cameraTrace: false,
 			noteRenderReadback: false,
 			sceneRenderReadback: false,
 			noteRenderPath: 'tmp/note-render-readback.png',
@@ -249,6 +265,7 @@ class RuntimeSmokeHarness {
 			seekToMs: -1,
 			cutsceneSkipAfterMs: -1,
 			introSkipAfterMs: -1,
+			introAcceptAfterMs: -1,
 			playstateVisits: 1,
 			chartEditor: false,
 			nextSongFolder: '',
@@ -365,9 +382,24 @@ class RuntimeSmokeHarness {
 					smokeArgumentsSeen = true;
 					playerHitDelayProvided = true;
 					result.playerHitDelayMs = parseSmokeFloat(value);
+				case '--smoke-player-keys':
+					smokeArgumentsSeen = true;
+					result.playerKeys = true;
+					result.practice = true;
+				case '--smoke-player-key-hold-ms':
+					smokeArgumentsSeen = true;
+					result.playerKeyHoldMs = parseSmokeFloat(value);
+					if (!Math.isFinite(result.playerKeyHoldMs) || result.playerKeyHoldMs < 0)
+						configurationError = '--smoke-player-key-hold-ms requires a finite nonnegative value';
+				case '--smoke-receptor-trace':
+					smokeArgumentsSeen = true;
+					result.receptorTrace = true;
 				case '--smoke-botplay':
 					smokeArgumentsSeen = true;
 					result.botplay = true;
+				case '--smoke-camera-trace':
+					smokeArgumentsSeen = true;
+					result.cameraTrace = true;
 				case '--smoke-frame-stats':
 					smokeArgumentsSeen = true;
 					result.frameStats = true;
@@ -404,6 +436,10 @@ class RuntimeSmokeHarness {
 					smokeArgumentsSeen = true;
 					result.introSkipAfterMs = parseSmokeTime(value);
 					if (result.introSkipAfterMs < 0) configurationError = 'invalid --smoke-intro-skip-after-ms';
+				case '--smoke-intro-accept-after-ms':
+					smokeArgumentsSeen = true;
+					result.introAcceptAfterMs = parseSmokeTime(value);
+					if (result.introAcceptAfterMs < 0) configurationError = 'invalid --smoke-intro-accept-after-ms';
 				case '--smoke-seek-to-ms':
 					smokeArgumentsSeen = true;
 					result.seekToMs = parseSmokeTime(value);
@@ -562,6 +598,47 @@ class RuntimeSmokeHarness {
 
 	public static function playerHitsEnabled():Bool {
 		return enabled() && config().playerHits;
+	}
+
+	public static function playerKeysEnabled():Bool {
+		return enabled() && config().playerKeys;
+	}
+
+	/** How long one simulated lane key stays down before its own release. */
+	public static function playerKeyHoldMs():Float {
+		return playerKeysEnabled() ? config().playerKeyHoldMs : 0;
+	}
+
+	public static function receptorTraceEnabled():Bool {
+		return enabled() && config().receptorTrace;
+	}
+
+	/** Dispatch one real arrow-key edge through the stage so the game's own
+	 * controls see a genuine press or release of a lane (0 left to 3 right). */
+	public static function simulateLaneKey(lane:Int, down:Bool):Void {
+		#if sys
+		var stage = FlxG.stage;
+		if (stage == null)
+			return;
+		var keyCode:Int = switch (lane) {
+			case 0: openfl.ui.Keyboard.LEFT;
+			case 1: openfl.ui.Keyboard.DOWN;
+			case 2: openfl.ui.Keyboard.UP;
+			default: openfl.ui.Keyboard.RIGHT;
+		};
+		try stage.dispatchEvent(new openfl.events.KeyboardEvent(
+			down ? openfl.events.KeyboardEvent.KEY_DOWN : openfl.events.KeyboardEvent.KEY_UP, true, false, keyCode, keyCode))
+		catch (error:Dynamic)
+			emit('lane_key_failure', {lane: lane, detail: Std.string(error)});
+		#end
+	}
+
+	/** One receptor animation change of a --smoke-receptor-trace run. */
+	public static function markReceptorAnimation(side:String, lane:Int, animation:String, force:Bool):Void {
+		if (!receptorTraceEnabled() || finished)
+			return;
+		emit('receptor_animation', {side: side, lane: lane, animation: animation, force: force,
+			songPosition: Conductor.songPosition});
 	}
 
 	/** A delay is inert unless the opt-in player-hit smoke route is active. */
@@ -885,6 +962,8 @@ class RuntimeSmokeHarness {
 		}
 		if (config().frameStats || config().returnFreeplay)
 			installFrameStats();
+		if (config().cameraTrace == true)
+			installCameraTrace();
 		if (config().noteRenderReadback)
 			installNoteRenderReadback();
 		if (config().gameOverAfterMs >= 0)
@@ -1764,7 +1843,9 @@ class RuntimeSmokeHarness {
 			return;
 		}
 		finished = true;
-		emit('success', {durationMs: elapsedMs});
+		var playState = Std.downcast(FlxG.state, PlayState);
+		var vocalTracks:Array<Dynamic> = playState == null ? [] : playState.smokeVocalTracks();
+		emit('success', {durationMs: elapsedMs, vocalTracks: vocalTracks});
 		RuntimeDecodeMetrics.reset(false);
 		#if sys
 		Sys.exit(0);
@@ -1888,6 +1969,36 @@ class RuntimeSmokeHarness {
 	}
 
 	/** Subscribe the frame observer.  Safe to call from any state's create(). */
+	static var cameraTraceInstalled:Bool = false;
+
+	/** One line per frame after the cameras updated: where the view is, where the
+		follow target is, the eased point scripts read, and the speed driving it. */
+	static function installCameraTrace():Void {
+		if (cameraTraceInstalled || !enabled())
+			return;
+		cameraTraceInstalled = true;
+		FlxG.signals.postUpdate.add(onCameraTracePost);
+	}
+
+	static function onCameraTracePost():Void {
+		var state = PlayState.instance;
+		if (!playStateReady || state == null || state.camGame == null || state.camFollow == null)
+			return;
+		var section:Dynamic = PlayState.SONG != null && PlayState.SONG.notes != null && state.curSection >= 0
+			&& state.curSection < PlayState.SONG.notes.length ? PlayState.SONG.notes[state.curSection] : null;
+		// The script-facing getter would switch the camera to Psych's follow point, so read the backing object.
+		var point:flixel.FlxObject = Reflect.field(state, 'camFollowPoint');
+		emit('camera_trace', {songPosition: Conductor.songPosition, elapsed: FlxG.elapsed,
+			scrollX: state.camGame.scroll.x, scrollY: state.camGame.scroll.y,
+			targetX: state.camFollow.x, targetY: state.camFollow.y,
+			pointX: point == null ? null : point.x, pointY: point == null ? null : point.y,
+			cameraSpeed: state.camSpeed, followLerp: state.camGame.followLerp,
+			activeIsGame: FlxG.camera == state.camGame, activeFollowLerp: FlxG.camera == null ? null : FlxG.camera.followLerp,
+			followPointActive: Reflect.field(state, 'psychFollowPointActive'),
+			zoom: state.camGame.zoom, curSection: state.curSection,
+			mustHit: section == null ? null : section.mustHitSection, fps: FlxG.drawFramerate});
+	}
+
 	public static function installFrameStats():Void {
 		if (frameInstalled || !enabled())
 			return;
@@ -2011,8 +2122,37 @@ class RuntimeSmokeHarness {
 		updateCosts.push(nowMs() - frameStart);
 	}
 
+	/** Song positions (ms, comma separated in CAMMIE_SMOKE_SCENE_AT_MS) at which one
+	 * full scene dump is written as `scene_visual_sample`, for checking what a script
+	 * showed at an exact cue instead of only once per second. */
+	static var sceneSampleTargets:Null<Array<Float>> = null;
+	static var sceneSampleIndex:Int = 0;
+
+	static function sampleSceneAtCues():Void {
+		#if sys
+		if (sceneSampleTargets == null) {
+			sceneSampleTargets = [];
+			var raw = Sys.getEnv('CAMMIE_SMOKE_SCENE_AT_MS');
+			if (raw != null) for (part in raw.split(',')) {
+				var value = Std.parseFloat(StringTools.trim(part));
+				if (Math.isFinite(value)) sceneSampleTargets.push(value);
+			}
+			sceneSampleTargets.sort(function(a, b) return a < b ? -1 : (a > b ? 1 : 0));
+		}
+		if (sceneSampleIndex >= sceneSampleTargets.length || finished || !playStateReady || !songStartObserved) return;
+		var state = PlayState.instance;
+		if (state == null || FlxG.state != state || Conductor.songPosition < sceneSampleTargets[sceneSampleIndex]) return;
+		sceneSampleIndex++;
+		var scene = RuntimeSmokeVisuals.stage(state);
+		Reflect.setField(scene, 'songPosition', Conductor.songPosition);
+		Reflect.setField(scene, 'target', sceneSampleTargets[sceneSampleIndex - 1]);
+		emit('scene_visual_sample', scene);
+		#end
+	}
+
 	static function onFramePreDraw():Void {
 		drawStart = nowMs();
+		sampleSceneAtCues();
 		if (!finished && playStateReady && songStartObserved && config().noteRenderReadback
 			&& Conductor.songPosition >= config().noteRenderAfterMs && Std.isOfType(FlxG.state, PlayState)) {
 			try {
@@ -2544,6 +2684,8 @@ class RuntimeSmokeHarness {
 		if (RuntimePsychAchievementsProbe.enabled()) { RuntimePsychAchievementsProbe.tick(); return; }
 		if (RuntimePsychStandardProbe.enabled()) { RuntimePsychStandardProbe.tick(); return; }
 		if (RuntimeImportUiProbe.enabled()) { RuntimeImportUiProbe.tick(); return; }
+		if (RuntimeMainMenuImportProbe.enabled()) { RuntimeMainMenuImportProbe.tick(); return; }
+		if (RuntimeMenuStyleProbe.enabled()) { RuntimeMenuStyleProbe.tick(); return; }
 		#end
 		var cfg = config();
 		var inFreeplay = Std.isOfType(FlxG.state, FreeplayState);
@@ -2583,7 +2725,7 @@ class RuntimeSmokeHarness {
 			var refresh = ImportRefreshManager.browseTick();
 			if (lastRefreshObservationMs < 0 || now - lastRefreshObservationMs >= 2000) {
 				lastRefreshObservationMs = now;
-				emit("import_refresh_progress", {refresh:refresh});
+				emit("import_refresh_progress", {refresh:refresh, coordinator:ImportRefreshManager.debugState(), availabilityPending:ImportRefreshManager.availabilitySnapshot().inspectionPending});
 			}
 			switch (refreshProbeOutcome(refresh, Sys.time() >= deadline)) {
 				case 'blocked': fail('import-refresh', refresh.label); return;
@@ -3106,11 +3248,24 @@ class RuntimeSmokeHarness {
 		emit('intro_skip_press', {heldMs: nowMs() - introSkipReadyAt, startedCountdown: PlayState.instance.startedCountdown});
 	}
 
+	/** One Enter press for a script ready screen that holds the countdown until the player accepts. */
+	static function maybeAcceptIntro(request:RuntimeSmokeOptions):Void {
+		if (request == null || request.introAcceptAfterMs == null || request.introAcceptAfterMs < 0 || introAcceptTried
+			|| !playStateReady || songStartObserved || PlayState.instance == null || FlxG.state != PlayState.instance)
+			return;
+		if (introAcceptReadyAt < 0) introAcceptReadyAt = nowMs();
+		if (nowMs() - introAcceptReadyAt < request.introAcceptAfterMs) return;
+		introAcceptTried = true;
+		simulateAccept();
+		emit('intro_accept_press', {heldMs: nowMs() - introAcceptReadyAt, startedCountdown: PlayState.instance.startedCountdown});
+	}
+
 	/** Apply position-triggered smoke actions once gameplay has started. */
 	static function maybeRunSeek():Void {
 		maybeTriggerGameOver();
 		var request = config();
 		maybeSkipIntro(request);
+		maybeAcceptIntro(request);
 		// Stands in for the skip key press a hidden window cannot receive.
 		if (request != null && request.cutsceneSkipAfterMs >= 0 && !cutsceneSkipTried && playStateReady && songStartObserved
 			&& PlayState.instance != null && FlxG.state == PlayState.instance

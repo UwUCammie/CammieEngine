@@ -46,6 +46,8 @@ class Main extends Sprite {
 		cwd = Sys.getCwd();
 		EngineMemory.applyStartupTuning(Sys.args());
 		ImportRemovalManager.install();
+		// Created by name for V-Slice atlas sprites, so it must be compiled in.
+		FunkinAtlasSprite;
 		RuntimeImportPerformanceProbe.run();
 		#end
 		var initialState:Class<FlxState> = TitleState;
@@ -62,7 +64,9 @@ class Main extends Sprite {
 			initialState = RuntimeSmokeChartingState;
 		else if (RuntimeSmokeHarness.config() != null && RuntimeSmokeHarness.config().freeplay)
 			initialState = RuntimeSmokeFreeplayState;
-		else if (RuntimeSmokeHarness.enabled())
+		// A startup profile run observes the ordinary TitleState even when the
+		// private launcher also passes the smoke runtime root and log flags.
+		else if (RuntimeSmokeHarness.enabled() && !RuntimeStartupProbe.enabled())
 			initialState = RuntimeSmokeState;
 		#end
 		// Fixed 1280x720 design space.  Every chart, stage script, and ported

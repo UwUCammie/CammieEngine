@@ -2327,6 +2327,38 @@ class ModuleFunctions {
 		return null;
 	}
 
+	/**
+		True when a stage id is provided by the native registry. A standard id that
+		only differs from its native name by spelling (limoRide, mallXmasErect)
+		can be overridden by a donor that ships its own stage definition, which is
+		what V-Slice does with a mod's replacement of a base stage; that donor
+		definition then wins over the native stage.
+	*/
+	static function vSliceStageIsNative(root:ImportRootScanner.ImportRoot, reference:String):Bool {
+		if (!EngineCompat.isBuiltinStageReference(reference))
+			return false;
+		return !(EngineCompat.isBuiltinStageAlias(reference) && findVSliceDefinition(root, 'stage', reference) != null);
+	}
+
+	/**
+		The converter maps standard V-Slice stage ids to native names plus a variant
+		selector. Undo that for a stage the donor overrides with its own definition
+		so the song keeps naming the donor stage that gets imported.
+	*/
+	static function restoreVSliceDonorStage(root:ImportRootScanner.ImportRoot, playData:Dynamic,
+		charts:Array<ConvertedSongChart>):Void {
+		var authored = chartFieldString(playData, 'stage', '');
+		if (authored == '' || vSliceStageIsNative(root, authored) || !EngineCompat.isBuiltinStageAlias(authored))
+			return;
+		for (chart in charts) {
+			var song:Dynamic = chart == null || chart.chart == null ? null : Reflect.field(chart.chart, 'song');
+			if (song == null)
+				continue;
+			Reflect.setField(song, 'stage', authored);
+			Reflect.setField(song, 'stageID', 0);
+		}
+	}
+
 	static function readVSliceDefinition(root:ImportRootScanner.ImportRoot, kind:String, reference:String,
 		diagnostics:Array<String>):Dynamic {
 		var path = findVSliceDefinition(root, kind, reference);
@@ -2862,6 +2894,24 @@ class ModuleFunctions {
 			|| StringTools.startsWith(stem, wanted + '_');
 	}
 
+	/** Find the vocal stem V-Slice would fall back to for one character id. */
+	static function resolveVSliceFallbackVocalStem(characterId:String, available:Array<Dynamic>, variationId:String):Dynamic {
+		for (withVariation in [true, false]) {
+			if (withVariation && variationId == '')
+				continue;
+			var id = StringTools.trim(characterId).toLowerCase();
+			while (id != '') {
+				var wanted = withVariation ? id + '-' + variationId : id;
+				for (stem in available)
+					if (stem != null && Std.string(Reflect.field(stem, 'id')).toLowerCase() == wanted)
+						return stem;
+				var cut = id.lastIndexOf('-');
+				id = cut < 0 ? '' : id.substr(0, cut);
+			}
+		}
+		return null;
+	}
+
 	/** Select the actual split vocal stems belonging to this metadata variant. */
 	static function selectVSliceVocalStems(metadata:Dynamic, available:Array<Dynamic>, diagnostics:Array<String>,
 		?variation:String):Array<Dynamic> {
@@ -2872,6 +2922,7 @@ class ModuleFunctions {
 		var matchedReferences:Map<String, Bool> = new Map<String, Bool>();
 		var chosenRoles:Map<String, String> = new Map<String, String>();
 		var variationId = variation == null ? '' : StringTools.trim(variation).toLowerCase();
+		var unmatchedRoles:Map<String, Bool> = new Map<String, Bool>();
 		for (reference in references) {
 			var referenceId = reference == null ? '' : Std.string(Reflect.field(reference, 'id'));
 			var referenceKey = referenceId.toLowerCase();
@@ -2898,6 +2949,8 @@ class ModuleFunctions {
 			if (selected == null && candidates.length > 1 && diagnostics != null)
 				diagnostics.push('[vocal-stem-ambiguous] Multiple split vocal files match "' + referenceId
 					+ '"; metadata does not identify which one belongs to variation "' + variationId + '".');
+			if (selected == null)
+				unmatchedRoles.set(Std.string(Reflect.field(reference, 'role')), true);
 			if (selected != null) {
 				var selectedId = Std.string(Reflect.field(selected, 'id'));
 				var role = Std.string(Reflect.field(reference, 'role'));
@@ -2906,6 +2959,34 @@ class ModuleFunctions {
 				chosenRoles.set(selectedId.toLowerCase(), role);
 				matchedReferences.set(referenceKey, true);
 			}
+		}
+		// V-Slice only trusts a role's explicit vocal list when every listed file
+		// exists. Otherwise it rebuilds that role from the playable character id and
+		// strips trailing "-suffix" parts until a file exists (Voices-bf-beach.ogg
+		// missing, so bf-beach plays Voices-bf.ogg).
+		var playDataCharacters:Dynamic = metadata == null ? null
+			: Reflect.field(Reflect.field(metadata, 'playData'), 'characters');
+		for (fallbackRole in ['player', 'opponent']) {
+			if (!unmatchedRoles.exists(fallbackRole))
+				continue;
+			var characterId = playDataCharacters == null ? null : Reflect.field(playDataCharacters, fallbackRole);
+			var fallbackStem = characterId == null ? null
+				: resolveVSliceFallbackVocalStem(Std.string(characterId), available, variationId);
+			if (fallbackStem == null)
+				continue;
+			var fallbackId = Std.string(Reflect.field(fallbackStem, 'id')).toLowerCase();
+			if (chosenRoles.exists(fallbackId) && chosenRoles.get(fallbackId) != fallbackRole)
+				continue;
+			var replacedIds:Array<String> = [];
+			for (chosenId in chosenRoles.keys())
+				if (chosenRoles.get(chosenId) == fallbackRole)
+					replacedIds.push(chosenId);
+			for (chosenId in replacedIds)
+				chosenRoles.remove(chosenId);
+			chosenRoles.set(fallbackId, fallbackRole);
+			for (reference in references)
+				if (Std.string(Reflect.field(reference, 'role')) == fallbackRole)
+					matchedReferences.set(Std.string(Reflect.field(reference, 'id')).toLowerCase(), true);
 		}
 		// Psych-style generic stems can be named by slot instead of character.
 		for (stem in available) {
@@ -3047,6 +3128,7 @@ class ModuleFunctions {
 			var convertedNoteStyle:VSliceNoteStyleImport = null;
 			var convertedNoteStyles:Array<VSliceNoteStyleImport> = [];
 			var playData:Dynamic = metadata == null ? null : Reflect.field(metadata, 'playData');
+			restoreVSliceDonorStage(root, playData, convertedCharts);
 			var authoredNoteStyle = chartFieldString(playData, 'noteStyle', 'funkin');
 			var normalizedNoteStyle = authoredNoteStyle.toLowerCase();
 			if (normalizedNoteStyle != '' && normalizedNoteStyle != 'funkin'
@@ -3203,7 +3285,7 @@ class ModuleFunctions {
 			// dependency or generate a duplicate custom stage. Unknown ids still go
 			// through the donor-definition path and remain diagnosable.
 			var stageResolution = EngineCompat.resolveStageResolution(stageReference);
-			var stageDefinition:Dynamic = EngineCompat.isBuiltinStageReference(stageReference)
+			var stageDefinition:Dynamic = vSliceStageIsNative(root, stageReference)
 				? {path:null, data:null}
 				: readVSliceDefinition(root, 'stage', stageReference, diagnostics);
 			var stageDefinitionData:Dynamic = Reflect.field(stageDefinition, 'data');
@@ -3237,7 +3319,7 @@ class ModuleFunctions {
 			if (rawChart != null) {
 				for (eventStageId in VSliceImporter.foreignStageReferences(rawChart)) {
 					var normalizedEventStage = eventStageId;
-					if (EngineCompat.isBuiltinStageReference(normalizedEventStage)
+					if (vSliceStageIsNative(root, normalizedEventStage)
 						|| normalizedEventStage.toLowerCase() == stageReference.toLowerCase())
 						continue;
 					var eventStageDefinition = readVSliceDefinition(root, 'stage', normalizedEventStage, diagnostics);
@@ -5029,7 +5111,7 @@ class ModuleFunctions {
 		if (stem == '')
 			return;
 		if (kind == 'frames') {
-			var framePlan = CodenameFrameAtlasAssets.plan(sourceRoot, stem);
+			var framePlan = CodenameFrameAtlasAssets.planWithSharedLibrary(sourceRoot, stem);
 			if (framePlan.files.length == 0) {
 				if (reportMissing) {
 					if (result.errors == null)

@@ -173,6 +173,25 @@ class EngineCompatTest {
 		if (EngineCompat.resolveStageAlias("schoolEvil") != "schoolEvil"
 			|| EngineCompat.stageVariantId("schoolEvil") != 0)
 			fail("normal school evil stage must remain unchanged");
+		// V-Slice's own base stage ids: the Erect ids select the native variant.
+		var vsliceStageIds:Array<Array<Dynamic>> = [
+			["limoRide", "limo", 0], ["limoRideErect", "limo", 1],
+			["mallXmas", "mall", 0], ["mallXmasErect", "mall", 1],
+			["spookyMansion", "spooky", 0], ["spookyMansionErect", "spooky", 1],
+			["phillyTrain", "philly", 0], ["phillyTrainErect", "philly", 1],
+			["tankmanBattlefield", "tank", 0], ["tankmanBattlefieldErect", "tank", 1],
+			["mainStage", "stage", 0], ["mainStageErect", "stage", 1]
+		];
+		for (entry in vsliceStageIds) {
+			var vsliceStage = EngineCompat.resolveStageResolution(entry[0]);
+			if (vsliceStage.nativeName != entry[1] || vsliceStage.stageID != entry[2] || !vsliceStage.standard)
+				fail("V-Slice base stage id " + entry[0] + " -> " + vsliceStage.nativeName + "/" + vsliceStage.stageID);
+			if (!EngineCompat.isBuiltinStageAlias(entry[0])) fail("V-Slice base stage alias " + entry[0]);
+		}
+		if (EngineCompat.isBuiltinStageAlias("limo") || EngineCompat.isBuiltinStageAlias("limoRideSonic")
+			|| EngineCompat.isBuiltinStageAlias("spookyMansionSonic") || EngineCompat.isBuiltinStageAlias(null))
+			fail("native names and custom donor stages are not base stage aliases");
+		if (EngineCompat.resolveStageResolution("limoRideSonic").standard) fail("custom limoRide variant must stay custom");
 		var psychSourceStage = EngineCompat.resolveStageResolution("phillyStreets");
 		if (psychSourceStage.nativeName != "philly-streets" || psychSourceStage.stageID != 0
 			|| psychSourceStage.standard)
@@ -264,7 +283,7 @@ class EngineCompatTest {
 		if (EngineCompat.propertyPath("timeTxt.visible") != "timeTxt.visible")
 			fail("Psych timeTxt must resolve to its label, not the timeBar fill");
 		if (EngineCompat.propertyPath("game.camOther.zoom") != "camOther.zoom") fail("camOther alias");
-		if (EngineCompat.propertyPath("camFollowPos.x") != "camFollow.x") fail("follow alias");
+		if (EngineCompat.propertyPath("camFollowPos.x") != "camFollowPos.x") fail("eased follow point keeps its own name");
 		if (EngineCompat.propertyPath("game.opponentStrums") != "enemyStrums") fail("strum alias");
 		if (EngineCompat.propertyPath("cameraSpeed") != "camSpeed") fail("camera speed alias");
 		if (EngineCompat.propertyPath("camZoomingMult") != "camZoomIntensity") fail("zoom multiplier alias");
@@ -791,7 +810,14 @@ class NotePoint {
         self.assertIn("callAllHScript('updatePost', [elapsed]);", source)
         self.assertIn("EngineCompat.hxcCountdownStartPayload()", source)
         self.assertIn("callAllHScript('countdownStart', [countdownEvent]);", source)
-        self.assertIn("if (EngineCompat.hxcPayloadCanceled(countdownEvent)) {", source)
+        self.assertIn("if (!silentPreRoll && EngineCompat.hxcPayloadCanceled(countdownEvent)) {", source)
+        # V-Slice runs the lead-in clock whenever a script sets isInCountdown, so a
+        # script that cancelled the countdown can still start the song without the
+        # 3-2-1-Go (Tricky's Expurgation).
+        self.assertIn("function requestSilentPreRoll():Void", source)
+        self.assertIn("requestSilentPreRoll();", source)
+        self.assertIn("hxcCountdownCancelledPending = true;", source)
+        self.assertIn("if (silentPreRoll) {", source)
         self.assertIn("EngineCompat.hxcNoteIncomingPayload(dunceNote)", source)
         self.assertIn('callAllHScript("noteIncoming", [dunceNote, incomingEvent], true);', source)
         self.assertIn('callHxcNoteHScript("noteIncoming", [dunceNote, incomingEvent]);', source)

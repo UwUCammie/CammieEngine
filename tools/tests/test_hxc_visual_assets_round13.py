@@ -479,7 +479,7 @@ class Main {
         self.assertIn("VSliceImporter.hxcHealthIconMappings", module)
         self.assertIn("kind == 'health-icon'", module)
         self.assertIn("mergeVSliceHxcStageAsset(sourceRoot, runtimeNamespace", module)
-        self.assertIn("CodenameFrameAtlasAssets.plan(sourceRoot, stem)", module)
+        self.assertIn("CodenameFrameAtlasAssets.planWithSharedLibrary(sourceRoot, stem)", module)
         self.assertIn("CompatScriptManifest.destinationRoot", module)
         self.assertIn("images/' + stem + '.png", module)
         self.assertIn("images/' + stem + metadataExtension", module)
@@ -487,7 +487,7 @@ class Main {
         self.assertIn("vSliceLibraryRoots", module)
 
         self.assertIn("HxcStateAssetScope.sparrowAtlas(assetRoot", main_menu)
-        self.assertIn("freeplay basic", main_menu)
+        self.assertIn("setIcon(art)", main_menu)
         self.assertIn("hxc-asset-fallback", scope)
         self.assertIn("hxcPushAssetScope", freeplay)
         self.assertIn("hxcApplyImportedFreeplayCustomization", freeplay)

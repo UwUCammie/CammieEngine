@@ -1935,6 +1935,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function sourceHealthIconOwner(nightmare:Bool, ?psychPaths:Dynamic):SourceHealthIconOwner {
 		var paths:Dynamic = nightmare ? nightmareVisionPaths : psychPaths == null
 			? PsychOwnerPaths.create(selectedPsychSkinRoot(), psychStageLibrary) : psychPaths;
+		// Script-made icons carry their own facade and stay on it.
+		var dependencies:Array<Dynamic> = nightmare || psychPaths != null ? [] : psychDependencyIconPaths();
 		var assets:SourceHealthIconAssets = null;
 		if (!nightmare) {
 			var ownerRoot = PsychOwnerPaths.ownerRoot(paths);
@@ -1945,23 +1947,39 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return {
 			spriteOwner:nightmare ? NightmareVisionSpriteRegistry.capture(cast paths) : null,
 			image:function(name, gpu) {
+				var owning:Dynamic = nightmare ? paths : SourceHealthIconRoots.owning(paths, dependencies, 'images/' + name + '.png');
 				var selected:String = nightmare ? (cast paths:NightmareVisionPaths).getPath('images/' + name + '.png', null, true)
-					: Reflect.callMethod(paths, Reflect.field(paths, 'getPath'), ['images/' + name + '.png', openfl.utils.AssetType.IMAGE]);
+					: Reflect.callMethod(owning, Reflect.field(owning, 'getPath'), ['images/' + name + '.png', openfl.utils.AssetType.IMAGE]);
 				var fallback = !FNFAssets.exists(selected) && (name == 'icons/icon-face' || name == 'UI/icons/icon-face');
 				if (nightmare) return fallback ? FNFAssets.getFlxGraphic(core) : (cast paths:NightmareVisionPaths).image(name, null, gpu);
 				return assets.psychImage(name, function() return fallback ? FNFAssets.getFlxGraphic(core)
-					: Reflect.callMethod(paths, Reflect.field(paths, 'image'), [name]), gpu,
+					: Reflect.callMethod(owning, Reflect.field(owning, 'image'), [name]), gpu,
 					psychClientPrefs != null && psychClientPrefs.data.cacheOnGPU == true);
 			},
 			exists:function(name) {
+				var owning:Dynamic = nightmare ? paths : SourceHealthIconRoots.owning(paths, dependencies, name);
 				var selected:String = nightmare ? (cast paths:NightmareVisionPaths).getPath(name, null, true)
-					: Reflect.callMethod(paths, Reflect.field(paths, 'getPath'), [name, openfl.utils.AssetType.IMAGE]);
+					: Reflect.callMethod(owning, Reflect.field(owning, 'getPath'), [name, openfl.utils.AssetType.IMAGE]);
 				return FNFAssets.exists(selected);
 			},
 			uiPrefix:function() return nightmare ? (cast paths:NightmareVisionPaths).UI_PREFIX : '',
 			antialiasing:function() return SourceGameplayPreferences.antialiasing(
 				nightmare ? cast nightmareVisionPrefs : cast psychClientPrefs, nightmare, OptionsHandler.options.antialiasing)
 		};
+	}
+	/** Paths of the other Psych roots of the selected song's import, in the
+	 * order Song lists them after the selected owner. */
+	function psychDependencyIconPaths():Array<Dynamic> {
+		var result:Array<Dynamic> = [];
+		var selected = selectedPsychSkinRoot();
+		if (selected == null || SONG == null) return result;
+		var roots = Song.psychCharacterOwnerRootsForSong(Song.storageFolder(SONG));
+		if (roots.length < 2 || PsychOwnerAssetPath.normalizeOwner(roots[0]) != PsychOwnerAssetPath.normalizeOwner(selected))
+			return result;
+		for (root in roots.slice(1))
+			if (PsychOwnerAssetPath.normalizeOwner(root) != '')
+				result.push(PsychOwnerPaths.bridgeFacade(PsychOwnerAssetPath.normalizeOwner(root)));
+		return result;
 	}
 	function isSourceHUDIconAlias(name:String):Bool {
 		// Asked on every PlayState-rooted property read and write. Both aliases
@@ -2968,16 +2986,43 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var totalNotesHitDefault:Float = 0;
 	public var camFollow:FlxObject;
 	// Psych-era eased camera point; SourceCameraFollowPoint keeps it on the live view.
-	@:keep public var camFollowPos:FlxObject = new FlxObject(0, 0, 1, 1);
+	@:keep var camFollowPoint:FlxObject = new FlxObject(0, 0, 1, 1);
+	/** Any script or compat read of the point means Psych 0.6 camera rules (see psychFollowPointActive). */
+	@:keep public var camFollowPos(get, set):FlxObject;
+	function get_camFollowPos():FlxObject {
+		psychFollowPointActive = true;
+		return camFollowPoint;
+	}
+	function set_camFollowPos(value:FlxObject):FlxObject return camFollowPoint = value;
+	/** Psych 0.6 and older locked the camera onto camFollowPos, a point eased toward
+	 * camFollow at 2.4 * cameraSpeed per second, and scripts read and write that point
+	 * (Smooth Camera style scripts smooth it again). Raised the first time a script
+	 * names camFollowPos, so the camera then follows Psych's own eased point and a
+	 * script's camera writes are overridden each frame as they are there. */
+	@:keep var psychFollowPointActive:Bool = false;
 	var camFollowPosX:Float = 0;
 	var camFollowPosY:Float = 0;
+	/** Psych's per-frame camera: ease camFollowPoint toward camFollow, lock the camera onto it. */
+	function updatePsychFollowPoint(elapsed:Float):Void {
+		if (!inCutscene) {
+			var lerpVal = psychFollowLerp(elapsed, camSpeed);
+			camFollowPoint.setPosition(camFollowPoint.x + (camFollow.x - camFollowPoint.x) * lerpVal,
+				camFollowPoint.y + (camFollow.y - camFollowPoint.y) * lerpVal);
+		}
+		FlxG.camera.follow(camFollowPoint, LOCKON, 1);
+	}
+
+	/** Psych 0.6 PlayState: CoolUtil.boundTo(elapsed * 2.4 * cameraSpeed, 0, 1). */
+	public static inline function psychFollowLerp(elapsed:Float, speed:Float):Float
+		return Math.max(0, Math.min(1, elapsed * 2.4 * speed));
+
 	function syncCamFollowPos():Void {
-		if (camFollowPos == null || camGame == null) return;
+		if (camFollowPoint == null || camGame == null) return;
 		// A script that moved the point itself wants the game camera snapped there.
-		if (SourceCameraFollowPointMath.moved(camFollowPos.x, camFollowPos.y, camFollowPosX, camFollowPosY))
-			camGame.focusOn(camFollowPos.getMidpoint());
-		SourceCameraFollowPoint.sync(camFollowPos, camGame, FlxG.cameras.list);
-		camFollowPosX = camFollowPos.x; camFollowPosY = camFollowPos.y;
+		if (SourceCameraFollowPointMath.moved(camFollowPoint.x, camFollowPoint.y, camFollowPosX, camFollowPosY))
+			camGame.focusOn(camFollowPoint.getMidpoint());
+		SourceCameraFollowPoint.sync(camFollowPoint, camGame, FlxG.cameras.list);
+		camFollowPosX = camFollowPoint.x; camFollowPosY = camFollowPoint.y;
 	}
 	// V-Slice camera aliases. The setters/getters intentionally point at the
 	// live gameplay camera and follow target, so reads and writes affect the
@@ -3969,6 +4014,17 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	// FocusCamera adapter must reproduce for imported charts.
 	static inline var DONOR_CAMERA_FOLLOW_RATE:Float = 0.04;
 
+	/** Nightmare Vision sets followLerp to 0.04 * cameraSpeed on stock Flixel, whose
+	 * per-60Hz-frame lerp is the same one this engine's Flixel applies. */
+	public static inline function nightmareVisionFollowLerp(speed:Float):Float
+		return Math.min(1, 0.04 * speed);
+
+	/** Psych 0.6 through 1.0 ease the camera by 1 - exp(-2.4 * cameraSpeed * playbackRate * seconds)
+	 * (followLerp 0.04 * speed through PsychCamera). Flixel here lerps by
+	 * 1 - (1 - L)^(seconds * 60) per frame, so L = 1 - exp(-0.04 * speed) gives the same rate. */
+	public static inline function psychFollowLerpPerFrame(speed:Float):Float
+		return 1 - Math.exp(-0.04 * speed);
+
 	// camSpeed -> flixel follow lerp: 1 = the engine's normal lag, big values
 	// converge on "no easing" (the countdown snap officeourple asks for),
 	// fractions ease slower than normal, 0 locks the camera in place.
@@ -3976,6 +4032,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	{
 		if (camSpeed <= 0)
 			return 0;
+		// Imported Nightmare Vision and Psych songs follow like their own engine.
+		if (!focusCameraDrivesFollow && nightmareVisionScripts != null)
+			return nightmareVisionFollowLerp(camSpeed);
+		if (!focusCameraDrivesFollow && psychCameraCompatibilityActive)
+			return psychFollowLerpPerFrame(camSpeed * playbackRate);
 		// Donor's FocusCamera path glides at Constants.DEFAULT_CAMERA_FOLLOW_RATE
 		// (0.04); the classic section-follow keeps the fork's 0.08 feel.
 		var base = focusCameraDrivesFollow ? DONOR_CAMERA_FOLLOW_RATE : CAMERA_LERP_NORMAL;
@@ -4183,7 +4244,35 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return startingSong;
 	function set_isInCountdown(value:Bool):Bool {
 		startingSong = value;
+		if (value)
+			requestSilentPreRoll();
 		return value;
+	}
+	/** A countdownStart callback cancelled the countdown and nothing has started the clock yet. */
+	var hxcCountdownCancelledPending:Bool = false;
+	/** A script wrote `isInCountdown = true` while the countdown start was being dispatched. */
+	var hxcScriptCountdownRequested:Bool = false;
+	/** The next countdown run keeps the pre-roll clock but shows no countdown. */
+	var hxcSilentPreRoll:Bool = false;
+	/**
+		V-Slice runs the lead-in clock whenever a script sets `isInCountdown`, so a
+		script that cancelled the countdown (to play its own intro) can still let
+		the song start without the 3-2-1-Go. Native song start keeps its own clock
+		here: this begins that clock with the countdown graphics and sounds left
+		out, and does nothing when the countdown already runs or no script held it.
+	*/
+	function requestSilentPreRoll():Void {
+		if (startedCountdown || hxcCountdownStopRequested)
+			return;
+		if (!hxcCountdownCancelledPending) {
+			// Set from inside the countdownStart callback itself: startCountdown
+			// reads this once the callbacks return.
+			hxcScriptCountdownRequested = true;
+			return;
+		}
+		hxcCountdownCancelledPending = false;
+		hxcSilentPreRoll = true;
+		startCountdown();
 	}
 	// V-Slice exposes the cutscene gate to donor scripts under this spelling;
 	// imported song scripts write it before their intro cutscene and clear it
@@ -6091,6 +6180,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				return camOther;
 			case 'camfollow':
 				return camFollow;
+			case 'camfollowpos':
+				return camFollowPos;
 			case 'controls':
 				return psychControls == null ? cast controls : psychControls;
 			case 'opponentstrums' | 'enemystrums':
@@ -10675,7 +10766,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			return null;
 		var fn = Reflect.field(receiver, method);
 		if (fn == null || !Reflect.isFunction(fn))
-			return null;
+			return HxcCompatRuntime.spriteAnimationCall(receiver, method, args);
 		return Reflect.callMethod(receiver, fn, args == null ? [] : args);
 	}
 
@@ -14675,8 +14766,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			case 'gf': actor.gfOffsetY;
 			default: actor.likeGf ? actor.gfOffsetY : actor.enemyOffsetY;
 		};
-		return psychStageCharacterRoot == null ? [nativeX, nativeY]
-			: PsychCharacterPosition.resolve(actor.curCharacter, psychStageCharacterRoot, nativeX, nativeY);
+		if (psychStageCharacterRoot == null)
+			return [nativeX, nativeY];
+		// The stage's root first, then the song's other roots, so a character kept
+		// in a dependency root of the same import still supplies its position.
+		var owner = SourceCharacterId.ownerRoot(actor.curCharacter,
+			[psychStageCharacterRoot].concat(Song.currentPsychCharacterOwnerRoots()),
+			function(path:String):Bool return FNFAssets.exists(path));
+		return PsychCharacterPosition.resolve(actor.curCharacter, owner, nativeX, nativeY);
 	}
 	function refreshPsychStageCameraTarget():Void {
 		if (camFollow == null || SONG == null || SONG.notes == null || SONG.notes.length == 0
@@ -18571,22 +18668,39 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// HXC/V-Slice exposes a mutable countdown event.  Dispatch it after all
 		// script families have been loaded so event.cancel() can stop the native
 		// timer while still allowing a cutscene/script to start a later countdown.
+		var silentPreRoll = hxcSilentPreRoll;
+		hxcSilentPreRoll = false;
+		hxcCountdownCancelledPending = false;
+		hxcScriptCountdownRequested = false;
 		var countdownEvent = EngineCompat.hxcCountdownStartPayload();
 		RuntimeSmokeHarness.markStep('countdown:countdownStart-callback-begin');
 		var countdownErrorsBefore = countdownStartErrors;
-		callAllHScript('countdownStart', [countdownEvent]);
+		// A silent pre-roll was asked for by the script that already held the
+		// countdown, so the cancelled start is not announced a second time.
+		if (!silentPreRoll)
+			callAllHScript('countdownStart', [countdownEvent]);
 		RuntimeSmokeHarness.markStep('countdown:countdownStart-callback-complete');
-		if (EngineCompat.hxcPayloadCanceled(countdownEvent)) {
+		if (!silentPreRoll && EngineCompat.hxcPayloadCanceled(countdownEvent)) {
 			// A script cancels the countdown to run its own intro and restarts it at
 			// the end. If a countdownStart callback failed, that restart never comes
 			// and the song would wait forever, so play the normal countdown instead.
 			if (countdownStartErrors == countdownErrorsBefore) {
-				RuntimeSmokeHarness.markStep('countdown:cancelled-by-countdownStart');
-				return;
+				if (hxcScriptCountdownRequested && !hxcCountdownStopRequested) {
+					// The same callback wrote `isInCountdown = true`: V-Slice starts
+					// the lead-in clock right away, without the countdown.
+					silentPreRoll = true;
+					hxcScriptCountdownRequested = false;
+				} else {
+					hxcCountdownCancelledPending = true;
+					RuntimeSmokeHarness.markStep('countdown:cancelled-by-countdownStart');
+					return;
+				}
+			} else {
+				trace('[hxc-countdown] a countdownStart callback cancelled the countdown and then failed; starting it normally');
+				RuntimeSmokeHarness.markStep('countdown:cancel-ignored-after-script-error');
 			}
-			trace('[hxc-countdown] a countdownStart callback cancelled the countdown and then failed; starting it normally');
-			RuntimeSmokeHarness.markStep('countdown:cancel-ignored-after-script-error');
 		}
+		hxcScriptCountdownRequested = false;
 		if (hxcCountdownStopRequested) {
 			RuntimeSmokeHarness.markStep('countdown:stopped-by-script');
 			return;
@@ -18665,6 +18779,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 					if (opponentPlayer && boyfriend.codenameLiveDefinition == null)
 						boyfriend.dance();
 					if (nightmareVisionLegacyFieldCameras ? girlfriendDanceDue(tmr.loopsLeft) : gf.codenameLiveDefinition == null) gf.dance();
+					// A script that held the countdown and asked for the lead-in clock
+					// (V-Slice `isInCountdown = true`) gets the clock without the
+					// 3-2-1-Go graphics, sounds and step callbacks.
+					if (silentPreRoll) {
+						swagCounter += 1;
+						return;
+					}
 
 					var introAssets:Map<String, Array<String>> = new Map<String, Array<String>>();
 
@@ -22330,6 +22451,14 @@ void main(void) {
 		return vocalTracks == null ? 1 : vocalTracks.getPlayerVolume();
 	}
 
+	/** Which side a receptor line belongs to, for runtime smoke evidence. */
+	public function smokeReceptorSide(line:Strumline):String
+		return line == playerStrums ? 'player' : line == enemyStrums ? 'opponent' : 'other';
+
+	/** Vocal stems this song is playing, for runtime smoke evidence. */
+	public function smokeVocalTracks():Array<Dynamic>
+		return vocalTracks == null ? [] : vocalTracks.describe();
+
 	@:keep public function hxcOpponentVocalTracks():Array<FlxSound>
 		return vocalTracks == null ? [] : vocalTracks.forRole('opponent');
 
@@ -24736,8 +24865,10 @@ void main(void) {
 		}
 
 		ensureGameplayCameraBinding();
-		if (!codenameCameraControlled)
-			FlxG.camera.follow(camFollow, LOCKON, camFollowLerp());
+		if (!codenameCameraControlled) {
+			if (psychFollowPointActive) updatePsychFollowPoint(elapsed);
+			else FlxG.camera.follow(camFollow, LOCKON, camFollowLerp());
+		}
 
 		// Fire every chart event whose time has passed. Natural audio completion
 		// also drains through songLength in case the final callback lands between
@@ -25471,6 +25602,11 @@ void main(void) {
 
 				var daNoteStrums = getNoteStrumline(daNote);
 				if (daNoteStrums == null) return;
+				// V-Slice keeps a line's notes inside its strumline group, so a script
+				// that hides the strumline (`opponentStrumline.visible = false`) hides
+				// the notes travelling to it too.
+				if (hxcCompatScriptsLoaded && !daNoteStrums.visible)
+					daNote.visible = false;
 				alignCodenameNoteToReceptor(daNote, daNoteStrums);
 				var noteScrollSpeed = FlxMath.roundDecimal(dynamicScrollTarget > 0 ? effectiveScrollSpeed
 					: (daNoteStrums.hasScrollSpeedOverride() ? daNoteStrums.scrollSpeed
@@ -25843,6 +25979,8 @@ void main(void) {
 		if (!inCutscene && !demoMode && !disableKeys
 			&& !compatEventVideoControlsDisabled && !hxcVideoControlsDisabled) {
 			// is that why it was crashing
+			if (RuntimeSmokeHarness.playerKeysEnabled())
+				runtimeSmokePlayerKeys();
 			if (RuntimeSmokeHarness.playerHitsEnabled())
 				runtimeSmokePlayerHits();
 			else if (codenameInputLines.length > 0) {
@@ -25924,6 +26062,38 @@ void main(void) {
 	}
 
 	/** Drive the real hit route only in an explicitly requested native smoke. */
+	/** --smoke-player-keys state per lane: key is down, when it lifts, and the last note it pressed for. */
+	var smokeKeyDown:Array<Bool> = [false, false, false, false];
+	var smokeKeyReleaseAt:Array<Float> = [0, 0, 0, 0];
+	var smokeKeyNoteTime:Array<Float> = [-1e9, -1e9, -1e9, -1e9];
+
+	/**
+		Press each player lane key through the stage when its note is due, hold it
+		for the configured time (a sustain keeps it down for its length) and lift
+		it, so keyShit and the receptor visuals run exactly as for a keyboard.
+	*/
+	function runtimeSmokePlayerKeys():Void {
+		if (startingSong || paused || !generatedMusic || notes == null)
+			return;
+		for (lane in 0...4)
+			if (smokeKeyDown[lane] && Conductor.songPosition >= smokeKeyReleaseAt[lane]) {
+				smokeKeyDown[lane] = false;
+				RuntimeSmokeHarness.simulateLaneKey(lane, false);
+			}
+		for (note in notes.members.copy()) {
+			if (note == null || !note.alive || !note.mustPress || note.isSustainNote || note.wasGoodHit || note.tooLate)
+				continue;
+			var lane = note.noteData;
+			if (lane < 0 || lane > 3 || smokeKeyDown[lane] || note.strumTime > Conductor.songPosition
+				|| note.strumTime <= smokeKeyNoteTime[lane])
+				continue;
+			smokeKeyNoteTime[lane] = note.strumTime;
+			smokeKeyDown[lane] = true;
+			smokeKeyReleaseAt[lane] = Conductor.songPosition + Math.max(RuntimeSmokeHarness.playerKeyHoldMs(), note.sustainLength + 60);
+			RuntimeSmokeHarness.simulateLaneKey(lane, true);
+		}
+	}
+
 	function runtimeSmokePlayerHits():Void {
 		if (startingSong || paused || !generatedMusic || notes == null)
 			return;
@@ -27660,6 +27830,15 @@ void main(void) {
 		if (nightmareVisionScripts != null) updateNightmareVisionHoldClaims();
 	}
 
+	/** Whether an unhit sustain piece for this side is still on its way to the lane. */
+	function laneHasLiveSustain(lane:Int, playerOne:Bool):Bool {
+		for (piece in notes.members)
+			if (piece != null && piece.alive && piece.isSustainNote && piece.noteData == lane
+				&& piece.mustPress == playerOne && !piece.wasGoodHit && !piece.tooLate)
+				return true;
+		return false;
+	}
+
 	private function keyShit(?playerOne:Bool = true, ?sourceLine:CodenameInputLine<Character>):Void {
 		// HOLDING
 		var coolControls = playerOne ? controls : controlsPlayerTwo;
@@ -27981,6 +28160,10 @@ void main(void) {
 		strums.forEachReceptor(function(spr:Strumline.StrumNote) {
 			var strumAnimationName = spr.animation != null && spr.animation.curAnim != null
 				? spr.animation.curAnim.name : '';
+			// V-Slice puts a receptor back to press or static when its sustain ends.
+			if (sourceLine == null && spr.settlesConfirm && spr.holdsSustainConfirm
+				&& !laneHasLiveSustain(spr.ID, playerOne))
+				spr.endSustainConfirm();
 			if (visualControls[spr.ID] && strumAnimationName != 'confirm') {
 				spr.playAnim('pressed');
 				if (sourceLine == null && useCustomInput && OptionsHandler.options.singYourHeartOut) {
@@ -28007,6 +28190,9 @@ void main(void) {
 			}
 			if (visualReleases[spr.ID])
 				spr.playAnim('static');
+			// V-Slice shows a held key's press pose once a confirm has settled.
+			else if (sourceLine == null && spr.settlesConfirm && holdArray[spr.ID] && strumAnimationName == 'static')
+				spr.playAnim('pressed');
 		});
 		}
 		if (sourceLine != null) {

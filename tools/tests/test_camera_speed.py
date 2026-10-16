@@ -31,6 +31,9 @@ class CameraSpeedTest(unittest.TestCase):
         fixture = '''class Camera {
 	public var camSpeed:Float;
 	public var focusCameraDrivesFollow:Bool = false;
+	public var nightmareVisionScripts:Dynamic = null;
+	public var psychCameraCompatibilityActive:Bool = false;
+	public var playbackRate:Float = 1;
 ''' + block + '''
 	public function new(camSpeed:Float) {
 		this.camSpeed = camSpeed;
@@ -53,6 +56,39 @@ class Test {
 			throw "camSpeed 0 must lock the camera";
 		if (new Camera(-5).camFollowLerp() != 0)
 			throw "negative camSpeed must not explode";
+		// Psych: 2.4 * speed * playbackRate per second at any frame rate. Flixel applies
+		// 1 - (1 - L)^(seconds * 60) per frame, so compare the per-second remainder.
+		var psych = new Camera(1);
+		psych.psychCameraCompatibilityActive = true;
+		for (fps in [30, 60, 240]) {
+			var remain = Math.pow(1 - psych.camFollowLerp(), 60 * (1 / fps) * fps);
+			if (Math.abs(remain - Math.exp(-2.4)) > 0.000001)
+				throw "Psych speed 1 must remove 1 - e^-2.4 of the gap per second, got " + remain;
+		}
+		psych.camSpeed = 2;
+		if (Math.abs(Math.pow(1 - psych.camFollowLerp(), 60) - Math.exp(-4.8)) > 0.000001)
+			throw "Psych speed scales the rate linearly";
+		psych.camSpeed = 1;
+		psych.playbackRate = 1.5;
+		if (Math.abs(Math.pow(1 - psych.camFollowLerp(), 60) - Math.exp(-3.6)) > 0.000001)
+			throw "Psych multiplies by playbackRate";
+		psych.camSpeed = 1000;
+		if (psych.camFollowLerp() < 1) throw "Psych countdown snap";
+		// Nightmare Vision: followLerp = 0.04 * cameraSpeed, no playbackRate; wins over the Psych flag it also sets.
+		var nv = new Camera(1);
+		nv.psychCameraCompatibilityActive = true;
+		nv.nightmareVisionScripts = {};
+		nv.playbackRate = 2;
+		if (!closeEnough(nv.camFollowLerp(), 0.04)) throw "NV speed 1 is 0.04";
+		nv.camSpeed = 2.5;
+		if (!closeEnough(nv.camFollowLerp(), 0.1)) throw "NV speed is linear";
+		nv.camSpeed = 1000;
+		if (nv.camFollowLerp() != 1) throw "NV snap";
+		// V-Slice and base songs are untouched by the Psych flag.
+		var vslice = new Camera(1);
+		vslice.psychCameraCompatibilityActive = true;
+		vslice.focusCameraDrivesFollow = true;
+		if (!closeEnough(vslice.camFollowLerp(), 0.04)) throw "V-Slice keeps the donor rate";
 		// the countdown snap must be strictly faster than the song's 1
 		if (!(new Camera(1000).camFollowLerp() > new Camera(1).camFollowLerp()))
 			throw "mapping must grow with the requested speed";

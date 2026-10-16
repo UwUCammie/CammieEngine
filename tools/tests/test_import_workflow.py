@@ -994,10 +994,10 @@ class Main {{
 
     def test_completed_scan_summary_has_reserved_area_and_single_line_details(self):
         state = (ROOT / "source/ImportSettingsState.hx").read_text()
-        self.assertIn("static inline var SUMMARY_HEIGHT:Int = 78", state)
+        self.assertIn("static inline var SUMMARY_HEIGHT:Int = 310", state)
         self.assertIn("scanSummary.fieldHeight = SUMMARY_HEIGHT", state)
         self.assertIn('"    Roots detected: " + detectedRootCount', state)
-        self.assertIn('"    Engine types: " + rootEngines.length', state)
+        self.assertIn('"\\nEngine types: " + rootEngines.length', state)
         self.assertIn("detailText.wordWrap = false", state)
         self.assertIn("detailText.fieldHeight / DETAIL_LINE_HEIGHT", state)
         self.assertIn("function wrapDetailLine", state)

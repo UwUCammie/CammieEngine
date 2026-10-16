@@ -17,21 +17,25 @@ class UpdateProgressBar extends FlxSpriteGroup {
 
 	public function new() {
 		super(FlxG.width - 520, 8);
-		var background = new FlxSprite(0, 0).makeGraphic(508, 78, FlxColor.fromRGB(12, 16, 25, 232));
+		var background = new FlxSprite(0, 0).makeGraphic(508, 78, MenuStyle.PANEL);
+		background.alpha = 0.96;
 		background.scrollFactor.set();
 		add(background);
+		var cap = new FlxSprite(0, 0).makeGraphic(508, 4, MenuStyle.PINK);
+		cap.scrollFactor.set();
+		add(cap);
 		label = new FlxText(12, 6, 484, '', 16);
-		label.setFormat('assets/fonts/vcr.ttf', 16, FlxColor.WHITE);
+		label.setFormat(MenuStyle.FONT, 16, MenuStyle.CREAM);
 		label.scrollFactor.set();
 		add(label);
 		detail = new FlxText(12, 29, 484, '', 12);
-		detail.setFormat('assets/fonts/vcr.ttf', 12, FlxColor.WHITE);
+		detail.setFormat(MenuStyle.FONT, 12, MenuStyle.MUTED);
 		detail.scrollFactor.set();
 		add(detail);
-		var track = new FlxSprite(12, 59).makeGraphic(484, 10, FlxColor.fromRGB(55, 60, 69));
+		var track = new FlxSprite(12, 59).makeGraphic(484, 10, MenuStyle.CHIP_OFF);
 		track.scrollFactor.set();
 		add(track);
-		fill = new FlxSprite(12, 59).makeGraphic(484, 10, FlxColor.fromRGB(76, 220, 139));
+		fill = new FlxSprite(12, 59).makeGraphic(484, 10, MenuStyle.TEAL);
 		fill.scrollFactor.set();
 		add(fill);
 		visible = false;

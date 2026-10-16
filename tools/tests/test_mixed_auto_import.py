@@ -125,6 +125,8 @@ class MixedAutoImportTest(unittest.TestCase):
                 "static function vSliceDefinitionFolders",
                 "static function vSliceDefinitionStem",
                 "static function findVSliceDefinition",
+                "static function vSliceStageIsNative",
+                "static function restoreVSliceDonorStage",
                 "static function readVSliceDefinition",
                 "static function appendVSliceFolderAssetDiagnostics",
                 "static function appendVSliceScriptDiagnostics",
@@ -141,6 +143,7 @@ class MixedAutoImportTest(unittest.TestCase):
                 "static function findVSliceInstrumental",
                 "static function normalizeVSliceVariationDifficulty",
                 "static function vSliceStemMatchesReference",
+                "static function resolveVSliceFallbackVocalStem",
                 "static function selectVSliceVocalStems",
                 "static function discoverVSliceSongImports",
                 "static function discoverLegacySongImportsFromRoot",
@@ -599,6 +602,7 @@ class CodenameScriptDiscovery {
   public static function vSliceNativeCharacterCandidates(path:String):Array<String> return [];
   public static function resolveStageResolution(reference:String):Dynamic return {nativeName: reference, stageID: 0, standard: false};
   public static function isBuiltinStageReference(reference:String):Bool return false;
+  public static function isBuiltinStageAlias(reference:String):Bool return false;
   public static function legacyDialogueText(data:Dynamic, player1:String, player2:String):String return null;
   public static function legacyCutsceneScript(data:Dynamic):String return null;
   public static function legacyCutsceneBool(data:Dynamic, field:String, fallback:Bool):Bool return fallback;

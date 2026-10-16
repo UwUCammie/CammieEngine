@@ -254,6 +254,44 @@ class RuntimeSmokeHarnessTest(unittest.TestCase):
         self.assertIn("playerHitDelayMs: 0", self.harness)
 
     @unittest.skipUnless(HAXE.is_file(), "portable Haxe is unavailable")
+    def test_player_key_and_receptor_trace_getters_are_opt_in(self):
+        keys = extract_haxe_method(self.harness, "public static function playerKeysEnabled()")
+        hold = extract_haxe_method(self.harness, "public static function playerKeyHoldMs()")
+        trace = extract_haxe_method(self.harness, "public static function receptorTraceEnabled()")
+        fixture = """class Main {
+ static var active=true;
+ static var cfg:Dynamic={playerKeys:false,playerKeyHoldMs:120.0,receptorTrace:false};
+ static function enabled():Bool return active;
+ static function config():Dynamic return cfg;
+""" + keys + "\n" + hold + "\n" + trace + r'''
+ static function check(ok:Bool,message:String):Void if(!ok) throw message;
+ static function main():Void {
+  check(!playerKeysEnabled() && !receptorTraceEnabled(),"flags were on by default");
+  check(playerKeyHoldMs()==0,"disabled key smoke exposed a hold time");
+  cfg.playerKeys=true; cfg.receptorTrace=true;
+  check(playerKeysEnabled() && receptorTraceEnabled(),"enabled flags were not reported");
+  check(playerKeyHoldMs()==120,"enabled key smoke lost its hold time");
+  active=false;
+  check(!playerKeysEnabled() && !receptorTraceEnabled() && playerKeyHoldMs()==0,"disabled harness exposed key smoke");
+  Sys.println("player-key-getters-ok");
+ }
+}'''
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            fixture_path = Path(folder) / "Main.hx"
+            fixture_path.write_text(fixture, encoding="utf-8", newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", folder, "--interp", "-main", "Main"],
+                cwd=folder, capture_output=True, text=True, timeout=30,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("player-key-getters-ok", result.stdout)
+        for flag in ("--smoke-player-keys", "--smoke-player-key-hold-ms", "--smoke-receptor-trace"):
+            self.assertIn("case '" + flag + "'", self.harness)
+        self.assertIn("result.practice = true", self.harness)
+        self.assertIn("RuntimeSmokeHarness.playerKeysEnabled()", self.play_state)
+        self.assertIn("function runtimeSmokePlayerKeys():Void", self.play_state)
+
+    @unittest.skipUnless(HAXE.is_file(), "portable Haxe is unavailable")
     def test_player_hit_rating_projection_markers_are_distinct_bounded_and_gated(self):
         marker = extract_haxe_method(
             self.harness, "public static function markRatingPopup("
@@ -1181,6 +1219,13 @@ class ImportWorkflow {
 """,
             "ImportRefreshManager.hx": """class ImportRefreshManager {
   public static function browseTick():Dynamic return {busy:false};
+  public static function availabilitySnapshot():Dynamic return {inspectionPending:false, refreshInProgress:false};
+}
+""",
+            "ImportRemovalManager.hx": """class ImportRemovalManager {
+  public static function poll():Dynamic return {phase:'idle', busy:false, label:'', published:false};
+  public static function beginPreview(owner:String):Bool return true;
+  public static function confirm():Bool return true;
 }
 """,
             "PluginManager.hx": "class PluginManager { public static function init():Void {} }\n",

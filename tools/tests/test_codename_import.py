@@ -963,6 +963,7 @@ class EngineCompat {
   public static function vSliceNativeCharacterCandidates(path:String):Array<String> return [];
   public static function resolveStageResolution(reference:String):Dynamic return {nativeName: reference, stageID: 0, standard: false};
   public static function isBuiltinStageReference(reference:String):Bool return false;
+  public static function isBuiltinStageAlias(reference:String):Bool return false;
   public static function visualFallbackName(kind:String):String return 'stage';
   public static function legacyDialogueText(data:Dynamic, player1:String, player2:String):String return null;
   public static function legacyCutsceneScript(data:Dynamic):String return null;

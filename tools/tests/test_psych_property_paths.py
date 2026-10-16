@@ -341,6 +341,7 @@ __METHODS__
   var camHUD:Dynamic;
   var camOther:Dynamic;
   var camFollow:Dynamic;
+  var camFollowPos:Dynamic;
   var psychControls:Dynamic;
   var controls:Dynamic;
   var enemyStrums:Dynamic;

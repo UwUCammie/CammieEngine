@@ -16,7 +16,7 @@ STUB_CLASSES = {
     'flixel/math/FlxMath': 'class FlxMath {}',
     'flixel/math/FlxAngle': 'class FlxAngle {}',
     'flixel/math/FlxRect': 'class FlxRect {}',
-    'flixel/util/FlxTimer': 'class FlxTimer {}',
+    'flixel/util/FlxTimer': 'class FlxTimer {}\nclass FlxTimerManager {}',
     'flixel/util/FlxSort': 'class FlxSort {}',
     'flixel/util/FlxStringUtil': 'class FlxStringUtil {}',
     'flixel/util/FlxSpriteUtil': 'class FlxSpriteUtil {}',
@@ -64,6 +64,9 @@ MAIN = r'''class Main {
   check(names.get('FlxTweenManager') == flixel.tweens.FlxTween.FlxTweenManager
    && paths.get('flixel.tweens.FlxTweenManager') == flixel.tweens.FlxTween.FlxTweenManager,
    'scripts can build a private tween manager they advance themselves');
+  check(names.get('FlxTimerManager') == flixel.util.FlxTimer.FlxTimerManager
+   && paths.get('flixel.util.FlxTimerManager') == flixel.util.FlxTimer.FlxTimerManager,
+   'scripts can build a private timer manager they advance themselves');
   check(names.get('AnimateAtlasUtil') == AnimateAtlasUtil,
    'imported character and stage scripts of every layer load Animate atlases through the shared helper');
   var onlyNames=new Map<String,Dynamic>();

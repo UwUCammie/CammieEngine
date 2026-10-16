@@ -22,8 +22,8 @@ class FreeplayDetailSections {
 	public static inline var SCORE_HEIGHT:Int = 132;
 
 	public static function layout():Array<FreeplayDetailSection> return [
-		{title:'TRACK', y:TRACK_Y, height:TRACK_HEIGHT, color:0xFFFF66B7},
-		{title:'DIFFICULTY', y:DIFFICULTY_Y, height:DIFFICULTY_HEIGHT, color:0xFF80E3D0},
-		{title:'YOUR BEST', y:SCORE_Y, height:SCORE_HEIGHT, color:0xFFFFD166},
+		{title:'TRACK', y:TRACK_Y, height:TRACK_HEIGHT, color:MenuStyle.PINK},
+		{title:'DIFFICULTY', y:DIFFICULTY_Y, height:DIFFICULTY_HEIGHT, color:MenuStyle.TEAL},
+		{title:'YOUR BEST', y:SCORE_Y, height:SCORE_HEIGHT, color:MenuStyle.GOLD},
 	];
 }

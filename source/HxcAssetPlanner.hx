@@ -1621,9 +1621,34 @@ class HxcAssetPlanner {
 			remaining = remaining.substr(position.pos + position.len);
 		}
 
+		// The other static factories name their art in the third argument:
+		// `FunkinSprite.create(x, y, key)` loads one image and
+		// `FunkinSprite.createTextureAtlas(x, y, key, library)` an Animate export.
+		for (factory in [{method:'create', kind:'image'}, {method:'createTextureAtlas', kind:'frames'}]) {
+			var factoryCall = new EReg('\\bFunkinSprite\\s*\\.\\s*' + factory.method
+				+ '\\s*\\([^,]+,\\s*[^,]+,\\s*([^,)]+)', 'g');
+			remaining = source;
+			attempts = 0;
+			while (attempts++ < 1024 && factoryCall.match(remaining)) {
+				var factoryArgument = StringTools.trim(factoryCall.matched(1));
+				var factoryLiteral = new EReg('^["\\\']([^"\\\']+)["\\\']$', '');
+				if (factoryLiteral.match(factoryArgument))
+					add(factory.kind, factoryLiteral.matched(1));
+				else if (aliases.exists(factoryArgument))
+					add(factory.kind, aliases.get(factoryArgument));
+				var factoryPosition = factoryCall.matchedPos();
+				if (factoryPosition.len <= 0 || factoryPosition.pos + factoryPosition.len >= remaining.length)
+					break;
+				remaining = remaining.substr(factoryPosition.pos + factoryPosition.len);
+			}
+		}
+
 		// `sprite.loadSparrow(key)` / `sprite.loadTexture(key)`, usually chained on
-		// `new FunkinSprite(...)`, name the art in their first argument.
-		for (load in [{method:'loadSparrow', kind:'sparrow'}, {method:'loadTexture', kind:'image'}]) {
+		// `new FunkinSprite(...)`, name the art in their first argument. So do
+		// `sprite.loadTextureAtlas(key, library)` and `Paths.getAnimateAtlas(key)`,
+		// which name an Animate export folder.
+		for (load in [{method:'loadSparrow', kind:'sparrow'}, {method:'loadTexture', kind:'image'},
+				{method:'loadTextureAtlas', kind:'frames'}, {method:'getAnimateAtlas', kind:'frames'}]) {
 			var loadCall = new EReg('\\.\\s*' + load.method + '\\s*\\(\\s*([^,)]+)', 'g');
 			remaining = source;
 			attempts = 0;

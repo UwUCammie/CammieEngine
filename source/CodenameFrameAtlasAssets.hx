@@ -146,6 +146,26 @@ class CodenameFrameAtlasAssets {
 		#end
 	}
 
+	/**
+		Plan a key the way V-Slice resolves it: its art lives under `images` and
+		under `shared/images`, and one key (`Paths.getAnimateAtlas(key, 'shared')`)
+		reaches either. The files keep their `images/<key>` destination.
+	*/
+	public static function planWithSharedLibrary(root:String, key:String):CodenameFrameAtlasPlan {
+		var result = plan(root, key);
+		#if sys
+		if (result.files.length == 0 && root != null && FileSystem.isDirectory(root)) {
+			var shared = resolve(root, 'shared', true);
+			if (shared != null) {
+				var sharedPlan = plan(shared, key);
+				if (sharedPlan.files.length > 0)
+					return sharedPlan;
+			}
+		}
+		#end
+		return result;
+	}
+
 	static function normalizeKey(value:String):String {
 		if (value == null) return '';
 		var clean = StringTools.replace(StringTools.trim(value), '\\', '/');

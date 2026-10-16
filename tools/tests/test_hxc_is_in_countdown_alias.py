@@ -43,7 +43,11 @@ class HxcIsInCountdownAliasTest(unittest.TestCase):
         alias = source[alias_start:alias_end]
         fixture = """class HxcIsInCountdownAliasTest {
 	var startingSong:Bool = true;
+	var startedCountdown:Bool = false;
+	var hxcCountdownStopRequested:Bool = false;
+	var startCalls:Int = 0;
 	public function new() {}
+	function startCountdown():Void startCalls++;
 """ + alias + """
 	static function main() {
 		var state = new HxcIsInCountdownAliasTest();
@@ -52,6 +56,28 @@ class HxcIsInCountdownAliasTest(unittest.TestCase):
 		if (state.startingSong || state.isInCountdown) throw 'alias write did not update backing state';
 		state.isInCountdown = true;
 		if (!state.startingSong || !state.isInCountdown) throw 'alias could not restore startup state';
+		// A write while no script held the countdown only records the request.
+		if (state.startCalls != 0 || !state.hxcScriptCountdownRequested || state.hxcSilentPreRoll)
+			throw 'a plain write started a countdown';
+		// A script that cancelled the countdown and then sets isInCountdown gets
+		// the lead-in clock without the 3-2-1-Go, once.
+		state.hxcScriptCountdownRequested = false;
+		state.hxcCountdownCancelledPending = true;
+		state.isInCountdown = true;
+		if (state.startCalls != 1 || !state.hxcSilentPreRoll || state.hxcCountdownCancelledPending)
+			throw 'a held countdown did not start its silent lead-in';
+		state.isInCountdown = true;
+		if (state.startCalls != 1) throw 'the lead-in started twice';
+		// A running countdown or a script stop is never restarted by the alias.
+		var running = new HxcIsInCountdownAliasTest();
+		running.hxcCountdownCancelledPending = true;
+		running.startedCountdown = true;
+		running.isInCountdown = true;
+		var stopped = new HxcIsInCountdownAliasTest();
+		stopped.hxcCountdownCancelledPending = true;
+		stopped.hxcCountdownStopRequested = true;
+		stopped.isInCountdown = true;
+		if (running.startCalls != 0 || stopped.startCalls != 0) throw 'alias restarted a running or stopped countdown';
 	}
 }
 """

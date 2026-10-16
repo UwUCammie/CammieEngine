@@ -41,6 +41,20 @@ class RuntimeImportSmokeHarness {
 	/** RuntimeImportSmokeState already initialized the shared game services. */
 	static var preparedRuntimeForPlay:Bool = false;
 
+	/** Value of one command-line flag, or an empty string when it is absent. */
+	public static function argumentValue(flag:String):String {
+		#if sys
+		var args = Sys.args();
+		for (index in 0...args.length) {
+			if (args[index] == flag && index + 1 < args.length && !args[index + 1].startsWith('--'))
+				return StringTools.trim(args[index + 1]);
+			if (args[index].startsWith(flag + '='))
+				return StringTools.trim(args[index].substr(flag.length + 1));
+		}
+		#end
+		return '';
+	}
+
 	public static function enabled():Bool {
 		return config() != null && argumentsSeen;
 	}

@@ -71,9 +71,10 @@ class CutsceneSkipTest(unittest.TestCase):
         point = (ROOT / 'source/SourceCameraFollowPoint.hx').read_text(encoding='utf-8')
         self.assertIn('camera.target == point && camera.followLerp >= 1) camera.snapToTarget();', point)
         play = (ROOT / 'source/PlayState.hx').read_text(encoding='utf-8')
-        self.assertIn('@:keep public var camFollowPos:FlxObject = new FlxObject(0, 0, 1, 1);', play)
+        self.assertIn('var camFollowPoint:FlxObject = new FlxObject(0, 0, 1, 1);', play)
+        self.assertIn('@:keep public var camFollowPos(get, set):FlxObject;', play)
         self.assertIn('override public function draw():Void {\n\t\tsyncCamFollowPos();', play.replace('\r\n', '\n'))
-        self.assertIn('camGame.focusOn(camFollowPos.getMidpoint());', play)
+        self.assertIn('camGame.focusOn(camFollowPoint.getMidpoint());', play)
 
 
 if __name__ == '__main__':

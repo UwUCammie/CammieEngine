@@ -917,7 +917,7 @@ class ImportSongOwnership {
 			var cache = ownerIdentityCache();
 			buildOwnerIdentityIndex(cache);
 			var archived = cache.archive == null ? null : cache.archive.destinationFor(engine, identity,
-				sourceFingerprint(sourceRoot), sourceFolder == null ? folder : sourceFolder);
+				sourceFingerprint(sourceRoot), sourceFolder == null ? folder : sourceFolder, folder);
 			if (archived != null) {
 				var archivedPath = Path.join([Path.directory(existingFolder), archived]);
 				return {folder:archived, qualified:archived != folder,

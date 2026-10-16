@@ -192,6 +192,7 @@ class Main {{
                 "static function normalizeVSliceVariationDifficulty",
                 "static function findVSliceVoices",
                 "static function vSliceStemMatchesReference",
+                "static function resolveVSliceFallbackVocalStem",
                 "static function selectVSliceVocalStems",
             )
         )
@@ -306,6 +307,34 @@ class Main {{
       fail("base vocals included stems from another variation");
     if (altStems.length != 2 || altStems[0].id != "natsuki-alt" || altStems[1].id != "tankman-doki")
       fail("alt vocals did not include the suffixed opponent and variant player stems");
+    // V-Slice rebuilds a role whose listed file is missing from the character id,
+    // dropping trailing dash parts (bf-beach plays Voices-bf.ogg).
+    var beachMetadata = Json.parse('{{"playData":{{"characters":{{"player":"bf-beach","opponent":"sonic","playerVocals":["bf-beach"],"opponentVocals":["sonic"]}}}}}}');
+    var beachStems:Array<Dynamic> = [
+      {{id:"bf", source:"bf", destination:"Voices-bf.ogg", role:"shared"}},
+      {{id:"sonic", source:"s", destination:"Voices-sonic.ogg", role:"shared"}}
+    ];
+    var beachDiagnostics:Array<String> = [];
+    var beachSelected = ModuleFunctions.testVocals(beachMetadata, beachStems, beachDiagnostics);
+    if (beachSelected.length != 2 || beachSelected[0].id != "bf" || beachSelected[0].role != "player"
+      || beachSelected[1].id != "sonic" || beachSelected[1].role != "opponent")
+      fail("player vocals did not fall back from bf-beach to Voices-bf");
+    for (diagnostic in beachDiagnostics)
+      if (diagnostic.indexOf("vocal-stem-missing") >= 0) fail("a resolved fallback stem was still reported missing");
+    var carMetadata = Json.parse('{{"playData":{{"characters":{{"player":"bf-car-erect","opponent":"mom-car"}}}}}}');
+    var carStems:Array<Dynamic> = [
+      {{id:"bf-car", source:"b", destination:"Voices-bf-car.ogg", role:"shared"}},
+      {{id:"mom", source:"m", destination:"Voices-mom.ogg", role:"shared"}}
+    ];
+    var carSelected = ModuleFunctions.testVocals(carMetadata, carStems, []);
+    if (carSelected.length != 2 || carSelected[0].id != "bf-car" || carSelected[0].role != "player"
+      || carSelected[1].id != "mom" || carSelected[1].role != "opponent")
+      fail("suffix stripping did not stop at the longest existing vocal file");
+    var missingMetadata = Json.parse('{{"playData":{{"characters":{{"player":"pico","opponent":"dad"}}}}}}');
+    var missingDiagnostics:Array<String> = [];
+    var missingSelected = ModuleFunctions.testVocals(missingMetadata,
+      [{{id:"gf", source:"g", destination:"Voices-gf.ogg", role:"shared"}}], missingDiagnostics);
+    if (missingSelected.length != 0) fail("an unrelated stem was selected as a character vocal");
     var diagnosedMissing = false;
     var diagnosedDifficultyMapping = false;
     for (diagnostic in diagnostics) {{

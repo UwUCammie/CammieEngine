@@ -35,6 +35,7 @@ class CharacterPositionArrayTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
             (work / 'SourceCameraFollowPointMath.hx').write_text((ROOT / 'source/SourceCameraFollowPointMath.hx').read_text(), newline='\n')
+            (work / 'SourceCharacterId.hx').write_text((ROOT / 'source/SourceCharacterId.hx').read_text(), newline='\n')
             (work / 'PsychCharacterPosition.hx').write_text(
                 (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
             (work / 'FNFAssets.hx').write_text('''

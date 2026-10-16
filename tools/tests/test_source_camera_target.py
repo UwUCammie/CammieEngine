@@ -42,7 +42,7 @@ class SourceCameraTargetTest(unittest.TestCase):
 			'FNFAssets.hx': 'class FNFAssets {public static function exists(p:String):Bool return false;public static function getText(p:String):String return "";}',
 			'CoolUtil.hx': 'class CoolUtil {public static function parseJson(t:String):Dynamic return {};}',
 		}
-		for name in ['PsychCharacterPosition', 'SourceCameraFollowPointMath']:
+		for name in ['PsychCharacterPosition', 'SourceCharacterId', 'SourceCameraFollowPointMath']:
 			files[name + '.hx'] = (ROOT / ('source/' + name + '.hx')).read_text()
 		with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
 			work = FixturePath(folder)

@@ -153,6 +153,17 @@ class VocalTracks {
 				sound.pitch = pitch;
 	}
 
+	/** Primitive per-stem state (role, playing, volume, time, length) for runtime smoke evidence. */
+	public function describe():Array<Dynamic> {
+		return [for (index in 0...tracks.length) if (tracks[index] != null) {
+			role: roles[index],
+			playing: tracks[index].playing,
+			volume: tracks[index].volume,
+			timeMs: tracks[index].time,
+			lengthMs: tracks[index].length
+		}];
+	}
+
 	public function getTime():Float {
 		return primary == null ? 0 : primary.time;
 	}

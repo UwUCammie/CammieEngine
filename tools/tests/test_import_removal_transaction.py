@@ -40,12 +40,30 @@ BODY=r'''  Sys.setCwd(root);
      var transaction=transactions+"/"+FS.readDirectory(transactions)[0];
      File.saveContent(transaction+"/retired/owner-0/modified.txt","changed private quarantine bytes");
     }
-    if(mode=="crash-"+p.phase || mode=="partial-crash-"+p.phase)Sys.exit(33); if(mode=="rollback" && p.phase=="removal-scope-retired")throw "fixture rollback";});
-  check(result.status==((mode=="cancel" || mode=="cancel-prepare")?"cancelled":mode=="cleanup-pending"?"cleanup-pending":(mode=="rollback" || mode=="edited")?"conflict":"applied"),"remove failed: "+result.status+" "+result.blockers.join("; "));
+    if(mode=="crash-"+p.phase || mode=="partial-crash-"+p.phase)Sys.exit(33); if((mode=="rollback" || mode=="moved-rollback") && p.phase=="removal-scope-retired")throw "fixture rollback";});
+  check(result.status==((mode=="cancel" || mode=="cancel-prepare")?"cancelled":mode=="cleanup-pending"?"cleanup-pending":(mode=="rollback" || mode=="moved-rollback" || mode=="edited")?"conflict":"applied"),"remove failed: "+result.status+" "+result.blockers.join("; "));
   check(File.getContent(root+"/user-library.json")=="saved favorite and category","history deleted");
-  if(mode!="cleanup-pending")check(ImportRemovalTransaction.recover(root).length==0,"recovery failed");
+  if(mode=="moved" || mode=="moved-rollback" || mode=="moved-unfinished") {
+   // The install folder was moved or renamed after this removal. A committed or
+   // rolled-back removal has nothing left to restore into the old folder, so its
+   // history must not lock imports and removals on every later launch. The journal
+   // bytes stay untouched: the receipt binds them.
+   var transactions=root+"/import-cache/removal-state/transactions";
+   if(mode=="moved-unfinished")for(name in FS.readDirectory(transactions))FS.deleteFile(transactions+"/"+name+"/receipt.json");
+   Sys.setCwd(haxe.io.Path.directory(root));
+   var renamed=root+"-moved";FS.rename(root,renamed);root=renamed;Sys.setCwd(root);
+  }
+  if(mode=="moved-unfinished") {
+   // Without a receipt the journal could still restore files into the old folder.
+   var held=ImportRemovalTransaction.recover(root);
+   check(held.length==1 && held[0].indexOf("different install folder")>=0,"unfinished foreign removal was recovered: "+held.join("; "));
+   check(!FS.exists(root+"/"+ownerRoot),"foreign unfinished removal restored files into this install");
+   return;
+  }
+  if(mode!="cleanup-pending")check(ImportRemovalTransaction.recover(root).length==0,"recovery failed: "+ImportRemovalTransaction.recover(root).join("; "));
+  if(mode=="moved" || mode=="moved-rollback")check(ImportRemovalTransaction.recover(root).length==0,"second launch recovery of a moved install failed");
   var installed=ImportRefreshTransaction.inspectRetainedManifests(root,root+"/import-cache/state",root+"/import-cache/records");
-  check(installed.length==((mode=="cancel" || mode=="cancel-prepare" || mode=="rollback" || mode=="edited" || mode=="partial" || mode=="family" || mode=="family3")?1:0),"receipt retirement wrong");
+  check(installed.length==((mode=="cancel" || mode=="cancel-prepare" || mode=="rollback" || mode=="moved-rollback" || mode=="edited" || mode=="partial" || mode=="family" || mode=="family3")?1:0),"receipt retirement wrong");
   if(mode!="cancel" && mode!="edited")check(LibraryIdentityArchive.load(root).records.length==1,"identity archive lost");
   if(mode=="rollback") {
    // Removing the same package again after a rolled-back attempt must work, and the
@@ -105,7 +123,7 @@ class ImportRemovalTransactionTest(unittest.TestCase):
   fixture=fixture.replace('  var ownerRoot=',RECOVERY+'  var ownerRoot=')
   with tempfile.TemporaryDirectory(dir=TEST_TMP) as folder:
    work=Path(folder); (work/'Main.hx').write_text(fixture,encoding='utf-8')
-   for mode in ('valid','cancel','cancel-prepare','cleanup-pending','edited','rollback','partial','family','family3','unowned', *['crash-'+phase for phase in PHASES], *['partial-crash-'+phase for phase in PHASES]):
+   for mode in ('valid','cancel','cancel-prepare','cleanup-pending','edited','rollback','moved','moved-rollback','moved-unfinished','partial','family','family3','unowned', *['crash-'+phase for phase in PHASES], *['partial-crash-'+phase for phase in PHASES]):
     install=work/str(len(list(work.iterdir())));install.mkdir()
     current=fixture
     if mode in ('partial','family','family3') or mode.startswith('partial-crash-'):

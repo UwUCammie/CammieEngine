@@ -144,8 +144,11 @@ class FreeplayLibraryManagementTest(unittest.TestCase):
         self.assertIn('var pointer = FlxG.mouse.visible;', freeplay)
         self.assertNotIn('hold, SHIFT faster', freeplay)
         setup = freeplay[freeplay.index('\tfunction setupBrowserChrome('):freeplay.index('\tfunction selectedCardHeight(')]
-        self.assertGreater(setup.index("'FREEPLAY'"), setup.index('FreeplayPulse.hints()'))
-        self.assertIn('FlxG.width - 246, FlxG.height - 62', setup)
+        # The title and hints come from the shared footer, which adds the title last.
+        self.assertIn("new MenuFooter('FREEPLAY', FreeplayPulse.hints(), false)", setup)
+        footer = (ROOT / 'source/MenuFooter.hx').read_text(encoding='utf-8')
+        self.assertIn('FlxG.width - 246, FlxG.height - 62', footer)
+        self.assertGreater(footer.index('add(heading);'), footer.index('setHints(hints);') - 400)
         row = (ROOT / 'source/FreeplayBrowserRow.hx').read_text(encoding='utf-8')
         self.assertIn('flixel.FlxG.mouse.visible && flixel.FlxG.mouse.overlaps(panel)', row)
         manage = (ROOT / 'source/LibraryManageSubState.hx').read_text(encoding='utf-8')
@@ -159,7 +162,7 @@ class FreeplayLibraryManagementTest(unittest.TestCase):
         # The legend text exists only once a selected card lifts it.
         self.assertIn('if (legend == null) legend = createLegend();', star)
         self.assertNotIn('legend = new flixel.text.FlxText', star[star.index('function configureCard('):star.index('function createLegend(')])
-        self.assertIn("browserText(keyX - 58, 33, 56, 'RATING', 12, 0xFF9DB2CC);", freeplay)
+        self.assertIn("browserText(keyX - 58, 33, 56, 'RATING', MenuStyle.SECTION_SIZE, MenuStyle.MUTED);", freeplay)
         self.assertIn('ChartDifficultyAnalysis.ratingColor(FreeplayPulse.keyRating(column))', freeplay)
         self.assertIn('var at = keyX + FreeplayPulse.keyColumn(keyValues[i]);', freeplay)
         # Numbers sit under the gradient, below their tick marks.
@@ -169,8 +172,10 @@ class FreeplayLibraryManagementTest(unittest.TestCase):
         self.assertIn('browserMeterLevels[i] = FreeplayPulse.settle(browserMeterLevels[i], browserEnvelope.levels[i], elapsed);', freeplay)
         menu = (ROOT / 'source/LibraryMenuSubState.hx').read_text(encoding='utf-8')
         self.assertNotIn('makeGraphic(FlxG.width, FlxG.height, 0xFF101522)', menu)
-        self.assertIn('dim.alpha = 0.58;', menu)
-        self.assertIn('body.alpha = 0.93;', menu)
+        widgets = (ROOT / 'source/MenuWidgets.hx').read_text(encoding='utf-8')
+        self.assertIn('MenuWidgets.panel(state, x, y, width, height)', menu)
+        self.assertIn('dim.alpha = 0.58;', widgets)
+        self.assertIn('MenuStyle.PANEL, 0.93', widgets)
         self.assertIn('persistentDraw = false;', menu)
         self.assertIn('cardTitle = this.chartTitle; cardCaption = this.ownerTitle;', manage)
         loading = (ROOT / 'source/SongLoadingScreen.hx').read_text(encoding='utf-8')

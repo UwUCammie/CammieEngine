@@ -59,6 +59,9 @@ class FocusCameraDonorParityTest(unittest.TestCase):
         fixture = '''class Camera {
 	public var camSpeed:Float;
 	public var focusCameraDrivesFollow:Bool;
+	public var nightmareVisionScripts:Dynamic = null;
+	public var psychCameraCompatibilityActive:Bool = false;
+	public var playbackRate:Float = 1;
 ''' + block + '''
 	public function new(camSpeed:Float, donor:Bool) {
 		this.camSpeed = camSpeed;
@@ -85,6 +88,19 @@ class Test {
 		// the donor path must glide slower than the classic path at speed 1
 		if (!(new Camera(1, true).camFollowLerp() < new Camera(1, false).camFollowLerp()))
 			throw "donor rate must be the gentler glide";
+		// imported Psych and Nightmare Vision songs follow at their own engine's rate
+		var psych = new Camera(1, false);
+		psych.psychCameraCompatibilityActive = true;
+		psych.playbackRate = 2;
+		if (!closeEnough(psych.camFollowLerp(), 1 - Math.exp(-0.04 * 2)))
+			throw "Psych follow must ease at 2.4 times the speed per second, including the song speed";
+		psych.focusCameraDrivesFollow = true;
+		if (!closeEnough(psych.camFollowLerp(), 1 - Math.pow(0.96, 1)))
+			throw "FocusCamera must keep the donor glide even in a Psych song";
+		var nightmare = new Camera(2, false);
+		nightmare.nightmareVisionScripts = {};
+		if (!closeEnough(nightmare.camFollowLerp(), 0.08))
+			throw "Nightmare Vision follow must ease at 0.04 times the speed per frame";
 	}
 }
 '''

@@ -38,12 +38,12 @@ class Main {
 
     def test_sections_scroll_like_options_and_use_menu_sound_packs(self):
         source = (ROOT / 'source/SaveDataState.hx').read_text()
-        section_rows = source[source.index('var sectionNames ='):source.index('optionMenu.add(categoryRows);')]
-        self.assertIn('row.isMenuItem = true;', section_rows)
-        self.assertIn('row.itemType = "Classic";', section_rows)
-        self.assertIn('row.menuRowSpacing = 96;', section_rows)
-        self.assertIn('swagOption.menuRowSpacing = 96;', source)
-        self.assertIn('categoryRows.members[index].targetY = index - categorySelected;', source)
+        section_rows = source[source.index('var sectionNames ='):source.index('// Labels over the two columns')]
+        self.assertIn('new MenuCard(sectionNames[index], SIDEBAR_WIDTH', section_rows)
+        self.assertIn('tab.moveTo(optionsX + SIDEBAR_X, SIDEBAR_TOP + index * (TAB_HEIGHT + TAB_GAP), snap);', source)
+        self.assertIn('MenuStyle.stackTop(position,', source)
+        self.assertIn('MenuStyle.fitsRegion(cardTop,', source)
+        self.assertNotIn('Alphabet', source)
         self.assertNotIn('categoryCursor', source)
         root_nav = source[source.index('} else if (!inOptionCategory) {', source.index('function changeSelection')):]
         self.assertIn("playMenuSound('scroll');", root_nav.split('} else {', 1)[0])
@@ -116,13 +116,27 @@ class Main {
  }
 }'''.replace('True', 'true').replace('False', 'false')})
 
-    def test_row_filter_restores_decorations_and_saving_keeps_hidden_settings(self):
+    def test_row_filter_shows_only_the_section_and_saving_keeps_hidden_settings(self):
         source = (ROOT / 'source/SaveDataState.hx').read_text()
-        start = source.index('\tfunction refreshOptionRows(')
+        start = source.index('\tfunction layoutStack(')
+        layout = source[start:source.index('\n\tfunction refreshSaveRows(', start)]
+        start = source.index('\tfunction isActionRow(')
         filtering = source[start:source.index('\n\tfunction refreshCategoryRows(', start)]
         start = source.index('\tfunction saveOptions(')
         saving = source[start:source.index('\n\tfunction toggleSelection(', start)]
-        self.run_haxe({'Main.hx': '''class OptionsHandler {
+        self.run_haxe({'MenuStyle.hx': (ROOT / 'source/MenuStyle.hx').read_text(), 'OptionsCategories.hx': (ROOT / 'source/OptionsCategories.hx').read_text(), 'Main.hx': '''class FlxG {
+ public static var height=720;
+}
+class MenuCard {
+ public var exists=true; public var selected=false; public var top=0.0; public var shownValue=""; public var shownSwitch:Null<Bool>=null;
+ public var idleHeight=44; public var selectedHeight=92; public var opacity=1.0;
+ public function new() {}
+ public function present(isSelected:Bool, disabled:Bool=false):Void selected=isSelected;
+ public function moveTo(x:Float, y:Float, snap:Bool=false):Void top=y;
+ public function setValue(text:String, color:Int=0, width:Int=220):Void {shownValue=text; shownSwitch=null;}
+ public function setSwitch(on:Bool):Void {shownSwitch=on;}
+}
+class OptionsHandler {
  public static var options:Dynamic={showFPS:true,showMemory:false,hiddenPalette:"kept",allowDonate:false,
   useSaveDataMenu:false,importType:"Auto",importPath:"retained"};
 }
@@ -139,33 +153,38 @@ class ImportSettings {
 class Main {
  public static var fpsCounter:Dynamic={visible:false};
  public static var memoryCounter:Dynamic={visible:true};
- var options:Dynamic={members:[for(i in 0...3) {visible:true,active:true,targetY:0,alpha:1.0}]};
- var checkmarks:Dynamic={members:[{visible:true},{visible:true},{visible:true}]};
- var numberDisplays:Array<Dynamic>=[{visible:true},{visible:true},{visible:true}];
- var optionList:Array<Dynamic>=[{value:false,amount:null},{value:true,amount:null},{value:false,amount:60.0}];
+ var optionCards:Array<MenuCard>=[new MenuCard(),new MenuCard(),new MenuCard()];
+ var numberDisplays:Array<Dynamic>=[{text:""},{text:""},{text:"60"}];
+ static inline var LIST_TOP:Int=100; static inline var LIST_BOTTOM:Int=640; static inline var LIST_GAP:Int=4; static inline var LIST_X:Int=344;
+ var categorySelected=1;
+ var optionList:Array<Dynamic>=[{intName:"showTimings",value:false,amount:null},{intName:"controls",value:false,amount:null},{intName:"fpsCap",value:true,amount:60.0}];
  var mappedOptions:Dynamic={showMemory:{value:false},fpsCap:{value:true,amount:1501.0}};
  var preferredSave=0;
  var categoryOptions=[0,1];
  var optionsSelected=0;
  var inOptionCategory=false;
+ var optionsX=1280.0;
  function new() {}
-''' + filtering + saving + '''
+''' + layout + filtering + saving + '''
  static function check(ok:Bool,msg:String):Void if(!ok) throw msg;
  static function main():Void {
   var state=new Main();
   state.refreshOptionRows();
-  check(!state.checkmarks.members[0].visible && !state.numberDisplays[2].visible,
-   "category root leaked option decorations");
+  check(state.optionCards[0].exists && state.optionCards[1].exists && !state.optionCards[2].exists,
+   "the section list did not preview the highlighted section");
+  check(!state.optionCards[0].selected && state.optionCards[0].opacity<1,"the preview is not quiet");
   state.inOptionCategory=true;
   state.refreshOptionRows();
-  check(!state.checkmarks.members[0].visible && state.checkmarks.members[1].visible,
-   "showing a category changed toggle decorations");
-  check(!state.numberDisplays[0].visible && !state.options.members[2].visible,
-   "numeric decoration or filtered row appeared");
+  check(state.optionCards[0].exists && state.optionCards[1].exists && !state.optionCards[2].exists,
+   "a section showed another section's rows");
+  check(state.optionCards[0].selected && !state.optionCards[1].selected && state.optionCards[0].opacity==1,"the selected row is not marked");
+  check(state.optionCards[0].shownSwitch==false && state.optionCards[1].shownValue=="OPEN",
+   "a switch or an action row was drawn wrongly");
+  check(state.optionCards[1].top>state.optionCards[0].top+state.optionCards[0].selectedHeight-1,"rows are not stacked under the selection");
   state.categoryOptions=[2];state.optionsSelected=2;
   state.refreshOptionRows();
-  check(state.numberDisplays[2].visible && !state.checkmarks.members[2].visible,
-   "numeric row decorations changed the model");
+  check(state.optionCards[2].exists && state.optionCards[2].shownValue=="60" && !state.optionCards[0].exists,
+   "numeric row did not show its value");
   state.saveOptions();
   check(OptionsHandler.options.hiddenPalette=="kept" && !OptionsHandler.options.allowDonate
    && !OptionsHandler.options.useSaveDataMenu,"saving sections reset hidden preferences");
@@ -173,7 +192,6 @@ class Main {
    "saving lost modified values or counter visibility");
  }
 }'''})
-
 
 if __name__ == '__main__':
     unittest.main()

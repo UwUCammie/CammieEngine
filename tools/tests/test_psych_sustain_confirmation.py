@@ -18,6 +18,7 @@ class PsychSustainConfirmationTest(unittest.TestCase):
         release=extract_method(play,'function setSourceInputReceptor(').replace('Strumline.StrumNote','Receptor').replace('function setSourceInputReceptor','public function setSourceInputReceptor')
         update=extract_method(strum[strum.index('class StrumNote'):],'public function update(')
         normalize=extract_method(play,'public static function normalizeSustainLength(')
+        settle=extract_method(strum[strum.index('class StrumNote'):],'function settleFinishedConfirm(')
         fixture=r'''
 using StringTools;
 class Conductor { public static var stepCrochet:Float=125; public static var crochet:Float=500; public static var bpm:Float=120; }
@@ -30,6 +31,8 @@ class Receptor extends Base {
  public var exists:Bool=true; public var confirmationGeneration:Int=1; public var animation:Anim=new Anim();
  public function playAnim(name:String,force:Bool=false):Void animation.curAnim.name=name;
  public function alignVSliceFrame():Void {} public function markReceptorVisual():Void {}
+ public static inline var V_SLICE_CONFIRM_HOLD_TIME:Float=0.15; var confirmFinishedTime:Float=0; var confirmFromSustain:Bool=false;
+ __SETTLE__
  override __UPDATE__
 }
 class Line {
@@ -82,7 +85,7 @@ class Main {
  }
 }
 '''
-        for key,value in {'UPDATE':update,'PREDICATE':predicate,'NORMALIZE':normalize,'SUSTAIN':sustain,'RELEASE':release}.items():
+        for key,value in {'SETTLE':settle,'UPDATE':update,'PREDICATE':predicate,'NORMALIZE':normalize,'SUSTAIN':sustain,'RELEASE':release}.items():
             fixture=fixture.replace('__'+key+'__',value)
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
             (Path(folder)/'Main.hx').write_text(fixture,encoding='utf-8')

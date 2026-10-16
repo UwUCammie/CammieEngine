@@ -1682,6 +1682,8 @@ class ImportRefreshManager {
 		Thread.create(function() {
 			var inspection:ImportRefreshQueueInspectionResult = null;
 			var inspectionSucceeded = false;
+			// Leftovers of a refresh that was killed mid-way go before this launch's work starts.
+			sweepAbandonedStaging(install, Date.now().getTime());
 			try {
 				inspection = loadQueue(install);
 				inspectionSucceeded = true;
@@ -1755,6 +1757,42 @@ class ImportRefreshManager {
 				return importOnceScoped(source, type, scan, names, convert, cancel, progress, sourceBuildContexts));
 	}
 
+	/** Why a new import cannot start right now, in words the importer can show;
+	 * an empty string means it can. Each cause gets its own sentence so a person
+	 * can tell a check that is still running from one that needs attention. */
+	static function importBlockReasonLocked(importRoots:Array<String>):String {
+		if (removalToken != "")
+			return "A mod removal or its recovery is still running. Wait for it to finish, then import again.";
+		if (runtimeOwnersBusyLocked(importRoots))
+			return "A song from the content being imported is still loaded. Leave the song, then import again.";
+		if (inspectionPending || inspectionRunning)
+			return "Saved imports are still being checked. Try again in a moment.";
+		if (active || queue.length > 0)
+			return "Another import refresh is already running.";
+		if (unresolvedRecovery)
+			return "An earlier import was interrupted and its saved state could not be matched to an owner, so new imports are paused. Reopen the game; if this stays, remove the affected mod from the Library.";
+		return "";
+	}
+
+	/** One line of coordinator flags for diagnostics and the smoke harness. */
+	public static function debugState():String {
+		mutex.acquire();
+		var text = debugStateLocked();
+		mutex.release();
+		return text;
+	}
+
+	static function debugStateLocked():String {
+		var recovery:Array<String> = [];
+		for (reservation in reservations) if (reservation.recoveryBlocked) recovery.push(reservation.token);
+		recovery.sort(Reflect.compare);
+		return "checked=" + checked + " pending=" + inspectionPending + " running=" + inspectionRunning
+			+ " active=" + active + " removal=" + (removalToken != "") + " unresolved=" + unresolvedRecovery
+			+ " queue=" + queue.length + " handoffs=" + pendingHandoffs.length
+			+ " reservations=" + [for (key in reservations.keys()) key].length
+			+ " recoveryBlocked=[" + recovery.join(",") + "] diagnostics=" + diagnosticMessages.length;
+	}
+
 	static function importOnceScoped(source:String, type:String, scan:ImportScanResult,
 		names:Map<String,String>, convert:(String,ImportScanResult,Map<String,String>)->SongImportBatchResult,
 		cancel:Void->Bool, progress:Dynamic->Void,
@@ -1764,9 +1802,12 @@ class ImportRefreshManager {
 		var importRoots = expandDependentOwnerRoots(importCommittedRoots);
 		var dependencyOwners = dependencyOwnerRootsForScan(scan, Sys.getCwd(), importRoots);
 		mutex.acquire();
-		if (removalToken != "" || runtimeOwnersBusyLocked(importRoots) || active || queue.length > 0 || inspectionPending || inspectionRunning || unresolvedRecovery) {
+		var blockedBy = importBlockReasonLocked(importRoots);
+		if (blockedBy != "") {
+			var detail = debugStateLocked();
 			mutex.release();
-			throw "Another import refresh is already running.";
+			trace("[import-refresh-blocked] " + blockedBy + " " + detail);
+			throw blockedBy;
 		}
 		var token = nextReservationTokenLocked("initial-import");
 		var reservation = reserveLocked(token, "", importRoots,
@@ -3353,6 +3394,49 @@ class ImportRefreshManager {
 		File.saveContent(temporary,text);
 		FileSystem.rename(temporary,path);
 	}
+	/** How old an import staging folder must be before inspection treats it as
+	 * abandoned. Staging holds a full converted copy of one import and is only
+	 * ever used by the operation that created it. */
+	static inline var ABANDONED_STAGING_SECONDS:Float = 3600;
+
+	/** Creation time in milliseconds taken from a generated staging folder name
+	 * (`<record id>-<time>`), or -1 for any other name. */
+	static function stagingCreatedAt(name:String):Float {
+		var pattern = ~/^[a-f0-9]{64}-([0-9]{10,16})$/;
+		return pattern.match(name) ? Std.parseFloat(pattern.matched(1)) : -1;
+	}
+
+	/** A refresh or import that was closed or killed part way leaves its staging
+	 * folder behind and nothing else ever removes it, so repeated interruptions
+	 * fill the disk. Inspection runs before any work of this launch starts and
+	 * never while another operation of this process is active, so a generated
+	 * folder older than ABANDONED_STAGING_SECONDS cannot still be in use. Folders
+	 * with other names, files, and anything that resolves outside the staging
+	 * root are left alone. Returns how many folders were removed. */
+	static function sweepAbandonedStaging(install:String, nowMs:Float):Int {
+		var root = Path.join([install, CACHE_ROOT, "staging"]);
+		var removed = 0;
+		try {
+			if (!FileSystem.exists(root) || !FileSystem.isDirectory(root)) return 0;
+			var canonicalRoot = FileSystem.fullPath(root);
+			for (name in FileSystem.readDirectory(root)) {
+				ImportWorkScheduler.cooperate();
+				var created = stagingCreatedAt(name);
+				if (created < 0 || nowMs - created < ABANDONED_STAGING_SECONDS * 1000) continue;
+				var path = Path.join([root, name]);
+				if (!FileSystem.isDirectory(path) || relativeTo(FileSystem.fullPath(path), canonicalRoot) != name) continue;
+				try {
+					deleteStage(path);
+					removed++;
+				} catch (error:Dynamic)
+					trace("[import-refresh-cleanup-error] Could not remove abandoned staging " + name + ": " + Std.string(error));
+			}
+		} catch (error:Dynamic)
+			trace("[import-refresh-cleanup-error] Could not check for abandoned staging: " + Std.string(error));
+		if (removed > 0) trace("[import-refresh-cleanup] removed " + removed + " abandoned staging folders");
+		return removed;
+	}
+
 	static function deleteStage(path:String):Void {
 		if (!FileSystem.exists(path)) return;
 		// Generated staging paths have no donor symlinks; never follow an entry

@@ -252,6 +252,7 @@ class Main {
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             work = Path(folder)
             (work / 'Main.hx').write_text(fixture, newline='\n')
+            (work / 'SourceCharacterId.hx').write_text((ROOT / 'source/SourceCharacterId.hx').read_text(), newline='\n')
             (work / 'PsychCharacterOrientation.hx').write_text(
                 (ROOT / 'source/PsychCharacterOrientation.hx').read_text(), newline='\n')
             owner = work / 'assets/imported_mods/nmv-owner'

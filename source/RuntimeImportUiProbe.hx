@@ -67,9 +67,15 @@ class RuntimeImportUiProbe {
 			}
 			if (cards != 1) throw 'Importer must have exactly one shared progress presentation';
 			if (card.visible && !activeCaptured && capturePending == null) {
-				if (card.panel.x < 0 || card.panel.x + card.panel.width > FlxG.width
-					|| card.panel.y + card.panel.height > ui.detailPanel.y) throw 'Progress presentation overlaps or leaves the viewport';
-				if (card.panel.y < ui.scanButton.y + ui.scanButton.height + 8) throw 'Progress presentation overlaps the action row';
+				// The panel is scaled without a hitbox update, so measure its drawn width.
+				var cardWidth = card.panel.frameWidth * card.panel.scale.x;
+				if (card.panel.x < 0 || card.panel.x + cardWidth > FlxG.width
+					|| card.panel.y + card.panel.height > FlxG.height) throw 'Progress presentation leaves the viewport';
+				if (ui.detailPanel.visible && overlaps(card.panel.x, card.panel.y, cardWidth, card.panel.height, ui.detailPanel.x, ui.detailPanel.y,
+					ui.detailPanel.width, ui.detailPanel.height)) throw 'Progress presentation overlaps the details panel';
+				for (button in [ui.chooseSourceButton, ui.scanButton, ui.importSourceButton, ui.cancelButton])
+					if (button.visible && overlaps(card.panel.x, card.panel.y, cardWidth, card.panel.height, button.x, button.y,
+						button.width, button.height)) throw 'Progress presentation overlaps the action row';
 				capturePending = 'active';
 			}
 			if (ui.scanJob == null && scanStarted && activeCaptured && capturePending == null && !idleCaptured) {
@@ -82,6 +88,9 @@ class RuntimeImportUiProbe {
 			RuntimeSmokeHarness.fail('import-ui', Std.string(error));
 		}
 	}
+
+	static function overlaps(ax:Float, ay:Float, aw:Float, ah:Float, bx:Float, by:Float, bw:Float, bh:Float):Bool
+		return ax < bx + bw && bx < ax + aw && ay < by + bh && by < ay + ah;
 
 	static function onRendered(context:lime.graphics.RenderContext):Void {
 		if (capturePending == null || RuntimeSmokeHarness.finished || ui == null) return;

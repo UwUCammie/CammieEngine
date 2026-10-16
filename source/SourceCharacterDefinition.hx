@@ -38,7 +38,7 @@ class SourceCharacterDefinition {
 	 * root has no usable definition for the id. */
 	public static function read(characterId:String, scopedRoot:String, readText:String->Null<String>):Dynamic {
 		var name = characterId == null ? '' : StringTools.trim(characterId);
-		if (name == '' || !~/^[A-Za-z0-9_-]+$/.match(name)
+		if (!SourceCharacterId.isFileName(name)
 			|| scopedRoot == null || StringTools.trim(scopedRoot) == '' || readText == null)
 			return null;
 		for (folder in ['characters', 'shared/characters']) {

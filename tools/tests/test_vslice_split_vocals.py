@@ -100,6 +100,7 @@ class FlxSound {
     public var id:Int;
     public var playing:Bool = false;
     public var time:Float = 0;
+    public var length:Float = 0;
     public var volume:Float = 1;
     public var pitch:Float = 1;
     public var destroyed:Bool = false;
@@ -135,6 +136,11 @@ class Main {
         group.setRole(first, "opponent");
         group.setRole(second, "player");
         group.setRole(third, "opponent");
+        first.length = 9000;
+        var described = group.describe();
+        if (described.length != 3 || described[0].role != "opponent" || described[1].role != "player"
+            || described[0].lengthMs != 9000 || described[1].timeMs != 1234 || described[2].volume != 0.25)
+            fail("stem state evidence: " + haxe.Json.stringify(described));
         var opponents = group.forRole("OPPONENT");
         if (opponents.length != 2 || opponents[0] != first || opponents[1] != third)
             fail("role stem inventory");

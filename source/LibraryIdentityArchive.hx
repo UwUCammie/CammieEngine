@@ -90,15 +90,26 @@ class LibraryIdentityArchive {
 		}
 		return owner;
 	}
-	public function destinationFor(engine:String, identity:String, fingerprint:String, sourceFolder:String):Null<String> {
+	/** `plannedFolder` is the folder the importer is about to use. One source folder can
+	 * legitimately own several destinations (a V-Slice song and its erect variation both
+	 * come from one source folder), so it tells them apart; without it, or when it names
+	 * none of them, several destinations stay ambiguous and are never guessed. */
+	public function destinationFor(engine:String, identity:String, fingerprint:String, sourceFolder:String, ?plannedFolder:String):Null<String> {
 		var owner = ownerFor(engine,identity,fingerprint); if (owner == null || sourceFolder == null) return null;
-		var key = lookupKey(engine,identity,fingerprint); var destination:String = null;
+		var key = lookupKey(engine,identity,fingerprint); var destinations:Array<String> = [];
 		for (entry in entries) if (entry.ownerRoot == owner && entry.sourceFolder.toLowerCase() == sourceFolder.toLowerCase()
-			&& lookupKey(entry.engine,entry.sourceIdentity,entry.sourceFingerprint) == key) {
-			if (destination != null && destination != entry.folder) throw 'Archived chart identity is ambiguous.';
-			destination = entry.folder;
+			&& lookupKey(entry.engine,entry.sourceIdentity,entry.sourceFingerprint) == key
+			&& destinations.indexOf(entry.folder) < 0) destinations.push(entry.folder);
+		if (destinations.length <= 1) return destinations.length == 0 ? null : destinations[0];
+		if (plannedFolder != null && plannedFolder != '') {
+			var wanted = plannedFolder.toLowerCase();
+			var exact = [for (folder in destinations) if (folder.toLowerCase() == wanted) folder];
+			// An owner-qualified destination is the planned folder followed by "--" and the owner tag.
+			var qualified = [for (folder in destinations) if (StringTools.startsWith(folder.toLowerCase(), wanted + '--')) folder];
+			var chosen = exact.length > 0 ? exact : qualified;
+			if (chosen.length == 1) return chosen[0];
 		}
-		return destination;
+		throw 'Archived chart identity is ambiguous.';
 	}
 	public static function load(install:String, ?cancel:Void->Bool):LibraryIdentityArchive {
 		var view = new ImportMetadataInspection(install,cancel);

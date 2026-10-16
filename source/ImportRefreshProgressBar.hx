@@ -24,6 +24,8 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 	static inline var INDETERMINATE_WIDTH:Float = 0.24;
 
 	public var panel:FlxSprite;
+	/** The pink cap along the panel's top edge, as on the library popups. */
+	public var cap:FlxSprite;
 	public var progressTrack:FlxSprite;
 	public var progressFill:FlxSprite;
 	/** Kept as the public headline field for existing callers and UI probes. */
@@ -73,32 +75,29 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 		active = true;
 		visible = false;
 
-		panel = new FlxSprite().makeGraphic(PANEL_WIDTH, PANEL_HEIGHT, FlxColor.fromRGB(10, 12, 20, 235));
+		panel = new FlxSprite().makeGraphic(PANEL_WIDTH, PANEL_HEIGHT, MenuStyle.PANEL);
 		panel.alpha = 0.96;
 		panel.origin.set(0, 0);
+		cap = new FlxSprite().makeGraphic(PANEL_WIDTH, 4, MenuStyle.PINK);
+		cap.origin.set(0, 0);
+		cap.scrollFactor.set(0, 0);
 		progressTrack = new FlxSprite().makeGraphic(PANEL_WIDTH - PANEL_MARGIN * 2, TRACK_HEIGHT,
-			FlxColor.fromRGB(43, 47, 60));
+			MenuStyle.CHIP_OFF);
 		progressFill = new FlxSprite().makeGraphic(PANEL_WIDTH - PANEL_MARGIN * 2, TRACK_HEIGHT,
-			FlxColor.fromRGB(92, 203, 255));
+			MenuStyle.TEAL);
 		progressFill.origin.set(0, 0);
 		progressTrack.origin.set(0, 0);
 
-		// FlxText's engine default font is used throughout the menus. Its normal
-		// font keeps file paths and counters easier to scan than mod display fonts.
-		statusText = new FlxText(0, 0, PANEL_WIDTH - PANEL_MARGIN * 2, "", 20);
-		statusText.color = FlxColor.WHITE;
+		// The same VCR text and colours as Freeplay's cards.
+		statusText = MenuWidgets.text(0, 0, PANEL_WIDTH - PANEL_MARGIN * 2, "", 20, MenuStyle.CREAM);
 		statusText.wordWrap = false;
-		phaseText = new FlxText(0, 0, PANEL_WIDTH - PANEL_MARGIN * 2, "", 15);
-		phaseText.color = FlxColor.fromRGB(224, 230, 242);
+		phaseText = MenuWidgets.text(0, 0, PANEL_WIDTH - PANEL_MARGIN * 2, "", 15, MenuStyle.TEAL);
 		phaseText.wordWrap = false;
-		currentFileText = new FlxText(0, 0, PANEL_WIDTH - PANEL_MARGIN * 2, "", 14);
-		currentFileText.color = FlxColor.fromRGB(212, 220, 234);
+		currentFileText = MenuWidgets.text(0, 0, PANEL_WIDTH - PANEL_MARGIN * 2, "", 14, MenuStyle.TEXT);
 		currentFileText.wordWrap = false;
-		activityText = new FlxText(0, 0, PANEL_WIDTH - PANEL_MARGIN * 2, "", 13);
-		activityText.color = FlxColor.fromRGB(179, 190, 209);
+		activityText = MenuWidgets.text(0, 0, PANEL_WIDTH - PANEL_MARGIN * 2, "", 13, MenuStyle.MUTED);
 		activityText.wordWrap = false;
-		timingText = new FlxText(0, 0, PANEL_WIDTH - PANEL_MARGIN * 2, "", 13);
-		timingText.color = FlxColor.fromRGB(179, 190, 209);
+		timingText = MenuWidgets.text(0, 0, PANEL_WIDTH - PANEL_MARGIN * 2, "", 13, MenuStyle.MUTED);
 		timingText.wordWrap = false;
 
 		panel.scrollFactor.set(0, 0);
@@ -110,6 +109,7 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 		activityText.scrollFactor.set(0, 0);
 		timingText.scrollFactor.set(0, 0);
 		add(panel);
+		add(cap);
 		add(progressTrack);
 		add(progressFill);
 		add(statusText);
@@ -260,7 +260,7 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 		displayedFraction = fractionField(state);
 		var total = intField(state, "total", 0);
 		var indeterminate = busy && total <= 0;
-		progressFill.color = blocked ? FlxColor.fromRGB(255, 176, 79) : FlxColor.fromRGB(92, 203, 255);
+		progressFill.color = blocked ? MenuStyle.AMBER : MenuStyle.TEAL;
 		if (complete) displayedFraction = 1;
 
 		if (indeterminate) {
@@ -485,6 +485,8 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 		var textX = x + PANEL_MARGIN;
 		panel.scale.x = currentPanelWidth / PANEL_WIDTH;
 		panel.setPosition(x, y);
+		cap.scale.x = panel.scale.x;
+		cap.setPosition(x, y);
 		statusText.width = contentWidth;
 		phaseText.width = contentWidth;
 		currentFileText.width = contentWidth;

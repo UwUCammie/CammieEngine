@@ -24,7 +24,7 @@ class CodenameInputDispatchTest(unittest.TestCase):
     def test_input_candidates_are_owned_and_callbacks_control_real_hits(self):
         source = (ROOT / 'source/PlayState.hx').read_text()
         methods = '\n'.join(method(source, name) for name in (
-            'noteBelongsToInputLine', 'getInputStrumline', 'keyShit'))
+            'noteBelongsToInputLine', 'getInputStrumline', 'laneHasLiveSustain', 'keyShit'))
         fixture = r'''
 using StringTools;
 class Character {
@@ -174,7 +174,7 @@ class Main {
             folder = Path(work)
             (folder / 'Main.hx').write_text(fixture, newline='\n')
             (folder / 'Strumline.hx').write_text('''class StrumNote {
- public var ID=0; public var animation:Dynamic=null;
+ public var ID=0; public var animation:Dynamic=null; public var settlesConfirm=false; public var holdsSustainConfirm=false; public function endSustainConfirm():Void {}
  public function playAnim(s:String):Void {}
 }
 class Strumline {

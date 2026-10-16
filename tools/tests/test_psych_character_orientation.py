@@ -43,6 +43,7 @@ class PsychCharacterOrientationTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
+            (work / "SourceCharacterId.hx").write_text((ROOT / "source/SourceCharacterId.hx").read_text(), newline="\n")
             (work / "PsychCharacterOrientation.hx").write_text(
                 (ROOT / "source/PsychCharacterOrientation.hx").read_text(), newline='\n')
             psych_json = work / "scope/shared/characters/bf.json"

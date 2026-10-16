@@ -1246,7 +1246,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	 * computes placement; scripts see the source pair (or the neutral default). */
 	static function psychCharacterPositionArray(id:String, scopedRoot:String):Array<Float> {
 		var name = id == null ? '' : StringTools.trim(id);
-		if (name == '' || !~/^[A-Za-z0-9_-]+$/.match(name)
+		if (!SourceCharacterId.isFileName(name)
 			|| scopedRoot == null || StringTools.trim(scopedRoot) == '')
 			return [0, 0];
 		for (folder in ['characters', 'shared/characters']) {
@@ -1370,6 +1370,11 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 				'gameover_intial_sound');
 		}
 		var psychCameraRoot = sourceConstruction == null ? Song.currentPsychCharacterRoot() : sourceConstruction.root;
+		// Psych reads the JSON from whichever mod folder holds it, which for an
+		// add-on song is a dependency root of the same import.
+		if (sourceConstruction == null && psychCameraRoot != '')
+			psychCameraRoot = SourceCharacterId.ownerRoot(visualCharacterId, Song.currentPsychCharacterOwnerRoots(),
+				function(path:String):Bool return FNFAssets.exists(path));
 		psychHealthIcon = sourceCharacterOwnerEngine.toLowerCase() == ImportEngine.PSYCH.toLowerCase()
 			? PsychCharacterHealthIcon.authored(visualCharacterId, psychCameraRoot,
 				function(path) return FNFAssets.exists(path) ? FNFAssets.getText(path) : null) : null;

@@ -408,14 +408,16 @@ class ImportRemovalTransaction {
 		var receipt:Dynamic = Json.parse(File.getContent(safe(txn,'receipt.json',true)));
 		if (receipt.removalJournalSha256 != journalDigest(txn,journal)) throw 'Removal journal differs from its committed receipt.';
 	}
-	static function validateJournalIdentity(install:String,journal:Dynamic,id:String):Void {
-		if (journal.schemaVersion != 1 || journal.owner != OWNER || journal.transactionId != id
-			|| !ImportRefreshTransaction.samePath(journal.installRoot,install)) throw 'Removal recovery identity mismatch.';
+	/** `sameFolder` is waived only for a removal that cannot write into the old
+	 * folder any more: a committed one, or one that was already rolled back. */
+	static function validateJournalIdentity(install:String,journal:Dynamic,id:String,sameFolder:Bool = true):Void {
+		if (journal.schemaVersion != 1 || journal.owner != OWNER || journal.transactionId != id) throw 'Removal recovery identity mismatch.';
+		if (sameFolder && !ImportRefreshTransaction.samePath(journal.installRoot,install))
+			throw 'Unfinished removal was started in a different install folder; its files were preserved for manual recovery.';
 	}
-	static function validateJournal(install:String,txn:String,journal:Dynamic,id:String):Void {
-		if (journal.schemaVersion != 1 || journal.owner != OWNER || journal.transactionId != id
-			|| !ImportRefreshTransaction.samePath(journal.installRoot,install)
-			|| Json.stringify(journal.ownedRoots) != Json.stringify(['assets','import-cache/records'])
+	static function validateJournal(install:String,txn:String,journal:Dynamic,id:String,sameFolder:Bool = true):Void {
+		validateJournalIdentity(install,journal,id,sameFolder);
+		if (Json.stringify(journal.ownedRoots) != Json.stringify(['assets','import-cache/records'])
 			|| !Std.isOfType(journal.operations,Array) || !Std.isOfType(journal.retiredScopes,Array)
 			|| !Std.isOfType(journal.selectedOwners,Array)) throw 'Removal recovery identity mismatch.';
 		var selected:Array<String> = cast journal.selectedOwners;
@@ -517,19 +519,23 @@ class ImportRemovalTransaction {
 			if (!StringTools.startsWith(name,'txn-') || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0) throw 'Unexpected removal transaction directory.';
 			var txn = safe(directory,name,true); var journal = ImportRefreshTransaction.latestJournal(txn);
 			if (journal == null) continue;
-			if (journal.phase == 'rolled-back' && !FileSystem.exists(txn + '/receipt.json')) {
+			var committed = FileSystem.exists(txn + '/receipt.json');
+			if (journal.phase == 'rolled-back' && !committed) {
 				// A rolled-back removal already put every installed file back; what is
 				// left in its folder is only its own copies. Checking it against the
 				// original ownership metadata is wrong once a later removal of the same
 				// package succeeded (that metadata is gone by design), and it locked the
 				// whole library on every launch. Delete the finished folder instead.
-				validateJournalIdentity(install,journal,name);
+				validateJournalIdentity(install,journal,name,false);
 				deleteFinishedTransaction(directory,name);
 				continue;
 			}
-			validateJournal(install,txn,journal,name);
-			if (FileSystem.exists(txn + '/receipt.json')) {
-				validateRemovalReceipt(txn,journal);
+			// A committed removal has nothing left to restore, so it stays valid after
+			// the install folder was moved or renamed. Its receipt binds the exact
+			// journal, which is checked before the folder rule is waived.
+			if (committed) validateRemovalReceipt(txn,journal);
+			validateJournal(install,txn,journal,name,!committed);
+			if (committed) {
 				failures = failures.concat(cleanup(install,txn,journal));
 			} else if (journal.phase == 'preparing') failures = failures.concat(finishPreparationCleanup(install,txn,journal));
 			else if (journal.phase != 'rolled-back') failures = failures.concat(rollback(install,state,txn,journal));

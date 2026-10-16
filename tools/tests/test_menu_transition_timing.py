@@ -262,7 +262,6 @@ class RisingScoreMain {{
         for name in (
             "Alphabet.hx",
             "MenuItem.hx",
-            "SaveFile.hx",
             "FreeplayState.hx",
             "StoryMenuState.hx",
             "SelectSongsState.hx",
@@ -272,6 +271,12 @@ class RisingScoreMain {{
                 source = (ROOT / "source" / name).read_text(encoding="utf-8")
                 self.assertIn("CoolUtil.timeAdjustedLerpAlpha", source)
                 self.assertNotIn("CoolUtil.fps / 60", source)
+        # Save slots and the other shared cards ease on Freeplay's elapsed-time clock.
+        card = (ROOT / "source" / "MenuCard.hx").read_text(encoding="utf-8")
+        self.assertIn("motion.advance(elapsed)", card)
+        motion = (ROOT / "source" / "FreeplayCardMotion.hx").read_text(encoding="utf-8")
+        self.assertIn("Math.max(0, elapsed)", motion)
+        self.assertNotIn("CoolUtil.fps", card + motion)
 
         alphabet = (ROOT / "source/Alphabet.hx").read_text(encoding="utf-8")
         self.assertIn("CoolUtil.timeAdjustedTwoTargetLerp", alphabet)

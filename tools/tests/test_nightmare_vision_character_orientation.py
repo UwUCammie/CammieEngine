@@ -54,7 +54,7 @@ class NightmareVisionCharacterOrientationTest(unittest.TestCase):
     def test_authored_values_in_both_roles_survive_cached_swaps(self):
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
-            for name in ("PsychCharacterOrientation.hx", "PsychCharacterCache.hx",
+            for name in ("PsychCharacterOrientation.hx", "SourceCharacterId.hx", "PsychCharacterCache.hx",
                          "NightmareVisionCharacterBank.hx"):
                 (work / name).write_text((ROOT / "source" / name).read_text(), newline='\n')
 

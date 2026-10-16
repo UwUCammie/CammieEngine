@@ -67,7 +67,7 @@ class CompatTest {
         method = play[play.index('\tfunction sustain2('):play.index('\n\tfunction promoteCompatEndingOverlay(')]
         method = method.replace('Strumline.StrumNote', 'Dynamic').replace('note:Note', 'note:Dynamic')
         strumline = (ROOT / 'source/Strumline.hx').read_text()
-        self.assertIn("if (anim == 'confirm' || anim == 'confirmHold')\n\t\t\tconfirmationGeneration++", strumline)
+        self.assertIn("if (anim == 'confirm' || anim == 'confirmHold') {\n\t\t\tconfirmationGeneration++;", strumline)
         helper_start = play.index('\tpublic static inline var SUSTAIN_LENGTH_EPSILON:')
         helper_end = play.index('\n\t// Keep chart/tween speed intact', helper_start)
         sustain_helper = play[helper_start:helper_end]

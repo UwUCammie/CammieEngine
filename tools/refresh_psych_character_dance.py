@@ -99,6 +99,7 @@ def render_scripts(sources):
     with tempfile.TemporaryDirectory(prefix="psych-dance-render-", dir=TMP) as scratch:
         folder = Path(scratch)
         (folder / "PsychCharacterDanceCompat.hx").write_bytes(RENDERER.read_bytes())
+        (folder / "SourceCharacterId.hx").write_bytes((ROOT / "source/SourceCharacterId.hx").read_bytes())
         (folder / "Render.hx").write_text('''import haxe.Json;
 import sys.io.File;
 import tjson.TJSON;

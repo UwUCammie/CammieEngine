@@ -46,7 +46,7 @@ class PsychCharacterPosition {
 	 * property access. Other engines and missing/malformed metadata stay neutral. */
 	public static function characterCameraPosition(id:String, scopedRoot:String):Array<Float> {
 		var name = id == null ? '' : id.trim();
-		if (name == '' || !~/^[A-Za-z0-9_-]+$/.match(name) || scopedRoot == null || scopedRoot == '')
+		if (!SourceCharacterId.isFileName(name) || scopedRoot == null || scopedRoot == '')
 			return [0, 0];
 		var cameraPosition:Null<Array<Float>> = null;
 		for (folder in ['characters', 'shared/characters']) {
@@ -108,7 +108,7 @@ class PsychCharacterPosition {
 	public static function resolve(id:String, scopedRoot:String, nativeX:Float = 0,
 		nativeY:Float = 0):Array<Float> {
 		var name = id == null ? '' : id.trim();
-		if (name != '' && ~/^[A-Za-z0-9_-]+$/.match(name) && scopedRoot != null && scopedRoot != '') {
+		if (SourceCharacterId.isFileName(name) && scopedRoot != null && scopedRoot != '') {
 			for (folder in ['characters', 'shared/characters']) {
 				var scoped = positionIn(Path.join([scopedRoot, folder, name + '.json']));
 				if (scoped != null)

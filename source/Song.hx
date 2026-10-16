@@ -722,6 +722,38 @@ class Song {
 		return characterRootForSong(songName, ImportEngine.PSYCH);
 	}
 
+	/** Psych finds a character in whichever mod folder holds its JSON. An add-on
+	 * song can sit in its own imported root while its characters stay in a root
+	 * of the same import, so the selected Psych owner comes first and the other
+	 * Psych roots the manifest kept as dependencies follow in their order. */
+	public static function psychCharacterOwnerRootsForSong(songName:String):Array<String> {
+		var selected = psychCharacterRootForSong(songName);
+		if (selected == '')
+			return [];
+		var roots = [selected];
+		#if sys
+		try {
+			var manifest = CompatScriptManifest.parse(FNFAssets.getText('assets/data/' + songName.toLowerCase()
+				+ '/' + CompatScriptManifest.FILE_NAME));
+			for (root in CompatScriptManifest.rootsInPrecedence(manifest)) {
+				if (root == null || root.engine == null || root.engine.toLowerCase() != ImportEngine.PSYCH.toLowerCase())
+					continue;
+				var clean = safeCharacterManifestRoot(root.path);
+				if (clean != '' && roots.indexOf(clean) < 0)
+					roots.push(clean);
+			}
+		} catch (_:Dynamic) {}
+		#end
+		return roots;
+	}
+
+	/** Selected Psych assets apply only while their owning PlayState is active. */
+	public static function currentPsychCharacterOwnerRoots():Array<String> {
+		if (PlayState.instance == null || FlxG.state != PlayState.instance || PlayState.SONG == null)
+			return [];
+		return psychCharacterOwnerRootsForSong(storageFolder(PlayState.SONG));
+	}
+
 	public static function currentCharacterRoot():String {
 		if (PlayState.instance == null || FlxG.state != PlayState.instance || PlayState.SONG == null)
 			return '';

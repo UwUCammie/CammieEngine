@@ -12,7 +12,7 @@ class PsychCharacterOrientation {
 	public static function authoredFlipX(characterId:String, scopedRoot:String,
 		readText:String->Null<String>):Null<Bool> {
 		var name = characterId == null ? '' : StringTools.trim(characterId);
-		if (name == '' || !~/^[A-Za-z0-9_-]+$/.match(name)
+		if (!SourceCharacterId.isFileName(name)
 			|| scopedRoot == null || StringTools.trim(scopedRoot) == '' || readText == null)
 			return null;
 		for (folder in ['characters', 'shared/characters']) {

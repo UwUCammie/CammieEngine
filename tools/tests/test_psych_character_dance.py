@@ -59,6 +59,7 @@ class PsychCharacterDanceTest(unittest.TestCase):
             (work / "Main.hx").write_text(fixture, newline='\n')
             (work / "PsychCharacterDanceCompat.hx").write_bytes(
                 (ROOT / "source/PsychCharacterDanceCompat.hx").read_bytes())
+            (work / "SourceCharacterId.hx").write_bytes((ROOT / "source/SourceCharacterId.hx").read_bytes())
             result = subprocess.run([*HAXE_COMMAND, "-cp", str(work), "--run", "Main"],
                                     cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -133,6 +134,7 @@ class Main {
             (work / "Main.hx").write_text(fixture, newline='\n')
             (work / "PsychCharacterDanceCompat.hx").write_bytes(
                 (ROOT / "source/PsychCharacterDanceCompat.hx").read_bytes())
+            (work / "SourceCharacterId.hx").write_bytes((ROOT / "source/SourceCharacterId.hx").read_bytes())
             result = subprocess.run([*HAXE_COMMAND, "-cp", str(work),
                                      "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                                      "--run", "Main"], capture_output=True, text=True)
@@ -182,6 +184,19 @@ class Main {
     if (PsychCharacterDanceCompat.needsOwnedLegacyHitbox('Champ-Huge', owner,
       'assets/images/custom_chars/other.hscript', 6, 6, 720, 720, 720, 720, read))
       throw 'unrelated implementation accepted';
+    // Psych character ids are file names, so a spaced id keeps the same repair.
+    var spacedGlobal = 'assets/images/custom_chars/Champ Huge.hscript';
+    var spacedSources:Map<String, String> = [
+      owner + '/characters/Champ Huge.json' => metadata,
+      spacedGlobal => generated
+    ];
+    var spacedRead = function(path:String):Null<String> return spacedSources.get(path);
+    if (!PsychCharacterDanceCompat.needsOwnedLegacyHitbox('Champ Huge', owner,
+      spacedGlobal, 6, 6, 720, 720, 720, 720, spacedRead))
+      throw 'a character id with a space was rejected';
+    if (PsychCharacterDanceCompat.needsOwnedLegacyHitbox('../Champ Huge', owner,
+      spacedGlobal, 6, 6, 720, 720, 720, 720, spacedRead))
+      throw 'an id that leaves the character folder was accepted';
     var donorMidpoint = -1250 + 4320 / 2;
     var staleMidpoint = -1250 + 720 / 2;
     if (donorMidpoint != 910 || staleMidpoint != -890)
@@ -194,6 +209,7 @@ class Main {
             (work / "Main.hx").write_text(fixture, newline='\n')
             (work / "PsychCharacterDanceCompat.hx").write_text(
                 (ROOT / "source/PsychCharacterDanceCompat.hx").read_text(), newline='\n')
+            (work / "SourceCharacterId.hx").write_text((ROOT / "source/SourceCharacterId.hx").read_text(), newline=chr(10))
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(work), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True,
@@ -275,6 +291,7 @@ class Main {
             (work / "Main.hx").write_text(fixture, newline='\n')
             (work / "PsychCharacterDanceCompat.hx").write_bytes(
                 (ROOT / "source/PsychCharacterDanceCompat.hx").read_bytes())
+            (work / "SourceCharacterId.hx").write_bytes((ROOT / "source/SourceCharacterId.hx").read_bytes())
             result = subprocess.run([*HAXE_COMMAND, "-cp", str(work),
                                      "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                                      "--run", "Main"], capture_output=True, text=True)

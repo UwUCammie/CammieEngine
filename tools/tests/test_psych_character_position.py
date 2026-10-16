@@ -50,6 +50,7 @@ class PsychCharacterPositionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
             (work / 'SourceCameraFollowPointMath.hx').write_text((ROOT / 'source/SourceCameraFollowPointMath.hx').read_text(), newline='\n')
+            (work / 'SourceCharacterId.hx').write_text((ROOT / 'source/SourceCharacterId.hx').read_text(), newline='\n')
             (work / 'PsychCharacterPosition.hx').write_text(
                 (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
             (work / 'assets/data').mkdir(parents=True)
@@ -99,6 +100,7 @@ class Probe {
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
             (work / 'SourceCameraFollowPointMath.hx').write_text((ROOT / 'source/SourceCameraFollowPointMath.hx').read_text(), newline='\n')
+            (work / 'SourceCharacterId.hx').write_text((ROOT / 'source/SourceCharacterId.hx').read_text(), newline='\n')
             (work / 'PsychCharacterPosition.hx').write_text(
                 (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
             (work / 'scope/characters').mkdir(parents=True)
@@ -166,6 +168,7 @@ class Probe {
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
             (work / 'SourceCameraFollowPointMath.hx').write_text((ROOT / 'source/SourceCameraFollowPointMath.hx').read_text(), newline='\n')
+            (work / 'SourceCharacterId.hx').write_text((ROOT / 'source/SourceCharacterId.hx').read_text(), newline='\n')
             (work / 'PsychCharacterPosition.hx').write_text(
                 (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
             (work / 'assets/data').mkdir(parents=True)
@@ -173,6 +176,14 @@ class Probe {
                 (ROOT / 'assets/data/psych_base_character_positions.json').read_text(), newline='\n')
             (work / 'scope/characters').mkdir(parents=True)
             (work / 'scope/characters/guest.json').write_text('{"position":[25,-9]}', newline='\n')
+            (work / 'dep/characters').mkdir(parents=True)
+            (work / 'dep/characters/dep guest.json').write_text('{"position":[60,-40]}', newline='\n')
+            (work / 'Song.hx').write_text('''
+class Song {
+  public static var ownerRoots:Array<String> = [];
+  public static function currentPsychCharacterOwnerRoots():Array<String> return ownerRoots;
+}
+''', newline='\n')
             (work / 'FNFAssets.hx').write_text('''
 class FNFAssets {
   public static function exists(path:String):Bool return sys.FileSystem.exists(path);
@@ -242,6 +253,14 @@ class Probe {
     eq([state.swapOffsets[0] + guestOffset[0], state.swapOffsets[1] + guestOffset[1]], 774, 91);
     state.swapOffsets[0] = 900; // A script-edited base remains authoritative.
     eq([state.swapOffsets[0] + guestOffset[0], state.swapOffsets[1] + guestOffset[1]], 925, 91);
+    // A character kept in another root of the same import still supplies its
+    // position (names with spaces included), and the stage's own root wins a tie.
+    var depGuest = new Character('dep guest');
+    eq(state.stageCharacterOffset(depGuest, 'boyfriend'), 0, 0);
+    Song.ownerRoots = ['other', 'dep'];
+    eq(state.stageCharacterOffset(depGuest, 'boyfriend'), 60, -40);
+    eq(state.stageCharacterOffset(guest, 'boyfriend'), 25, -9);
+    Song.ownerRoots = [];
     state.clearPsychStageCharacterPosition();
     eq([state.swapOffsets[0], state.swapOffsets[1]], 770, 450);
     eq(state.psychStageCameraBoyfriend, 0, 0);
@@ -401,6 +420,7 @@ class Probe {
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
             (work / 'SourceCameraFollowPointMath.hx').write_text((ROOT / 'source/SourceCameraFollowPointMath.hx').read_text(), newline='\n')
+            (work / 'SourceCharacterId.hx').write_text((ROOT / 'source/SourceCharacterId.hx').read_text(), newline='\n')
             (work / 'PsychCharacterPosition.hx').write_text(
                 (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
             (work / 'SourceStageMetadata.hx').write_text(

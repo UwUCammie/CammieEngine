@@ -17,6 +17,11 @@ class RuntimeImportSmokeState extends FlxState {
 	var scanJob:ImportScanJob;
 	var importJob:ImportImportJob;
 	var cancellationRequested:Bool = false;
+	/** Installed package to remove first (--smoke-import-remove-owner), so the
+	 * import that follows starts from a clean library like a first import. */
+	var removalOwner:String = '';
+	/** 0 asking for the preview, 1 waiting to confirm, 2 removing, 3 finished. */
+	var removalPhase:Int = 3;
 
 	/** Keep the play-after-import smoke path in its preparation state while the
 	 * manager defers publication to a safe main-thread handoff. Worker completion
@@ -61,11 +66,56 @@ class RuntimeImportSmokeState extends FlxState {
 			DifficultyManager.init();
 			ModifierState.init();
 			PlayerSettings.init();
-			scanJob = ImportWorkflow.beginScan(request.source, request.importType);
+			#if sys
+			removalOwner = RuntimeImportSmokeHarness.argumentValue('--smoke-import-remove-owner');
+			if (removalOwner != '') removalPhase = 0;
+			#end
+			if (removalPhase >= 3)
+				scanJob = ImportWorkflow.beginScan(request.source, request.importType);
 		} catch (error:Dynamic) {
 			RuntimeImportSmokeHarness.fail('scan', Std.string(error));
 		}
 	}
+
+	#if sys
+	/** Remove the requested package through the same preview and confirmation
+	 * the Library menu uses, then start the normal scan and import. */
+	function stepRemoval():Void {
+		var state = ImportRemovalManager.poll();
+		if (state.busy || ImportRefreshManager.browseTick().busy)
+			return;
+		var availability = ImportRefreshManager.availabilitySnapshot();
+		if (availability.inspectionPending || availability.refreshInProgress)
+			return;
+		switch (removalPhase) {
+			case 0:
+				// Refused until removal recovery has finished; asked again next frame.
+				if (ImportRemovalManager.beginPreview(removalOwner))
+					removalPhase = 1;
+			case 1:
+				if (state.phase != 'preview') {
+					RuntimeImportSmokeHarness.fail('removal', 'preview of ' + removalOwner + ' ended as ' + state.phase + ': ' + state.label);
+					removalPhase = 3;
+					return;
+				}
+				if (!ImportRemovalManager.confirm()) {
+					RuntimeImportSmokeHarness.fail('removal', 'removal of ' + removalOwner + ' was not accepted: ' + state.label);
+					removalPhase = 3;
+					return;
+				}
+				removalPhase = 2;
+			default:
+				if (state.phase != 'complete' || !state.published) {
+					RuntimeImportSmokeHarness.fail('removal', 'removal of ' + removalOwner + ' ended as ' + state.phase + ': ' + state.label);
+					removalPhase = 3;
+					return;
+				}
+				removalPhase = 3;
+				var request = RuntimeImportSmokeHarness.config();
+				scanJob = ImportWorkflow.beginScan(request.source, request.importType);
+		}
+	}
+	#end
 
 	override public function update(elapsed:Float):Void {
 		super.update(elapsed);
@@ -77,6 +127,12 @@ class RuntimeImportSmokeState extends FlxState {
 			if (importJob != null && !importJob.isFinished())
 				importJob.cancel();
 		}
+		#if sys
+		if (removalPhase < 3 && !cancellationRequested) {
+			stepRemoval();
+			return;
+		}
+		#end
 		if (scanJob != null) {
 			var snapshot = scanJob.snapshot();
 			RuntimeImportSmokeHarness.reportProgress('scan', snapshot);

@@ -3103,7 +3103,7 @@ class EngineCompat {
 			case 'camgamehud':
 				return 'camHUD';
 			case 'camfollowpos' | 'camerafollowpos':
-				return 'camFollow';
+				return 'camFollowPos';
 			case 'iscameraonforcedpos' | 'iscameraonforcedposition':
 				return 'forceCamera';
 			case 'opponentstrums' | 'opponentstrumline':
@@ -3988,6 +3988,31 @@ public static function lyricActor(value:Dynamic):String {
 				{authored:reference, nativeName:'mall', stageID:1, standard:true};
 			case 'tankerect':
 				{authored:reference, nativeName:'tank', stageID:1, standard:true};
+			// The ids V-Slice itself ships for these base stages. Its normal and
+			// Erect variants are separate stage files, while this runtime keeps
+			// one stage script per location and selects the variant by stageID.
+			case 'spookymansion':
+				{authored:reference, nativeName:'spooky', stageID:0, standard:true};
+			case 'spookymansionerect':
+				{authored:reference, nativeName:'spooky', stageID:1, standard:true};
+			case 'phillytrain':
+				{authored:reference, nativeName:'philly', stageID:0, standard:true};
+			case 'phillytrainerect':
+				{authored:reference, nativeName:'philly', stageID:1, standard:true};
+			case 'limoride':
+				{authored:reference, nativeName:'limo', stageID:0, standard:true};
+			case 'limorideerect':
+				{authored:reference, nativeName:'limo', stageID:1, standard:true};
+			case 'mallxmas':
+				{authored:reference, nativeName:'mall', stageID:0, standard:true};
+			case 'mallxmaserect':
+				{authored:reference, nativeName:'mall', stageID:1, standard:true};
+			case 'tankmanbattlefield':
+				{authored:reference, nativeName:'tank', stageID:0, standard:true};
+			case 'tankmanbattlefielderect':
+				{authored:reference, nativeName:'tank', stageID:1, standard:true};
+			case 'mainstageerect':
+				{authored:reference, nativeName:'stage', stageID:1, standard:true};
 			// Psych Engine keeps this shipped stage's camelCase id, while this
 			// runtime has a dashed stage script which can provide fallback visuals.
 			// The compiled PhillyStreets class remains unsupported; the importer
@@ -4024,6 +4049,20 @@ public static function lyricActor(value:Dynamic):String {
 	public static function isBuiltinStageReference(reference:String):Bool {
 		var resolved = resolveStageResolution(reference);
 		return resolved != null && resolved.standard;
+	}
+
+	/**
+		True when the id is a standard stage written differently from its native
+		name (for example V-Slice's `limoRideErect`). A donor that ships its own
+		definition for such an id replaces the base stage in the donor engine, so
+		importers use this to tell "built in" apart from "overridden by the mod".
+	*/
+	public static function isBuiltinStageAlias(reference:String):Bool {
+		if (reference == null)
+			return false;
+		var resolved = resolveStageResolution(reference);
+		return resolved != null && resolved.standard && resolved.nativeName != null
+			&& resolved.nativeName.toLowerCase() != StringTools.trim(reference).toLowerCase();
 	}
 
 	static function isNativeStageName(reference:String):Bool {

@@ -4,7 +4,7 @@ import flixel.FlxG;
 import flixel.FlxSprite;
 import flixel.text.FlxText;
 import flixel.util.FlxColor;
-import flixel.addons.ui.FlxUIButton;
+import flixel.text.FlxText.FlxTextAlign;
 import lime.ui.FileDialog;
 import lime.ui.FileDialogType;
 import ImportWorkflow.ImportScanResult;
@@ -15,7 +15,7 @@ import ImportWorkflow.ImportWorkflowProgress;
 import sys.FileSystem;
 #end
 
-/** Import configuration submenu shown from SaveDataState.
+/** Import configuration screen opened by the main menu Import entry.
  *
  * Importing is deliberately a two-step operation. Scan is read-only and
  * produces the plan/report; Import then consumes that exact plan. Both jobs
@@ -27,24 +27,45 @@ class ImportSettingsState extends MusicBeatState {
 	static inline var ACTION_CHOOSE:Int = 0;
 	static inline var ACTION_SCAN:Int = 1;
 	static inline var ACTION_IMPORT:Int = 2;
-	static inline var SUMMARY_FONT_SIZE:Int = 15;
-	static inline var DETAIL_FONT_SIZE:Int = 18;
-	static inline var DETAIL_LINE_HEIGHT:Int = 24;
-	static inline var SUMMARY_HEIGHT:Int = 78;
+	static inline var SUMMARY_FONT_SIZE:Int = 14;
+	static inline var DETAIL_FONT_SIZE:Int = 16;
+	static inline var DETAIL_LINE_HEIGHT:Int = 19;
+	static inline var SUMMARY_HEIGHT:Int = 310;
 
-	var importTypeSelector:FlxText;
 	var importTypes:Array<String>;
 	var importTypeIndex:Int = 0;
-	var sourcePathSelector:FlxText;
 	var importStatus:FlxText;
 	var scanSummary:FlxText;
 	var detailText:FlxText;
 	var detailPageText:FlxText;
 	var helpText:FlxText;
-	var chooseSourceButton:FlxUIButton;
-	var scanButton:FlxUIButton;
-	var importSourceButton:FlxUIButton;
-	var cancelButton:FlxUIButton;
+	var chooseSourceButton:MenuButton;
+	var scanButton:MenuButton;
+	var importSourceButton:MenuButton;
+	var cancelButton:MenuButton;
+	var importInfo:FlxText;
+	var footer:MenuFooter;
+	var stepCards:Array<MenuCard> = [];
+	var stepValues:Array<String> = ['', '', '', ''];
+	var typeHint:FlxText;
+	var idleHint:FlxText;
+	var statusPanel:MenuWidgets.MenuPanelParts;
+	var summaryPanel:MenuWidgets.MenuPanelParts;
+	var detailParts:MenuWidgets.MenuPanelParts;
+	var importDone:Bool = false;
+	var panelsBusy:Bool = false;
+	var detailPageLines:Int = 0;
+	static inline var STEP_WIDTH:Int = 287;
+	static inline var STEPS_TOP:Int = 84;
+	static inline var BUTTONS_TOP:Int = 152;
+	static inline var STATUS_TOP:Int = 216;
+	static inline var CONTENT_TOP:Int = 280;
+	static inline var CONTENT_WIDTH:Int = 1184;
+	static inline var DETAIL_WIDTH:Int = 760;
+	static inline var SUMMARY_X:Int = 824;
+	static inline var SUMMARY_WIDTH:Int = 408;
+	static var stepLook:MenuStyle.MenuCardLook = {idle: 56, selected: 56, titleSize: 20, selectedTitleSize: 20,
+		titleTop: 15, titleLift: 0, valueSize: 16};
 	public var progressPresentation(default, null):ImportRefreshProgressBar;
 	var detailPanel:FlxSprite;
 
@@ -66,73 +87,70 @@ class ImportSettingsState extends MusicBeatState {
 		stateAlive = true;
 		FlxG.mouse.visible = true;
 
-		var margin = Std.int(Math.max(24, FlxG.width * 0.055));
-		var contentWidth = Std.int(Math.max(420, FlxG.width - margin * 2));
-		var menuBG = new FlxSprite().loadGraphic("assets/images/menuDesat.png");
-		menuBG.color = 0xFF7194FC;
-		menuBG.setGraphicSize(Std.int(menuBG.width * 1.1));
-		menuBG.updateHitbox();
-		menuBG.screenCenter();
-		add(menuBG);
+		MenuWidgets.background(this);
 
-		var title = new FlxText(0, 28, FlxG.width, "Import Settings", 48);
-		title.setFormat("assets/fonts/vcr.ttf", 48, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
-		add(title);
+		importInfo = MenuWidgets.text(150, 14, FlxG.width - 150 - MenuStyle.MARGIN * 2, 'Import', MenuStyle.BODY_SIZE, MenuStyle.MUTED);
+		importInfo.wordWrap = false;
+		add(importInfo);
 
-		var typeY = 94;
-		var typeLabel = new FlxText(margin, typeY, 190, "Import Type", 26);
-		typeLabel.setFormat("assets/fonts/vcr.ttf", 26, FlxColor.WHITE, LEFT, OUTLINE, FlxColor.BLACK);
-		add(typeLabel);
-
+		// The steps across the top: what is set, and what is still to do.
 		importTypes = ImportSettings.getTypes();
 		importTypeIndex = importTypes.indexOf(ImportSettings.getSelectedType());
 		if (importTypeIndex < 0)
 			importTypeIndex = 0;
-		importTypeSelector = new FlxText(margin + 205, typeY, contentWidth - 205, "", 26);
-		importTypeSelector.setFormat("assets/fonts/vcr.ttf", 26, FlxColor.WHITE, LEFT, OUTLINE, FlxColor.BLACK);
-		add(importTypeSelector);
-		refreshImportType();
-
-		var sourceY = 138;
-		var sourceLabel = new FlxText(margin, sourceY, 190, "Source Folder", 24);
-		sourceLabel.setFormat("assets/fonts/vcr.ttf", 24, FlxColor.WHITE, LEFT, OUTLINE, FlxColor.BLACK);
-		add(sourceLabel);
-
-		sourcePathSelector = new FlxText(margin + 205, sourceY, contentWidth - 205, "", 18);
-		sourcePathSelector.setFormat("assets/fonts/vcr.ttf", 18, FlxColor.WHITE, LEFT, OUTLINE, FlxColor.BLACK);
-		add(sourcePathSelector);
-		refreshSourcePath();
-
-		var buttonY = 184;
-		chooseSourceButton = new FlxUIButton(margin, buttonY, "Choose Folder", function():Void {
+		var stepNames = ['1  Type', '2  Source', '3  Scan', '4  Import'];
+		for (index in 0...stepNames.length) {
+			var step = new MenuCard(stepNames[index], STEP_WIDTH, 20, stepLook);
+			step.exists = true;
+			step.present(false, false);
+			step.moveTo(stepX(index), STEPS_TOP, true);
+			stepCards.push(step);
+			add(step);
+		}
+		// What each step needs, as one large control under its card.
+		chooseSourceButton = new MenuButton("Choose Folder", STEP_WIDTH, 52, function():Void {
 			chooseSourceFolder();
 		});
 		add(chooseSourceButton);
 
-		scanButton = new FlxUIButton(margin + 178, buttonY, "Scan", function():Void {
+		scanButton = new MenuButton("Scan", STEP_WIDTH, 52, function():Void {
 			startScan();
 		});
 		add(scanButton);
 
-		importSourceButton = new FlxUIButton(margin + 296, buttonY, "Import Songs", function():Void {
+		importSourceButton = new MenuButton("Import Songs", STEP_WIDTH, 52, function():Void {
 			startImport();
 		});
 		add(importSourceButton);
 
-		cancelButton = new FlxUIButton(margin + 470, buttonY, "Cancel", function():Void {
+		cancelButton = new MenuButton("Cancel", STEP_WIDTH, 52, function():Void {
 			cancelActiveJob();
 		});
 		cancelButton.visible = false;
 		cancelButton.active = false;
 		add(cancelButton);
-		layoutActionButtons(margin, buttonY, contentWidth);
+		layoutActionButtons(MenuStyle.MARGIN * 2, BUTTONS_TOP, STEP_WIDTH * 4 + 36);
+		typeHint = MenuWidgets.text(stepX(0), BUTTONS_TOP + 18, STEP_WIDTH, 'LEFT / RIGHT  changes the importer', MenuStyle.SMALL_SIZE, MenuStyle.MUTED);
+		typeHint.wordWrap = false;
+		add(typeHint);
+		refreshImportType();
+		refreshSourcePath();
 
-		importStatus = new FlxText(margin, 282, contentWidth, "Choose a source folder, then scan it before importing.", 19);
-		importStatus.setFormat("assets/fonts/vcr.ttf", 19, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
+		// One line of status; the progress card takes its place while work runs.
+		statusPanel = MenuWidgets.sizedPanel(this, MenuStyle.PINK, '');
+		MenuWidgets.sizePanel(statusPanel, MenuStyle.MARGIN * 2, STATUS_TOP, CONTENT_WIDTH, 44);
+		importStatus = MenuWidgets.text(MenuStyle.MARGIN * 2 + 16, STATUS_TOP + 13, CONTENT_WIDTH - 32,
+			"Choose a source folder, then scan it before importing.", 17, MenuStyle.CREAM);
+		importStatus.wordWrap = false;
 		add(importStatus);
 
-		scanSummary = new FlxText(margin, 316, contentWidth, "No scan has been run.", SUMMARY_FONT_SIZE);
-		scanSummary.setFormat("assets/fonts/vcr.ttf", SUMMARY_FONT_SIZE, FlxColor.WHITE, LEFT, OUTLINE, FlxColor.BLACK);
+		// Scan results appear only once there is something to show, each sized to its text.
+		idleHint = MenuWidgets.text(MenuStyle.MARGIN * 2, CONTENT_TOP + 12, 760,
+			"Pick an importer, choose the folder that holds your mods, then scan it. Scanning only reads; nothing is copied until you import what it found.",
+			16, MenuStyle.MUTED);
+		add(idleHint);
+		summaryPanel = MenuWidgets.sizedPanel(this, MenuStyle.TEAL, 'SCAN SUMMARY');
+		scanSummary = MenuWidgets.text(SUMMARY_X + 16, CONTENT_TOP + 30, SUMMARY_WIDTH - 32, "No scan has been run.", SUMMARY_FONT_SIZE, MenuStyle.TEXT);
 		// Keep the count summary in a reserved area. Root paths and diagnostics
 		// belong in the paged detail panel; putting every detected root in this
 		// field makes a completed scan grow into the panel below it.
@@ -141,39 +159,95 @@ class ImportSettingsState extends MusicBeatState {
 		scanSummary.fieldHeight = SUMMARY_HEIGHT;
 		add(scanSummary);
 
-		var progressBottom = 396;
-		var detailBottomLimit = FlxG.height - 66;
-		var detailY = Std.int(Math.max(progressBottom + 10, Math.min(402, detailBottomLimit - 150)));
+		var detailBottomLimit = FlxG.height - MenuStyle.BAR_HEIGHT - 16;
+		var detailY = CONTENT_TOP;
 		var detailHeight = Std.int(Math.max(90, detailBottomLimit - detailY));
-		detailPanel = new FlxSprite(margin, detailY).makeGraphic(contentWidth, detailHeight, 0xB9000000);
-		add(detailPanel);
+		detailParts = MenuWidgets.sizedPanel(this, MenuStyle.GOLD, 'SCAN DETAILS');
+		detailPanel = detailParts.card;
+		MenuWidgets.sizePanel(detailParts, MenuStyle.MARGIN * 2, detailY, DETAIL_WIDTH, detailHeight);
 
-		detailText = new FlxText(margin + 12, detailY + 8, contentWidth - 24, "Scan details will appear here.", DETAIL_FONT_SIZE);
-		detailText.setFormat("assets/fonts/vcr.ttf", DETAIL_FONT_SIZE, FlxColor.WHITE, LEFT, OUTLINE, FlxColor.BLACK);
+		detailText = MenuWidgets.text(MenuStyle.MARGIN * 2 + 12, detailY + 28, DETAIL_WIDTH - 24, "", DETAIL_FONT_SIZE, MenuStyle.TEXT);
 		detailText.autoSize = false;
 		// Detail rows are wrapped into bounded strings by refreshDetails(). Keep
 		// wordWrap disabled so FlxText does not add uncounted visual rows and
 		// let the page run past the panel's lower edge.
 		detailText.wordWrap = false;
-		detailText.fieldHeight = detailHeight - 16;
+		detailText.fieldHeight = detailHeight - 40;
 		add(detailText);
 
-		detailPageText = new FlxText(margin, detailY + detailHeight + 4, contentWidth, "", 15);
-		detailPageText.setFormat("assets/fonts/vcr.ttf", 15, FlxColor.WHITE, RIGHT, OUTLINE, FlxColor.BLACK);
+		detailPageText = MenuWidgets.text(MenuStyle.MARGIN * 2, detailY + 6, DETAIL_WIDTH - 12, "", MenuStyle.SMALL_SIZE, MenuStyle.MUTED, FlxTextAlign.RIGHT);
 		add(detailPageText);
 
-		helpText = new FlxText(margin, FlxG.height - 38, contentWidth, "Mouse: choose/scan/import   Up/Down: action   Page Up/Down or wheel: details   Back: return", 15);
-		helpText.setFormat("assets/fonts/vcr.ttf", 15, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
-		add(helpText);
+		footer = new MenuFooter('IMPORT', MenuHints.importer());
+		add(footer);
+		helpText = footer.note;
 
 		refreshActionFocus();
 		refreshButtons();
 		refreshDetails();
 		#if sys
 		progressPresentation = new ImportRefreshProgressBar(this, progressPresentationStatus, true);
+		// The progress card takes the status line's place under the steps.
+		progressPresentation.setMenuLane(MenuStyle.MARGIN * 2, STATUS_TOP, 1, 0);
 		add(progressPresentation);
 		#end
 		super.create();
+	}
+
+	static function stepX(index:Int):Float return MenuStyle.MARGIN * 2 + index * (STEP_WIDTH + 12);
+
+	/** What each step stands at: set, running, or still to do. */
+	function refreshSteps():Void {
+		if (stepCards.length < 4) return;
+		var typeName = importTypes == null || importTypes.length == 0 ? 'None' : importTypes[importTypeIndex];
+		var source = ImportSettings.getSourcePath();
+		var sourceValid = sourcePathIsValid();
+		var scanning = scanJob != null && !scanJob.isFinished();
+		var importing = importJob != null && !importJob.isFinished();
+		var values = [
+			'< ' + typeName + ' >',
+			sourceValid ? MainMenuFacts.pathTail(source, 16) : 'Not chosen',
+			scanning ? 'Scanning...' : (scanResult == null ? 'Not run' : scanResult.songsFound + ' songs'),
+			importing ? 'Importing...' : (importDone ? 'Done' : (canImport() ? 'Ready' : 'Waiting'))
+		];
+		var done = [true, sourceValid, scanResult != null, importDone];
+		var focus = [-1, ACTION_CHOOSE, ACTION_SCAN, ACTION_IMPORT];
+		for (index in 0...4) {
+			var card = stepCards[index];
+			var shown = values[index] + (done[index] && index > 0 ? '' : '');
+			if (stepValues[index] != shown) {
+				stepValues[index] = shown;
+				card.setValue(shown, done[index] ? MenuStyle.TEAL : MenuStyle.MUTED, 150);
+			}
+			var focused = index == 0 ? false : focus[index] == actionIndex && !hasActiveJob();
+			if (card.selected != focused) {
+				card.present(focused, false);
+				card.moveTo(stepX(index), STEPS_TOP);
+			}
+		}
+	}
+
+	/** Show the idle hint, or the summary and details sized to what they hold. */
+	function refreshPanels():Void {
+		if (summaryPanel == null || detailParts == null) return;
+		var busy = panelsBusy;
+		var hasSummary = scanResult != null && !busy;
+		var hasDetails = !busy && detailPageLines > 0;
+		var room = FlxG.height - MenuStyle.BAR_HEIGHT - 16 - CONTENT_TOP;
+		MenuWidgets.showPanel(summaryPanel, hasSummary);
+		scanSummary.visible = hasSummary;
+		if (hasSummary) {
+			var height = Std.int(Math.min(room, 44 + scanSummary.textField.textHeight));
+			MenuWidgets.sizePanel(summaryPanel, SUMMARY_X, CONTENT_TOP, SUMMARY_WIDTH, height);
+		}
+		MenuWidgets.showPanel(detailParts, hasDetails);
+		detailText.visible = hasDetails;
+		detailPageText.visible = hasDetails;
+		if (hasDetails) {
+			var height = Std.int(Math.min(room, 48 + detailText.textField.textHeight));
+			MenuWidgets.sizePanel(detailParts, MenuStyle.MARGIN * 2, CONTENT_TOP, DETAIL_WIDTH, height);
+		}
+		idleHint.visible = !busy && !hasSummary && !hasDetails;
 	}
 
 	override function update(elapsed:Float) {
@@ -297,17 +371,11 @@ class ImportSettingsState extends MusicBeatState {
 	}
 
 	function layoutActionButtons(margin:Int, y:Int, availableWidth:Int):Void {
-		var buttons:Array<FlxUIButton> = [chooseSourceButton, scanButton, importSourceButton, cancelButton];
-		var widths = 0.0;
-		for (button in buttons) widths += button.width;
-		var gap:Float = 12;
-		if (widths + gap * (buttons.length - 1) > availableWidth)
-			gap = Math.max(2, (availableWidth - widths) / (buttons.length - 1));
-		var x:Float = margin;
-		for (button in buttons) {
-			button.setPosition(x, y);
-			x += button.width + gap;
-		}
+		// One column per step: Cancel under Type, then each step's own control.
+		cancelButton.setPosition(stepX(0), y);
+		chooseSourceButton.setPosition(stepX(1), y);
+		scanButton.setPosition(stepX(2), y);
+		importSourceButton.setPosition(stepX(3), y);
 	}
 
 	#if sys
@@ -379,11 +447,11 @@ class ImportSettingsState extends MusicBeatState {
 
 	function refreshActionFocus():Void {
 		if (chooseSourceButton != null)
-			chooseSourceButton.alpha = actionIndex == ACTION_CHOOSE && actionEnabled(ACTION_CHOOSE) ? 1.0 : 0.65;
+			chooseSourceButton.setLook(chooseSourceButton.enabled, actionIndex == ACTION_CHOOSE);
 		if (scanButton != null)
-			scanButton.alpha = actionIndex == ACTION_SCAN && actionEnabled(ACTION_SCAN) ? 1.0 : 0.65;
+			scanButton.setLook(scanButton.enabled, actionIndex == ACTION_SCAN);
 		if (importSourceButton != null)
-			importSourceButton.alpha = actionIndex == ACTION_IMPORT && actionEnabled(ACTION_IMPORT) ? 1.0 : 0.65;
+			importSourceButton.setLook(importSourceButton.enabled, actionIndex == ACTION_IMPORT);
 	}
 
 	function refreshButtons(?knownCoordinatorBusy:Null<Bool>):Void {
@@ -401,34 +469,38 @@ class ImportSettingsState extends MusicBeatState {
 		var sourceValid = sourcePathIsValid();
 		if (chooseSourceButton != null) {
 			chooseSourceButton.active = !busy;
-			chooseSourceButton.alpha = !busy && actionIndex == ACTION_CHOOSE ? 1.0 : (!busy ? 0.65 : 0.35);
+			chooseSourceButton.setLook(!busy, actionIndex == ACTION_CHOOSE);
 		}
 		if (scanButton != null) {
 			scanButton.active = !busy && sourceValid;
-			scanButton.alpha = !busy && sourceValid && actionIndex == ACTION_SCAN ? 1.0 : (!busy && sourceValid ? 0.65 : 0.35);
+			scanButton.setLook(!busy && sourceValid, actionIndex == ACTION_SCAN);
 		}
 		if (importSourceButton != null) {
 			importSourceButton.active = !busy && canImport();
-			importSourceButton.alpha = !busy && canImport() && actionIndex == ACTION_IMPORT ? 1.0 : (!busy && canImport() ? 0.65 : 0.35);
+			importSourceButton.setLook(!busy && canImport(), actionIndex == ACTION_IMPORT);
 		}
 		if (cancelButton != null) {
 			cancelButton.visible = canCancel;
 			cancelButton.active = canCancel;
-			cancelButton.alpha = canCancel ? 1.0 : 0.0;
+			cancelButton.setLook(canCancel, false);
 		}
+		panelsBusy = busy;
 		if (importStatus != null) importStatus.visible = !busy;
-		if (scanSummary != null) scanSummary.visible = !busy;
+		if (statusPanel != null) MenuWidgets.showPanel(statusPanel, !busy);
+		if (typeHint != null) typeHint.visible = !canCancel;
 		if (helpText != null) {
 			helpText.text = canCancel && importJob != null
 				? "Import running. Back hides this screen; Cancel requests a safe stop."
 				: canCancel
 				? "Scan running. Back/Cancel requests a safe stop; the screen closes after this step."
 				: coordinatorBusy
-					? "Automatic refresh continues in background. Ready songs remain playable; import actions are paused."
+					? "Automatic refresh is running. Import actions are paused until it ends."
 					: manualBusy
 						? "Finishing import. Back hides this screen while package handoff completes."
-					: "Mouse: choose/scan/import   Up/Down: action   Page Up/Down or wheel: details   Back: return";
+					: "";
 		}
+		refreshSteps();
+		refreshPanels();
 	}
 
 	function changeImportType(change:Int):Void {
@@ -446,12 +518,20 @@ class ImportSettingsState extends MusicBeatState {
 	}
 
 	function refreshImportType():Void {
-		if (importTypeSelector == null)
+		refreshTitleLine();
+		refreshSteps();
+	}
+
+	/** The line at the top: the importer and the folder it will read. */
+	function refreshTitleLine():Void {
+		if (importInfo == null)
 			return;
-		if (importTypes == null || importTypes.length == 0)
-			importTypeSelector.text = "None";
-		else
-			importTypeSelector.text = "< " + importTypes[importTypeIndex] + " >";
+		var selector = importTypes == null || importTypes.length == 0 ? "None" : "< " + importTypes[importTypeIndex] + " >";
+		var sourcePath = ImportSettings.getSourcePath();
+		var lead = "Import  /  " + selector;
+		// The line stops before the right margin; the path gives up its middle, never its last folder.
+		var room = Std.int(importInfo.fieldWidth / (MenuStyle.BODY_SIZE * 0.68)) - lead.length - 6;
+		importInfo.text = lead + (sourcePath == null || sourcePath == '' ? '' : "  /  " + MainMenuFacts.middleEllipsis(sourcePath, Std.int(Math.max(12, room))));
 	}
 
 	function sourcePathIsValid():Bool {
@@ -487,10 +567,8 @@ class ImportSettingsState extends MusicBeatState {
 	}
 
 	function refreshSourcePath():Void {
-		if (sourcePathSelector == null)
-			return;
-		var sourcePath = ImportSettings.getSourcePath();
-		sourcePathSelector.text = sourcePath == '' ? "Not selected (choose a folder)" : shortenPath(sourcePath, 88);
+		refreshTitleLine();
+		refreshSteps();
 	}
 
 	function chooseSourceFolder():Void {
@@ -530,6 +608,7 @@ class ImportSettingsState extends MusicBeatState {
 		importTypeAtScan = '';
 		detailPage = 0;
 		detailLines = [];
+		importDone = false;
 		if (importStatus != null)
 			importStatus.text = message;
 		if (scanSummary != null)
@@ -671,6 +750,7 @@ class ImportSettingsState extends MusicBeatState {
 				var imported:Dynamic = snapshot.result;
 				importJob = null;
 				if (imported != null) {
+					importDone = true;
 					importStatus.text = ModuleFunctions.importBatchSummary(cast imported, true);
 					appendImportSummary(cast imported);
 				} else {
@@ -703,20 +783,21 @@ class ImportSettingsState extends MusicBeatState {
 		// complete root/evidence information.
 		var rootScanNote = result.rootScanTruncated == true ? "    ROOT SCAN TRUNCATED" : "";
 		var packageScanNote = result.packageScanTruncated == true ? "    PACKAGE SCAN TRUNCATED" : "";
+		// One short line per group so the narrow summary panel never breaks a figure in two.
 		scanSummary.text = "Importer: " + selectedType + "    Roots detected: " + detectedRootCount
-			+ "    Engine types: " + rootEngines.length + rootScanNote + packageScanNote
+			+ "\nEngine types: " + rootEngines.length + rootScanNote + packageScanNote
 			+ "\nSongs: " + result.songsFound + " found / " + result.songsToImport + " new / " + result.duplicateSongs + " duplicate"
-			+ "    Global packs: " + (result.globalPacksToImport == null ? 0 : result.globalPacksToImport)
+			+ "\nGlobal packs: " + (result.globalPacksToImport == null ? 0 : result.globalPacksToImport)
 			+ "    Charts: " + result.chartsFound
-			+ "    Characters: " + result.charactersFound
+			+ "\nCharacters: " + result.charactersFound
 			+ "    Stages: " + result.stagesFound
 			+ "\nAssets: " + result.assetFilesFound + " found / " + result.assetsToImport + " new / " + result.duplicateAssets + " duplicate"
-			+ "    UI: " + result.uiPacksFound
+			+ "\nUI: " + result.uiPacksFound
 			+ "    Layouts: " + result.layoutsFound
 			+ "    Cutscenes: " + result.cutscenesFound
 			+ "\nMissing: " + result.missingDependencies
 			+ "    Overlays: " + (result.overlayPlanned == null ? 0 : result.overlayPlanned)
-			+ "    Report: " + shortenPath(result.logPath, 90);
+			+ "\nReport: " + shortenPath(result.logPath, 44);
 
 		detailLines = [];
 		if (result.importerSuggestions != null)
@@ -937,8 +1018,10 @@ class ImportSettingsState extends MusicBeatState {
 		var visibleCount = Std.int(Math.min(perPage, remaining));
 		for (i in 0...visibleCount)
 			visible.push(visibleLines[start + i]);
-		detailText.text = visible.length == 0 ? "Scan details will appear here." : visible.join("\n");
+		detailPageLines = visible.length;
+		detailText.text = visible.join("\n");
 		detailPageText.text = maxPage > 0 ? "Details page " + (detailPage + 1) + "/" + (maxPage + 1) + "   (Page Up/Down or mouse wheel)" : "";
+		refreshPanels();
 	}
 
 	function shortenPath(path:String, maxLength:Int):String {
@@ -969,7 +1052,7 @@ class ImportSettingsState extends MusicBeatState {
 			return;
 		}
 		backRequested = false;
-		LoadingState.loadAndSwitchState(new SaveDataState());
+		LoadingState.loadAndSwitchState(new MainMenuState());
 	}
 
 	function detachImportAndLeave():Void {
@@ -980,6 +1063,6 @@ class ImportSettingsState extends MusicBeatState {
 		backRequested = false;
 		if (progressPresentation != null)
 			progressPresentation.invalidateStatus();
-		LoadingState.loadAndSwitchState(new SaveDataState());
+		LoadingState.loadAndSwitchState(new MainMenuState());
 	}
 }

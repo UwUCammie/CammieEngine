@@ -71,13 +71,40 @@ class ImportWorkflow {
 ''',
     "ImportRefreshManager.hx": r'''package;
 typedef ImportRefreshBrowseStatus = { var busy:Bool; }
+typedef ImportRefreshAvailabilitySnapshot = { var inspectionPending:Bool; var refreshInProgress:Bool; }
 class ImportRefreshManager {
   public static var busySequence:Array<Bool> = [];
   public static var calls:Int = 0;
+  public static function availabilitySnapshot():ImportRefreshAvailabilitySnapshot
+    return {inspectionPending:false, refreshInProgress:false};
   public static function browseTick():ImportRefreshBrowseStatus {
     var index = calls++;
     var busy = index < busySequence.length ? busySequence[index] : false;
     return {busy:busy};
+  }
+}
+''',
+    "ImportRemovalManager.hx": r'''package;
+typedef ImportRemovalStatus = { var phase:String; var busy:Bool; var label:String; var published:Bool; }
+/** Scripted stand-in: the preview and the removal each need one busy poll. */
+class ImportRemovalManager {
+  public static var calls:Array<String> = [];
+  public static var phase:String = 'idle';
+  public static var busyPolls:Int = 0;
+  public static var refuseConfirm:Bool = false;
+  public static var endPhase:String = 'complete';
+  public static function poll():ImportRemovalStatus {
+    var busy = busyPolls > 0;
+    if (busy) busyPolls--;
+    return {phase:phase, busy:busy, label:phase, published:phase == 'complete'};
+  }
+  public static function beginPreview(owner:String):Bool {
+    calls.push('preview:' + owner); phase = 'preview'; busyPolls = 1; return true;
+  }
+  public static function confirm():Bool {
+    calls.push('confirm');
+    if (refuseConfirm) return false;
+    phase = endPhase; busyPolls = 1; return true;
   }
 }
 ''',
@@ -105,6 +132,8 @@ class ImportRefreshManager {
   public static var options:Dynamic;
   public static var timeout:Bool = false;
   public static var events:Array<String> = [];
+  public static var removeOwner:String = '';
+  public static function argumentValue(flag:String):String return flag == '--smoke-import-remove-owner' ? removeOwner : '';
   public static function config():Dynamic return options;
   public static function start():Void {}
   public static function expired():Bool return timeout;
@@ -142,6 +171,12 @@ class RuntimeImportSmokeStateTest(unittest.TestCase):
       playAfterImport:false, packageName:'', packageNameProvided:false
     };
     RuntimeImportSmokeHarness.timeout = false;
+    RuntimeImportSmokeHarness.removeOwner = '';
+    ImportRemovalManager.calls = [];
+    ImportRemovalManager.phase = 'idle';
+    ImportRemovalManager.busyPolls = 0;
+    ImportRemovalManager.refuseConfirm = false;
+    ImportRemovalManager.endPhase = 'complete';
     RuntimeImportSmokeHarness.events = [];
     ImportRefreshManager.busySequence = busy;
     ImportRefreshManager.calls = 0;
@@ -189,6 +224,37 @@ class RuntimeImportSmokeStateTest(unittest.TestCase):
     check(RuntimeImportSmokeHarness.events.join(',') == 'timeout,failure:timeout'
       && ImportRefreshManager.calls == 1 && ImportWorkflow.beginImportCalls == 0,
       'timeout did not win while waiting for importer readiness');
+
+    // A requested removal runs first, through the Library menu's preview and
+    // confirmation, and the scan starts only after it has published.
+    reset(false,[]);
+    RuntimeImportSmokeHarness.removeOwner = 'assets/imported_mods/owner-1';
+    var removing = new RuntimeImportSmokeState();
+    removing.create();
+    check(ImportWorkflow.beginScanCalls == 0, 'the scan started before the requested removal');
+    for (_ in 0...12) removing.update(0.016);
+    check(ImportRemovalManager.calls.join(',') == 'preview:assets/imported_mods/owner-1,confirm',
+      'removal did not preview the owner and then confirm once: ' + ImportRemovalManager.calls.join(','));
+    check(ImportWorkflow.beginScanCalls == 1 && RuntimeImportSmokeHarness.events.join(',') == 'scan_ready,import_start',
+      'the import did not follow the finished removal: ' + RuntimeImportSmokeHarness.events.join(','));
+
+    reset(false,[]);
+    RuntimeImportSmokeHarness.removeOwner = 'assets/imported_mods/owner-1';
+    ImportRemovalManager.refuseConfirm = true;
+    var refused = new RuntimeImportSmokeState();
+    refused.create();
+    for (_ in 0...12) refused.update(0.016);
+    check(RuntimeImportSmokeHarness.events.join(',') == 'failure:removal' && ImportWorkflow.beginScanCalls == 0,
+      'a refused removal did not fail the run before any import: ' + RuntimeImportSmokeHarness.events.join(','));
+
+    reset(false,[]);
+    RuntimeImportSmokeHarness.removeOwner = 'assets/imported_mods/owner-1';
+    ImportRemovalManager.endPhase = 'conflict';
+    var conflicted = new RuntimeImportSmokeState();
+    conflicted.create();
+    for (_ in 0...12) conflicted.update(0.016);
+    check(RuntimeImportSmokeHarness.events.join(',') == 'failure:removal' && ImportWorkflow.beginScanCalls == 0,
+      'a removal that ended in conflict did not fail the run: ' + RuntimeImportSmokeHarness.events.join(','));
   }
 }
 ''', encoding="utf-8", newline="\n")

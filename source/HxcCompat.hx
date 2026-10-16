@@ -428,10 +428,10 @@ class HxcCompat {
 					boundedPointInitializer(translatedInitializer));
 			else if (isBoundedNoteStyleInitializer(translatedInitializer))
 				setStateInitializer(stateInitializers, declaration.name, translatedInitializer);
-			else if (RegexCache.get('^new\\s+FlxTweenManager\\s*\\(\\s*\\)$', '').match(translatedInitializer))
-				// A private tween clock (ScriptNativeClasses binds the class) that
-				// the script advances itself; without it the field stays null and
-				// every tween the stage starts on it is lost.
+			else if (isPrivateClockInitializer(translatedInitializer))
+				// A private tween or timer clock (ScriptNativeClasses binds the
+				// classes) that the script advances itself; without it the field
+				// stays null and every tween or timer started on it is lost.
 				setStateInitializer(stateInitializers, declaration.name, translatedInitializer);
 			else if (descriptorShaderFields.exists(declaration.name)
 				|| descriptorFilterFields.exists(declaration.name)) {
@@ -691,7 +691,7 @@ class HxcCompat {
 				if (declaration.initializer == null || StringTools.trim(declaration.initializer) == '')
 					continue;
 				var wrapperInitializer = StringTools.trim(translateBody(declaration.initializer));
-				if (isSimpleLiteral(wrapperInitializer)
+				if (isSimpleLiteral(wrapperInitializer) || isPrivateClockInitializer(wrapperInitializer)
 					|| stateInitializerFromKnownNames(wrapperInitializer, wrapperKnownNames)) {
 					setStateInitializer(stateInitializers, declaration.name, wrapperInitializer);
 					wrapperKnownNames.set(declaration.name, true);
@@ -3633,8 +3633,27 @@ class HxcCompat {
 				var nameStart = position.pos + match.matched(1).length;
 				if (isObjectLiteralKey(text, nameStart, position.pos + position.len))
 					return match.matched(0);
+				// A field name inside a string literal is data, not the actor's
+				// field: optional-write lowering emits `["visible"]` and `"animation"`
+				// property names that must stay exactly as authored.
+				if (isInsideStringLiteral(text, nameStart))
+					return match.matched(0);
 				return match.matched(1) + 'hxcCharacter().' + field;
 			});
+		}
+		// BaseCharacter.currentStage is the live stage. A bare read (`currentStage.add(x)`,
+		// lowered to `curStage`) answers with the running PlayState's stage unless the
+		// callback declares its own variable of that name.
+		if ((arguments == null || arguments.indexOf('curStage') < 0)
+			&& !RegexCache.get('\\b(?:var|final)\\s+(?:curStage|currentStage)\\b', 'm').match(stripComments(source)))
+		{
+			var stageText = output;
+			output = RegexCache.get('(^|[^A-Za-z0-9_.])curStage\\b', 'gm')
+				.map(stageText, function(match:EReg):String {
+					var start = match.matchedPos().pos + match.matched(1).length;
+					return isInsideStringLiteral(stageText, start) ? match.matched(0)
+						: match.matched(1) + 'PlayState.instance.curStage';
+				});
 		}
 		// HXC exposes the active animation's offsets as a two-element array.  The
 		// native Character keeps a name-keyed map, so route only the two indexed
@@ -3650,6 +3669,35 @@ class HxcCompat {
 		output = translateCharacterDeathOverlay(output);
 		output = lowerHxcNativeObjects(output);
 		return output;
+	}
+
+	/** A plain `new FlxTweenManager()` or `new FlxTimerManager()`: a private clock the
+		script advances itself, bound by ScriptNativeClasses. */
+	static function isPrivateClockInitializer(value:String):Bool
+		return RegexCache.get('^new\\s+(?:FlxTweenManager|FlxTimerManager)\\s*\\(\\s*\\)$', '').match(StringTools.trim(value));
+
+	/** Whether `index` sits inside a quoted string on its own line. */
+	static function isInsideStringLiteral(text:String, index:Int):Bool {
+		var lineStart = index;
+		while (lineStart > 0 && text.charAt(lineStart - 1) != '\n')
+			lineStart--;
+		var quote = '';
+		var escaped = false;
+		var cursor = lineStart;
+		while (cursor < index) {
+			var current = text.charAt(cursor);
+			if (quote != '') {
+				if (escaped)
+					escaped = false;
+				else if (current == '\\')
+					escaped = true;
+				else if (current == quote)
+					quote = '';
+			} else if (current == '"' || current == "'")
+				quote = current;
+			cursor++;
+		}
+		return quote != '';
 	}
 
 	/** Whether text[start, end) is a key in an object literal: preceded by `{` or
@@ -9163,6 +9211,15 @@ class HxcCompat {
 		if (source == null || source.indexOf('.load') < 0)
 			return source;
 		var output = source;
+		// `new FunkinSprite(x, y).loadTextureAtlas(key, library, settings)` builds an
+		// Animate sprite at that position; the constructor placeholder cannot turn
+		// into one afterwards, so the chain becomes the Animate factory itself.
+		output = RegexCache.get('HxcCompatRuntime\\.createFunkinSprite\\(hxcAssetRoot((?:\\s*,[^()]*)?)\\)\\s*\\.\\s*loadTextureAtlas\\s*\\(', 'g')
+			.map(output, function(match:EReg):String {
+				var position = StringTools.trim(match.matched(1));
+				return 'HxcCompatRuntime.createFunkinSpriteTextureAtlas(hxcAssetRoot'
+					+ (position == '' ? ', 0, 0, ' : match.matched(1) + ', ');
+			});
 		for (method in ['Sparrow', 'Texture']) {
 			output = RegexCache.get('HxcCompatRuntime\\.createFunkinSprite\\(hxcAssetRoot((?:\\s*,[^()]*)?)\\)\\s*\\.\\s*load'
 				+ method + '\\s*\\(', 'g')
@@ -10077,7 +10134,23 @@ class HxcCompat {
 				continue;
 			}
 			var receiver = StringTools.trim(output.substr(receiverStart, receiverEnd - receiverStart));
-			if (receiver.indexOf('?.') >= 0 || receiver.indexOf('(') >= 0 || receiver.indexOf('[') >= 0) {
+			// A call or index receiver (`getProp(name)?.shader = rim`) is evaluated
+			// exactly once as the setter's first argument, so it is as safe as a
+			// plain identifier. A receiver with its own optional hops is lowered
+			// to a read first so the setter still receives one finished value.
+			// `a()?.b()?.c = v`: the operand scan stops at the optional dot, so widen
+			// the receiver to the whole earlier chain before lowering it.
+			while (receiver.startsWith('.') && receiverStart > 1 && output.charAt(receiverStart - 1) == '?') {
+				var prior = scanLeftOperandStart(output, receiverStart - 2);
+				if (prior < 0)
+					break;
+				receiverStart = prior;
+				receiver = StringTools.trim(output.substr(receiverStart, receiverEnd - receiverStart));
+			}
+			if (receiver.indexOf('?.') >= 0)
+				receiver = lowerOptionalChains(receiver);
+			if (receiver.indexOf('?.') >= 0 || receiver.startsWith('.')
+				|| (receiverStart > 0 && output.charAt(receiverStart - 1) == '?')) {
 				search = optional + 2;
 				continue;
 			}

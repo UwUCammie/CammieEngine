@@ -1,12 +1,14 @@
 package;
 
 import OptionsHandler.FullOptions;
+import MenuStyle.MenuHint;
 import haxe.ds.Option;
 import OptionsHandler.TOptions;
 import Controls.Control;
 import flash.text.TextField;
 import flixel.FlxG;
 import flixel.FlxSprite;
+import flixel.group.FlxGroup;
 import flixel.group.FlxGroup.FlxTypedGroup;
 import flixel.group.FlxSpriteGroup.FlxTypedSpriteGroup;
 import flixel.math.FlxMath;
@@ -43,9 +45,13 @@ typedef TOption = {
 	var ?min:Float;
 }
 class SaveDataState extends MusicBeatState {
-	var saves:FlxTypedSpriteGroup<SaveFile>;
-	var options:FlxTypedSpriteGroup<Alphabet>;
-	var optionMenu:FlxTypedSpriteGroup<FlxSprite>;
+	var saves:FlxTypedGroup<SaveFile>;
+	var optionCards:Array<MenuCard> = [];
+	var sectionCards:Array<MenuCard> = [];
+	/** World x of the options screen; the save slots are one screen to its left. */
+	var optionsX:Float = 0;
+	var footer:MenuFooter;
+	var hintKey:String = '';
 	// this will need to be initialized in title state!!!
 	public static var optionList:Array<TOption>;
 	var optionMask:Mask<FullOptions>;
@@ -54,21 +60,41 @@ class SaveDataState extends MusicBeatState {
 	var mappedOptions:Dynamic = {};
 	var inOptionsMenu:Bool = false;
 	var optionsSelected:Int = 0;
-	var categoryRows:FlxTypedSpriteGroup<Alphabet>;
 	var categoryHeading:FlxText;
-	var categoryHelp:FlxText;
+	var listHeading:FlxText;
+	var saveHeading:FlxText;
+	var saveTitle:FlxText;
+	var saveMeta:FlxText;
+	var savePanel:MenuWidgets.MenuPanelParts;
+	/** The settings list and the section tabs beside it, in screen pixels. */
+	static inline var SIDEBAR_X:Int = 32;
+	static inline var SIDEBAR_WIDTH:Int = 340;
+	static inline var SIDEBAR_TOP:Int = 100;
+	static inline var TAB_HEIGHT:Int = 54;
+	static inline var TAB_GAP:Int = 6;
+	static inline var LIST_X:Int = 404;
+	static inline var LIST_WIDTH:Int = 680;
+	static inline var LIST_TOP:Int = 100;
+	static inline var LIST_BOTTOM:Int = 640;
+	static inline var LIST_GAP:Int = 4;
+	static inline var SAVE_X:Int = 32;
+	static inline var SAVE_WIDTH:Int = 560;
+	static inline var SAVE_GAP:Int = 4;
+	static var tabLook:MenuStyle.MenuCardLook = {idle: TAB_HEIGHT, selected: TAB_HEIGHT, titleSize: 20, selectedTitleSize: 20,
+		titleTop: 15, titleLift: 0, valueSize: 16, reserve: 40};
+	static var rowLook:MenuStyle.MenuCardLook = {idle: 44, selected: 92, titleSize: 20, selectedTitleSize: 24,
+		titleTop: 11, titleLift: 3, captionTop: 46, captionSize: 14, captionLines: 2};
 	var categorySelected:Int = 0;
 	var inOptionCategory:Bool = false;
 	var categoryOptions:Array<Int> = [];
-	var checkmarks:FlxTypedSpriteGroup<FlxSprite>;
 	var numberDisplays:Array<NumberDisplay> = [];
 	var sfxJson:Dynamic = CoolUtil.parseJson(FNFAssets.getText("assets/sounds/custom_menu_sounds/custom_menu_sounds.json"));
 	var musicJson:Dynamic = CoolUtil.parseJson(FNFAssets.getText("assets/music/custom_menu_music/custom_menu_music.json"));
 	var preferredSave:Int = 0;
-	var description:FlxText;
 	var importWorkBusy:Bool = false;
 	var forbiddenIndexes:Array<Int> = [];
 	#if (sys && windows)
+	var updateDialogGroup:FlxGroup;
 	var updateDialogBackground:FlxSprite;
 	var updateDialogText:FlxText;
 	var updateDialogVisible:Bool = false;
@@ -90,7 +116,6 @@ class SaveDataState extends MusicBeatState {
 		optionMask = CoolUtil.parseJson(FNFAssets.getJson('assets/data/optionsMask'));
 		FlxG.sound.playMusic(goodSound);
 		RuntimeSongExitProbe.mark("options-audio-end");
-		var menuBG:FlxSprite = new FlxSprite().loadGraphic('assets/images/menuDesat.png');
 			optionList = [
 							{name: "Controls...", value: false, intName:'controls', desc:"Edit bindings!", ignore: true,},
 							{name: "FPS Limit", value: false, intName: "fpsCap", desc: "Set any positive whole-number FPS limit. Shift + Left/Right changes 20 FPS. Hold Control to scroll faster.", amount: 60, defAmount: 60, max: OptionsHandler.MAX_FPS_CAP, min: 1, precision: 1},
@@ -157,7 +182,6 @@ class SaveDataState extends MusicBeatState {
 							//{name: "UI Layout...", value: false, intName:'newui', desc: "Change the layout of the UI in-game!", ignore: true,},
 								{name:"Module...", value:false, intName:'module', desc: "Make new stuff!", ignore: true,},
 								{name:"newModule...", value:false, intName:'newmodule', desc: "Make newnew stuff!", ignore: true,},
-								{name:"Import Settings...", value:false, intName:'importSettings', desc: "Choose the song importer.", ignore: true,},
 								#if windows
 								{name:"Check for Updates...", value:false, intName:'checkUpdates', desc: "Check for a newer Windows release and choose whether to download and install it.", ignore:true,},
 								#end
@@ -192,121 +216,105 @@ class SaveDataState extends MusicBeatState {
 		// although it isn't as laggy thanks to assets
 		
 		preferredSave = curOptions.preferredSave;
-		saves = new FlxTypedSpriteGroup<SaveFile>();
-		menuBG.color = 0xFF7194fc;
-		menuBG.setGraphicSize(Std.int(menuBG.width * 1.1));
-		menuBG.updateHitbox();
-		menuBG.screenCenter();
-		menuBG.antialiasing = true;
-		trace("before");
+		// The save slots sit on the first screen and the options one screen to
+		// its right; the camera slides between them.
+		optionsX = FlxG.width;
+		var backdrop = MenuWidgets.backdrop();
+		backdrop.scrollFactor.set();
+		add(backdrop);
+		var shade = MenuWidgets.shade();
+		shade.scrollFactor.set();
+		add(shade);
+		saves = new FlxTypedGroup<SaveFile>();
 		for (i in 0...10) {
-			var saveFile = new SaveFile(420, 0, i);
-
-			saves.add(saveFile);
+			saves.add(new SaveFile(i, SAVE_WIDTH));
 		}
+		add(saves);
 		RuntimeSongExitProbe.mark("options-saves-ready");
-		trace("x3");
-		checkmarks = new FlxTypedSpriteGroup<FlxSprite>();
-		options = new FlxTypedSpriteGroup<Alphabet>();
-		optionMenu = new FlxTypedSpriteGroup<FlxSprite>();
-		optionMenu.add(options);
-		trace("hmmm");
-		var curNum = 0;
 		for (j in 0...optionList.length) {
 			if (Reflect.field(optionMask, optionList[j].intName) != null && !Reflect.field(optionMask, optionList[j].intName)) {
 				// skip display if it is masked out
 				continue;
 			}
 			forbiddenIndexes.push(j);
-			trace("l53");
-			var swagOption = new Alphabet(0,0,optionList[j].name,true,false, false, 90, 0.48);
-			var rowTextScale = Math.min(0.85, 620 / Math.max(1, swagOption.width));
-			swagOption.isMenuItem = true;
-			swagOption.menuMotionRate = 2;
-			swagOption.menuRowSpacing = 96;
-			swagOption.itemType = "Classic";
-			swagOption.targetY = curNum;
-			trace("l57");
-			var coolCheckmark = new FlxSprite().loadGraphic('assets/images/checkmark.png');
-			coolCheckmark.scale.set(0.55, 0.55);
-			coolCheckmark.updateHitbox();
-			coolCheckmark.x = -70;
 			var numDisplay = new NumberDisplay(0, 0, optionList[j].defAmount, optionList[j].precision != null ? optionList[j].precision : 1, optionList[j].min != null ? optionList[j].min : 0, optionList[j].max);
 			numDisplay.visible = optionList[j].amount != null;
 			numberDisplays.push(numDisplay);
 			numDisplay.value = optionList[j].amount;
-			coolCheckmark.visible = optionList[j].value;
-			if (optionList[j].intName == "judge") {
-				switch (cast(Std.int(optionList[j].amount) : Judge.Jury)) {
-					case Judge.Jury.Classic:
-						numDisplay.text = "Classic";
-					case Judge.Jury.Hard:
-						numDisplay.text = "Hard";
-					default:
-						numDisplay.text = optionList[j].amount + 1 + "";
-				}
-			}
 			numDisplay.size = 40;
-			numDisplay.x += numDisplay.width + swagOption.width;
-			
-			checkmarks.add(coolCheckmark);
-			swagOption.add(coolCheckmark);
-			swagOption.add(numDisplay);
-			swagOption.setMenuTextScale(rowTextScale);
-			options.add(swagOption);
-			curNum++;
+			var card = new MenuCard(optionList[j].name, LIST_WIDTH, 24, rowLook);
+			card.exists = false;
+			card.setCaption(FreeplayBrowserLayout.label(optionList[j].desc, Std.int((LIST_WIDTH - 48) / 8.4) * 2 - 4));
+			optionCards.push(card);
+			add(card);
 		}
+		for (j in 0...optionList.length)
+			refreshAmountText(j);
+		for (j in 0...optionCards.length)
+			refreshOptionValue(j);
 		RuntimeSongExitProbe.mark("options-rows-ready");
-		add(menuBG);
-		add(saves);
-		add(optionMenu);
-		trace("hewwo");
-		options.x = 10;
-		optionMenu.x = FlxG.width;
-		options.y = 10;
-		description = new FlxText(750, 150, 350, "", 90);
-		description.setFormat("assets/fonts/vcr.ttf", 32, FlxColor.WHITE, LEFT, OUTLINE, FlxColor.BLACK);
-		description.text = "Amongus???";
-		description.scrollFactor.set();
-		optionMenu.add(description);
-		description.setFormat("assets/fonts/vcr.ttf", 27, FlxColor.WHITE, LEFT, OUTLINE, FlxColor.BLACK);
-		categoryRows = new FlxTypedSpriteGroup<Alphabet>();
 		var sectionNames = OptionsCategories.names();
 		for (index in 0...sectionNames.length) {
-			var row = new Alphabet(90, FlxG.height * 0.48 + index * 96,
-				sectionNames[index], true, false, false, 90, 0.48);
-			row.isMenuItem = true;
-			row.itemType = "Classic";
-			row.targetY = index;
-			row.menuMotionRate = 2;
-			row.menuRowSpacing = 96;
-			// Section names are longer than most option labels; use one smaller
-			// Scale long section names to the same column as the option labels.
-			row.setMenuTextScale(Math.min(0.85, 620 / Math.max(1, row.width)));
-			categoryRows.add(row);
+			var count = OptionsCategories.indices(cast optionList, sectionNames[index]).length;
+			var row = new MenuCard(sectionNames[index], SIDEBAR_WIDTH, 22, tabLook);
+			row.exists = false;
+			row.setValue(Std.string(count), MenuStyle.MUTED, 36);
+			sectionCards.push(row);
+			add(row);
 		}
-		optionMenu.add(categoryRows);
-		categoryHeading = new FlxText(140, 28, FlxG.width - 160, "", 28);
-		categoryHeading.setFormat("assets/fonts/vcr.ttf", 28, FlxColor.WHITE, LEFT, OUTLINE, FlxColor.BLACK);
-		optionMenu.add(categoryHeading);
-		categoryHelp = new FlxText(20, FlxG.height - 42, FlxG.width - 40, "", 17);
-		categoryHelp.setFormat("assets/fonts/vcr.ttf", 17, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
-		optionMenu.add(categoryHelp);
-		refreshCategoryRows();
+		// Labels over the two columns, and the one line that says where you are.
+		var tabsLabel = MenuWidgets.text(SIDEBAR_X + optionsX, SIDEBAR_TOP - 22, SIDEBAR_WIDTH, 'SECTIONS', MenuStyle.SECTION_SIZE, MenuStyle.TEAL);
+		add(tabsLabel);
+		listHeading = MenuWidgets.text(LIST_X + optionsX, LIST_TOP - 22, LIST_WIDTH, '', MenuStyle.SECTION_SIZE, MenuStyle.PINK);
+		listHeading.wordWrap = false;
+		add(listHeading);
+		// The save slots' own panels, sized to their text.
+		var panelX = SAVE_X + SAVE_WIDTH + 40;
+		savePanel = MenuWidgets.sizedPanel(this, MenuStyle.PINK, 'SAVE SLOT');
+		MenuWidgets.sizePanel(savePanel, panelX, SIDEBAR_TOP, 380, 128);
+		saveTitle = MenuWidgets.text(panelX + 16, SIDEBAR_TOP + 28, 350, '', 24, MenuStyle.WHITE);
+		saveTitle.wordWrap = false;
+		add(saveTitle);
+		saveMeta = MenuWidgets.text(panelX + 16, SIDEBAR_TOP + 64, 350, '', 16, MenuStyle.MUTED);
+		add(saveMeta);
+		var howParts = MenuWidgets.sizedPanel(this, MenuStyle.TEAL, 'HOW SAVES WORK');
+		MenuWidgets.sizePanel(howParts, panelX, SIDEBAR_TOP + 140, 380, 112);
+		add(MenuWidgets.text(panelX + 16, SIDEBAR_TOP + 140 + 30, 350,
+			'Each slot keeps its own scores and progress. Load switches the game to that slot. Delete erases the slot after you confirm.',
+			16, MenuStyle.TEXT));
+		categoryHeading = MenuWidgets.text(150 + optionsX, 14, FlxG.width - 400, '', MenuStyle.BODY_SIZE, MenuStyle.MUTED);
+		categoryHeading.wordWrap = false;
+		add(categoryHeading);
+		saveHeading = MenuWidgets.text(150, 14, FlxG.width - 400, 'Save slots  /  10 slots', MenuStyle.BODY_SIZE, MenuStyle.MUTED);
+		saveHeading.wordWrap = false;
+		add(saveHeading);
+		markCurrentSave();
+		footer = new MenuFooter('OPTIONS', hintsFor());
+		for (item in footer.members)
+			item.scrollFactor.set();
+		add(footer);
+		refreshCategoryRows(true);
 		#if (sys && windows)
-		updateDialogBackground = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, FlxColor.fromRGB(0, 0, 0, 220));
-		updateDialogBackground.scrollFactor.set();
-		updateDialogBackground.visible = false;
-		add(updateDialogBackground);
-		updateDialogText = new FlxText(90, 145, FlxG.width - 180, '', 420);
-		updateDialogText.setFormat('assets/fonts/vcr.ttf', 24, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
-		updateDialogText.scrollFactor.set();
-		updateDialogText.visible = false;
-		add(updateDialogText);
+		var dialogWidth = 760;
+		var dialogHeight = 500;
+		var dialogX = Std.int((FlxG.width - dialogWidth) / 2);
+		var dialogY = Std.int((FlxG.height - dialogHeight) / 2);
+		updateDialogGroup = new FlxGroup();
+		MenuWidgets.panel(updateDialogGroup, dialogX, dialogY, dialogWidth, dialogHeight);
+		updateDialogBackground = cast updateDialogGroup.members[0];
+		updateDialogText = MenuWidgets.text(dialogX + 32, dialogY + 40, dialogWidth - 64, '', 20, MenuStyle.TEXT);
+		updateDialogText.fieldHeight = dialogHeight - 80;
+		updateDialogGroup.add(MenuWidgets.text(dialogX + 32, dialogY + 16, dialogWidth - 64, 'WINDOWS UPDATE', MenuStyle.SECTION_SIZE, MenuStyle.PINK));
+		updateDialogGroup.add(updateDialogText);
+		for (item in updateDialogGroup.members)
+			if (item != null) (cast item:FlxSprite).scrollFactor.set();
+		updateDialogGroup.visible = false;
+		add(updateDialogGroup);
 		updateInstallStatusPath = UpdateChecker.activeInstallStatusPath();
 		add(new UpdateProgressBar());
 		#end
 		changeSelection();
+		refreshHints();
 		if (curOptions.allowEditOptions)
 			swapMenus();
 		#if sys
@@ -327,6 +335,7 @@ class SaveDataState extends MusicBeatState {
 			return;
 		}
 		#end
+		refreshHints();
 		if (controls.BACK) {
 			if (inOptionsMenu && inOptionCategory) {
 				inOptionCategory = false;
@@ -359,6 +368,7 @@ class SaveDataState extends MusicBeatState {
 					saves.members[curSelected].askToConfirm(false);
 				else
 					saves.members[curSelected].beSelected(false);
+				refreshSaveRows();
 			}
 			return;
 		}
@@ -372,8 +382,10 @@ class SaveDataState extends MusicBeatState {
 					changeSelection(1);
 			}
 			if ((controls.RIGHT_MENU || controls.LEFT_MENU)) {
-				if (saves.members[curSelected].beingSelected)
+				if (saves.members[curSelected].beingSelected) {
 					saves.members[curSelected].changeSelection();
+					refreshSaveRows();
+				}
 				else if (inOptionsMenu && inOptionCategory && optionList[optionsSelected].amount != null) {
 					if (!(inOptionsMenu && FlxG.keys.pressed.CONTROL))
 						changeAmount(controls.RIGHT_MENU);
@@ -387,7 +399,7 @@ class SaveDataState extends MusicBeatState {
 		}
 		var repeatDirection = controls.RIGHT_MENU_H ? 1 : controls.LEFT_MENU_H ? -1 : 0;
 		var repeatAllowed = inOptionsMenu && inOptionCategory && FlxG.keys.pressed.CONTROL
-			&& optionList[optionsSelected].amount != null && numberDisplays[optionsSelected].visible;
+			&& optionList[optionsSelected].amount != null;
 		var repeatChanges = amountRepeat.update(repeatDirection, elapsed, optionsSelected, repeatAllowed);
 		if (repeatChanges > 0) {
 			for (i in 0...repeatChanges)
@@ -398,7 +410,7 @@ class SaveDataState extends MusicBeatState {
 				playMenuSound('cancel'); return;
 			}
 			if (inOptionsMenu && inOptionCategory && !ImportMenuNavigationPolicy.optionsActionAllowed(importWorkBusy, optionList[optionsSelected].name)) {
-				description.text = 'An import is still running. You can browse available songs or return to the importer.';
+				footer.setNote('An import is still running. You can browse available songs or return to the importer.', MenuStyle.AMBER);
 				playMenuSound('cancel'); return;
 			}
 			if (inOptionsMenu && !inOptionCategory) {
@@ -418,9 +430,11 @@ class SaveDataState extends MusicBeatState {
 						if (FlxG.save.data.songScores == null)
 							FlxG.save.data.songScores = ["tutorial" => 0];
 						Highscore.load();
+						markCurrentSave();
 					} else {
 						saves.members[curSelected].askToConfirm(true);
 					}
+					refreshSaveRows();
 
 				} else {
 					// this means the user confirmed!
@@ -434,11 +448,14 @@ class SaveDataState extends MusicBeatState {
 					FlxG.save.data.songScores = ["tutorial" => 0];
 					FlxG.save.bind(oldSave, "bulbyVR");
 					Highscore.load();
+					markCurrentSave();
+					refreshSaveRows();
 				}
 			} else if (!inOptionsMenu) {
 				FlxG.sound.play('assets/sounds/custom_menu_sounds/'
 					+ sfxJson.customMenuScroll+'/scrollMenu' + TitleState.soundExt);
 				saves.members[curSelected].beSelected(true);
+				refreshSaveRows();
 			} else {
 				switch (optionList[optionsSelected].name) {
 					case "New Character...":
@@ -466,10 +483,6 @@ class SaveDataState extends MusicBeatState {
 						saveOptions();
 
 						LoadingState.loadAndSwitchState(new NewModule());
-					case "Import Settings...":
-						saveOptions();
-
-						LoadingState.loadAndSwitchState(new ImportSettingsState());
 					#if windows
 					case "Check for Updates...":
 						beginUpdateCheck();
@@ -501,9 +514,10 @@ class SaveDataState extends MusicBeatState {
 						saveOptions();
 						LoadingState.loadAndSwitchState(new CreditsState());
 					default:
-						if (OptionsHandler.options.allowEditOptions){
-							checkmarks.members[optionsSelected].visible = !checkmarks.members[optionsSelected].visible;
-							optionList[optionsSelected].value = checkmarks.members[optionsSelected].visible;
+						if (OptionsHandler.options.allowEditOptions) {
+							optionList[optionsSelected].value = !optionList[optionsSelected].value;
+							refreshOptionRows();
+							refreshDetails();
 						}
 				}
 
@@ -624,22 +638,20 @@ class SaveDataState extends MusicBeatState {
 	function showUpdateDialog(text:String, mode:String):Void {
 		updateDialogMode = mode;
 		updateDialogVisible = true;
-		updateDialogBackground.visible = true;
+		updateDialogGroup.visible = true;
 		updateDialogText.text = text;
-		updateDialogText.visible = true;
 	}
 
 	function hideUpdateDialog():Void {
 		updateDialogVisible = false;
-		updateDialogBackground.visible = false;
-		updateDialogText.visible = false;
+		updateDialogGroup.visible = false;
 	}
 	#end
 
 	function changeAmount(increase:Bool = false) {
 		if (!inOptionCategory || optionsSelected < 0 || optionsSelected >= optionList.length)
 			return;
-		if (!numberDisplays[optionsSelected].visible)
+		if (optionList[optionsSelected].amount == null)
 			return;
 		var field = optionList[optionsSelected].intName;
 		var step:Null<Float> = (field == "offset" || field == "fpsCap") && FlxG.keys.pressed.SHIFT ? 20 : null;
@@ -653,32 +665,9 @@ class SaveDataState extends MusicBeatState {
 		else if (numberDisplays[optionsSelected].value != numberDisplays[optionsSelected].useDefaultValue && !optionList[optionsSelected].value) {
 			toggleSelection();
 		}
-		if (optionList[optionsSelected].intName == "judge") {
-			switch (cast (Std.int(optionList[optionsSelected].amount) : Judge.Jury)) {
-				case Judge.Jury.Classic:
-					numberDisplays[optionsSelected].text = "Classic";
-				case Judge.Jury.Hard:
-					numberDisplays[optionsSelected].text = "Hard";
-				default:
-					numberDisplays[optionsSelected].text = optionList[optionsSelected].amount + 1 + "";
-			}
-		}
-		if (optionList[optionsSelected].intName == "preferJudgement") {
-			var judgementList = CoolUtil.coolTextFile('assets/data/judgements.txt');
-			numberDisplays[optionsSelected].text = judgementList[Std.int(optionList[optionsSelected].amount)];
-		}
-		if (optionList[optionsSelected].intName == "accuracyMode") {
-			switch (cast (Std.int(optionList[optionsSelected].amount) : OptionsHandler.AccuracyMode)) {
-				case Simple: 
-					numberDisplays[optionsSelected].text = "Simple";
-				case Binary:
-					numberDisplays[optionsSelected].text = "Binary";
-				case Complex:
-					numberDisplays[optionsSelected].text = "Complex";
-				case None:
-					numberDisplays[optionsSelected].text = "Disable";
-			}
-		}
+		refreshAmountText(optionsSelected);
+		refreshOptionRows();
+		refreshDetails();
 	}
 	function changeSelection(change:Int = 0) {
 		if (!inOptionsMenu) {
@@ -691,20 +680,7 @@ class SaveDataState extends MusicBeatState {
 			if (curSelected >= saves.members.length)
 				curSelected = 0;
 
-			var bullShit:Int = 0;
-
-			for (item in saves.members) {
-				item.targetY = bullShit - curSelected;
-				bullShit++;
-
-				item.color = 0xFF828282;
-				// item.setGraphicSize(Std.int(item.width * 0.8));
-
-				if (item.targetY == 0) {
-					item.color = 0xFFFFFFFF;
-					// item.setGraphicSize(Std.int(item.width));
-				}
-			}
+			refreshSaveRows();
 		} else if (!inOptionCategory) {
 			if (change != 0) playMenuSound('scroll');
 			var names = OptionsCategories.names();
@@ -719,7 +695,7 @@ class SaveDataState extends MusicBeatState {
 
 
 			refreshOptionRows();
-			description.text = optionList[optionsSelected].desc;
+			refreshDetails();
 		}
 
 	}
@@ -734,43 +710,151 @@ class SaveDataState extends MusicBeatState {
 		changeSelection();
 	}
 
-	function refreshOptionRows():Void {
-		for (index in 0...options.members.length) {
-			var item = options.members[index];
-			var position = categoryOptions.indexOf(index);
-			var shown = inOptionCategory && position >= 0;
-			item.visible = shown;
-			item.active = shown;
-			item.targetY = position - categoryOptions.indexOf(optionsSelected);
-			item.alpha = index == optionsSelected ? 1 : 0.6;
-			// FlxSpriteGroup visibility propagates to every child. Restore the
-			// numeric/toggle decorations from saved model values after each filter.
-			checkmarks.members[index].visible = shown && optionList[index].value;
-			numberDisplays[index].visible = shown && optionList[index].amount != null;
+	/** Stack a list of cards from the top of its column: the open card is taller
+	 * and a list longer than the column scrolls to keep it in view. With nothing
+	 * selected the cards show as a quiet preview. */
+	function layoutStack(cards:Array<MenuCard>, positions:Array<Int>, selected:Int, baseX:Float, top:Float, bottom:Float, gap:Int,
+		focused:Bool, snap:Bool):Void {
+		var selectedPosition = Std.int(Math.max(0, positions.indexOf(selected)));
+		var idle = cards.length == 0 ? MenuStyle.ROW_HEIGHT : cards[0].idleHeight;
+		var open = cards.length == 0 ? MenuStyle.SELECTED_HEIGHT : cards[0].selectedHeight;
+		var scroll = focused ? MenuStyle.stackScroll(selectedPosition, positions.length, idle, open, gap, bottom - top) : 0;
+		for (index in 0...cards.length) {
+			var card = cards[index];
+			var position = positions.indexOf(index);
+			var isSelected = focused && position >= 0 && index == selected;
+			card.present(isSelected, false);
+			card.opacity = focused ? 1 : 0.6;
+			if (position < 0) {
+				card.exists = false;
+				continue;
+			}
+			var cardTop = MenuStyle.stackTop(position, focused ? selectedPosition : positions.length, top, idle, open, gap) - scroll;
+			var fits = MenuStyle.fitsRegion(cardTop, isSelected ? open : idle, top, bottom);
+			var appearing = fits && !card.exists;
+			card.exists = fits;
+			if (fits) card.moveTo(baseX, cardTop, snap || appearing);
 		}
 	}
 
-	function refreshCategoryRows():Void {
-		if (categoryRows == null) return;
-		categoryRows.visible = !inOptionCategory;
-		categoryRows.active = !inOptionCategory;
-		options.visible = inOptionCategory;
-		refreshOptionRows();
-		categoryHeading.text = inOptionCategory
-			? 'Options / ' + OptionsCategories.names()[categorySelected] : 'Options';
-		categoryHelp.text = inOptionCategory
-			? 'Up/Down: choose   Left/Right: change   Enter: toggle   Back: sections'
-			: 'Up/Down: choose section   Enter: open   Back: return'
-				+ (OptionsHandler.options.useSaveDataMenu ? '   Left/Right: saves' : '');
-		for (index in 0...categoryRows.members.length) {
-			categoryRows.members[index].targetY = index - categorySelected;
-			categoryRows.members[index].alpha = index == categorySelected ? 1 : 0.6;
+	function refreshSaveRows(snap:Bool = false):Void {
+		var all = [for (index in 0...saves.members.length) index];
+		layoutStack(cast saves.members, all, curSelected, SAVE_X, SIDEBAR_TOP, LIST_BOTTOM, SAVE_GAP, true, snap);
+		var slot = saves.members[curSelected];
+		saveTitle.text = 'Save ' + (curSelected + 1);
+		saveMeta.text = slot.characterName() + (slot.isCurrent ? '\nThis is the save the game is using now.' : '\nPress ACCEPT to open this save.');
+	}
+
+	function markCurrentSave():Void {
+		for (slot in saves.members)
+			slot.setActive(FlxG.save != null && FlxG.save.name == 'save' + slot.slot);
+	}
+
+	/** Display text of a numeric row: names where the number is a choice. */
+	function refreshAmountText(index:Int):Void {
+		var option = optionList[index];
+		if (option.amount == null) return;
+		switch (option.intName) {
+			case "judge":
+				switch (cast (Std.int(option.amount) : Judge.Jury)) {
+					case Judge.Jury.Classic:
+						numberDisplays[index].text = "Classic";
+					case Judge.Jury.Hard:
+						numberDisplays[index].text = "Hard";
+					default:
+						numberDisplays[index].text = option.amount + 1 + "";
+				}
+			case "preferJudgement":
+				var judgementList = CoolUtil.coolTextFile('assets/data/judgements.txt');
+				var at = Std.int(option.amount);
+				if (at >= 0 && at < judgementList.length)
+					numberDisplays[index].text = judgementList[at];
+			case "accuracyMode":
+				switch (cast (Std.int(option.amount) : OptionsHandler.AccuracyMode)) {
+					case Simple:
+						numberDisplays[index].text = "Simple";
+					case Binary:
+						numberDisplays[index].text = "Binary";
+					case Complex:
+						numberDisplays[index].text = "Complex";
+					case None:
+						numberDisplays[index].text = "Disable";
+				}
+			default:
 		}
+	}
+
+	/** A row opens another screen or starts a task instead of holding a value. */
+	function isActionRow(index:Int):Bool {
+		return switch (optionList[index].intName) {
+			case 'controls' | 'calibrate' | 'credits' | 'soundtest' | 'module' | 'newmodule' | 'checkUpdates' | 'sort': true;
+			default: false;
+		};
+	}
+
+	/** Draw one row's value from the model: a switch, a number or an action. */
+	function refreshOptionValue(index:Int):Void {
+		var option = optionList[index];
+		var card = optionCards[index];
+		if (option.amount != null)
+			card.setValue(numberDisplays[index].text, option.value ? MenuStyle.TEAL : MenuStyle.TEXT, 180);
+		else if (isActionRow(index))
+			card.setValue('OPEN', MenuStyle.GOLD, 80);
+		else
+			card.setSwitch(option.value);
+	}
+
+	function refreshOptionRows(snap:Bool = false):Void {
+		for (index in 0...optionCards.length)
+			refreshOptionValue(index);
+		var shown = inOptionCategory ? categoryOptions : OptionsCategories.indices(cast optionList, OptionsCategories.names()[categorySelected]);
+		layoutStack(optionCards, shown, optionsSelected, optionsX + LIST_X, LIST_TOP, LIST_BOTTOM, LIST_GAP, inOptionCategory, snap);
+	}
+
+	function refreshCategoryRows(snap:Bool = false):Void {
+		if (sectionCards.length == 0) return;
+		refreshOptionRows(snap);
+		for (index in 0...sectionCards.length) {
+			var tab = sectionCards[index];
+			tab.exists = true;
+			tab.present(index == categorySelected, false);
+			tab.moveTo(optionsX + SIDEBAR_X, SIDEBAR_TOP + index * (TAB_HEIGHT + TAB_GAP), snap);
+		}
+		refreshSaveRows(snap);
+		refreshDetails();
+	}
+
+	/** The line that says where you are, and the label over the settings. */
+	function refreshDetails():Void {
+		var names = OptionsCategories.names();
+		var section = names[categorySelected];
+		var members = OptionsCategories.indices(cast optionList, section);
+		listHeading.text = section.toUpperCase() + '  /  ' + members.length + (members.length == 1 ? ' SETTING' : ' SETTINGS');
 		if (!inOptionCategory) {
-			var section = OptionsCategories.names()[categorySelected];
-			var count = OptionsCategories.indices(cast optionList, section).length;
-			description.text = section + '\n\n' + count + ' settings\n\nPress Enter to open.';
+			categoryHeading.text = 'Options  /  ' + names.length + ' sections';
+			return;
 		}
+		var position = Std.int(Math.max(0, categoryOptions.indexOf(optionsSelected)));
+		categoryHeading.text = 'Options  /  ' + section + '  /  ' + (position + 1) + ' of ' + categoryOptions.length;
+	}
+
+	/** Key hints for what the screen is doing now. */
+	function hintsFor():Array<MenuHint> {
+		var slot = saves == null || saves.members.length == 0 ? null : saves.members[curSelected];
+		return MenuHints.options(inOptionsMenu, inOptionCategory, slot != null && slot.beingSelected,
+			slot != null && slot.askingToConfirm, OptionsHandler.options.allowEditOptions, OptionsHandler.options.useSaveDataMenu);
+	}
+
+	/** Re-lay the footer when the screen's step changes, not every frame. */
+	function refreshHints():Void {
+		var slot = saves == null || saves.members.length == 0 ? null : saves.members[curSelected];
+		var key = (inOptionsMenu ? 'o' : 's') + (inOptionCategory ? 'c' : 'r')
+			+ (slot != null && slot.beingSelected ? 'b' : '-') + (slot != null && slot.askingToConfirm ? 'a' : '-');
+		if (key == hintKey) return;
+		hintKey = key;
+		footer.setHints(hintsFor());
+		for (item in footer.members)
+			item.scrollFactor.set();
 	}
 	function playMenuSound(action:String):Void {
 		var key = switch (action) {
@@ -789,15 +873,21 @@ class SaveDataState extends MusicBeatState {
 	}
 	function swapMenus() {
 		if (inOptionsMenu) {
-			FlxTween.tween(optionMenu, {x: FlxG.width}, 0.1, {type: FlxTweenType.ONESHOT, ease: FlxEase.backInOut});
-			FlxTween.tween(saves, {x: 0}, 0.1, {type: FlxTweenType.ONESHOT, ease: FlxEase.backInOut});
+			slideTo(0);
 			inOptionsMenu = false;
+			refreshSaveRows();
 		} else {
-			FlxTween.tween(optionMenu, {x: 0}, 0.1, {type: FlxTweenType.ONESHOT, ease: FlxEase.backInOut});
-			FlxTween.tween(saves, {x: -FlxG.width }, 0.1, {type: FlxTweenType.ONESHOT, ease: FlxEase.backInOut});
+			slideTo(optionsX);
 			inOptionsMenu = true;
 			refreshCategoryRows();
 		}
+		refreshHints();
+	}
+	/** Slide the camera between the save slots and the options. */
+	function slideTo(x:Float):Void {
+		FlxTween.num(FlxG.camera.scroll.x, x, 0.1, {type: FlxTweenType.ONESHOT, ease: FlxEase.backInOut}, function(value:Float):Void {
+			FlxG.camera.scroll.x = value;
+		});
 	}
 	function saveOptions() {
 		var noneditableoptions:Dynamic = CodenameOptionsMenuModel.copyOptions(OptionsHandler.options);
@@ -849,13 +939,9 @@ class SaveDataState extends MusicBeatState {
 			case "Credits":
 				saveOptions();
 				LoadingState.loadAndSwitchState(new CreditsState());
-			case "Import Settings...":
-				saveOptions();
-				LoadingState.loadAndSwitchState(new ImportSettingsState());
 			default:
 				if (OptionsHandler.options.allowEditOptions) {
-					checkmarks.members[optionsSelected].visible = !checkmarks.members[optionsSelected].visible;
-					optionList[optionsSelected].value = checkmarks.members[optionsSelected].visible;
+					optionList[optionsSelected].value = !optionList[optionsSelected].value;
 				}
 		}
 	}

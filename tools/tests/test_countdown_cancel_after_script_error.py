@@ -32,7 +32,7 @@ class CountdownCancelAfterScriptErrorTest(unittest.TestCase):
 
     def test_cancel_is_honoured_only_without_a_failure(self):
         start = self.source.index("var countdownErrorsBefore = countdownStartErrors;")
-        block = self.source[start:start + 1200]
+        block = self.source[start:start + 2600]
         dispatch = block.index("callAllHScript('countdownStart', [countdownEvent]);")
         guard = block.index("if (countdownStartErrors == countdownErrorsBefore) {")
         honoured = block.index("RuntimeSmokeHarness.markStep('countdown:cancelled-by-countdownStart');")

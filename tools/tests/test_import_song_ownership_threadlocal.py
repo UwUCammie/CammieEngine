@@ -159,7 +159,7 @@ class LibraryIdentityArchive {
  public static function load(root:String):LibraryIdentityArchive return new LibraryIdentityArchive();
  public function new(){}
  public function ownerFor(engine:String,identity:String,fingerprint:String):String return null;
- public function destinationFor(engine:String,identity:String,fingerprint:String,source:String):String return null;
+ public function destinationFor(engine:String,identity:String,fingerprint:String,source:String,?planned:String):String return null;
 }''', encoding='utf-8', newline='\n')
             (temp_path / "Main.hx").write_text(MAIN, encoding="utf-8", newline="\n")
             root_a = temp_path / "install-a"

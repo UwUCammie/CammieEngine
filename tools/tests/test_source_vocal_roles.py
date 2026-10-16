@@ -27,6 +27,8 @@ FLX_SOUND = '''package flixel.sound;
 class FlxSound {
   public var volume:Float = 1;
   public var time:Float = 0;
+  public var length:Float = 0;
+  public var playing:Bool = false;
   public var pitch:Float = 1;
   public var name:String;
   public function new(?name:String) this.name = name;

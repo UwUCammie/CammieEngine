@@ -36,6 +36,43 @@ class HxcCompatRuntime {
 	public static function reflectUtilFacade():Dynamic
 		return ReflectUtil;
 
+	/**
+		V-Slice props answer a few animation questions that a plain flixel or
+		Animate sprite does not (`isAnimationFinished`, `getCurrentAnimation`,
+		`hasAnimation`, `playAnimation`). A script calling one of them through an
+		optional call lands here when the sprite has no such method of its own.
+		Anything else, or a receiver that is not a sprite, answers null like a
+		missing optional method.
+	*/
+	public static function spriteAnimationCall(receiver:Dynamic, method:String, args:Array<Dynamic>):Dynamic {
+		var controller:Dynamic = receiver == null ? null : runtimeField(receiver, 'animation');
+		if (controller == null)
+			return null;
+		var current:Dynamic = runtimeField(controller, 'curAnim');
+		var name:String = args != null && args.length > 0 && args[0] != null ? Std.string(args[0]) : '';
+		var exists = function():Bool {
+			var check = runtimeField(controller, 'exists');
+			return name != '' && check != null && Reflect.isFunction(check)
+				&& Reflect.callMethod(controller, check, [name]) == true;
+		};
+		switch (method) {
+			case 'isAnimationFinished':
+				return runtimeField(controller, 'finished') == true;
+			case 'getCurrentAnimation':
+				var currentName:Dynamic = current == null ? null : runtimeField(current, 'name');
+				return currentName == null ? '' : Std.string(currentName);
+			case 'hasAnimation':
+				return exists();
+			case 'playAnimation':
+				var play = runtimeField(controller, 'play');
+				if (play != null && Reflect.isFunction(play) && exists())
+					Reflect.callMethod(controller, play, [name, args.length > 1 && args[1] == true]);
+				return null;
+			default:
+				return null;
+		}
+	}
+
 	/** Evaluate generated HXC null-coalescing operands lazily in menu scopes. */
 	public static function hxcCoalesce(left:Dynamic, right:Dynamic):Dynamic {
 		var value = Reflect.isFunction(left) ? Reflect.callMethod(null, left, []) : left;
@@ -2327,7 +2364,11 @@ class HxcCompatRuntime {
 		key:Dynamic = null, ?library:Dynamic, ?settings:Dynamic):Dynamic {
 		var atlasPath = hxcResolvedAsset(root, key, 'images', '', true);
 		if (atlasPath != null) {
-			var animate = hxcNativeInstance('animate.FlxAnimate', [runtimeFloatValue(x), runtimeFloatValue(y), atlasPath, settings]);
+			// V-Slice's own sprite plays labels and symbols by name; fall back to the plain one when it is not compiled in.
+			var atlasArguments:Array<Dynamic> = [runtimeFloatValue(x), runtimeFloatValue(y), atlasPath, settings];
+			var animate = hxcNativeInstance('FunkinAtlasSprite', atlasArguments);
+			if (animate == null)
+				animate = hxcNativeInstance('animate.FlxAnimate', atlasArguments);
 			if (animate != null)
 				return animate;
 		}

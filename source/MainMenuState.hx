@@ -36,18 +36,30 @@ class MainMenuState extends MusicBeatState {
 	var customMenuConfirm: Array<Array<String>>;
 	var customMenuScroll: Array<Array<String>>;
 	var parsedcustomMenuConfirmJson:Array<Array<String>>;
-	var menuItems:FlxTypedGroup<FlxSprite>;
-	var menuFrames:FlxAtlasFrames;
+	var menuItems:FlxTypedGroup<MenuCard>;
+	var saveLine:FlxText;
+	var saveName:String = '';
+	var stagePanel:MenuWidgets.MenuPanelParts;
+	var stageBig:FlxText;
+	var stageSub:FlxText;
+	var stageLabels:Array<FlxText> = [];
+	var stageValues:Array<FlxText> = [];
+	var weekCount:Int = -1;
+	var stageHeight:Int = 0;
+	var stageTarget:Float = 0;
+	var stageShown:Float = -1;
+	var songCount:Int = -1;
+	var importStatusLabel:String = '';
 	var hxcCostumeState:Dynamic;
 	#if !switch
-	var optionShit:Array<String> = ['story mode', 'freeplay', 'donate', 'options'];
+	// "import" opens the song importer (ImportSettingsState).
+	var optionShit:Array<String> = ['story mode', 'freeplay', 'donate', 'options'#if sys, 'import'#end];
 	#else
 	var optionShit:Array<String> = ['story mode', 'freeplay'];
 	#end
 	var menuSoundJson:Dynamic;
 	var scrollSound:String;
 	var magenta:FlxSprite;
-	var camFollow:FlxObject;
 	// HXC main-menu overlays are data-driven and state-owned.  Imported scripts
 	// never receive these objects or a camera handle; they can only request the
 	// narrow HxcCompatRuntime mount/clear boundary.
@@ -89,66 +101,65 @@ class MainMenuState extends MusicBeatState {
 		
 		RuntimeSongExitProbe.mark("menu-audio-end");
 		persistentUpdate = persistentDraw = true;
-		var bg:FlxSprite = new FlxSprite(-80).loadGraphic('assets/images/menuBG.png');
-		bg.scrollFactor.x = 0;
-		bg.scrollFactor.y = 0.18;
-		bg.setGraphicSize(Std.int(bg.width * 1.2));
-		bg.updateHitbox();
-		bg.screenCenter();
-		bg.antialiasing = true;
+		// The shared Freeplay backdrop: the menu background under a dark dim.
+		var bg:FlxSprite = MenuWidgets.backdrop();
+		bg.scrollFactor.set();
 		add(bg);
+		var shade:FlxSprite = MenuWidgets.shade();
+		shade.scrollFactor.set();
+		add(shade);
 
-		camFollow = new FlxObject(0, 0, 1, 1);
-		add(camFollow);
-
-		magenta = new FlxSprite(-80).loadGraphic('assets/images/menuDesat.png');
-		magenta.scrollFactor.x = 0;
-		magenta.scrollFactor.y = 0.18;
-		magenta.setGraphicSize(Std.int(magenta.width * 1.2));
-		magenta.updateHitbox();
-		magenta.screenCenter();
+		// A pink wash that blinks over the menu when a row is chosen.
+		magenta = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, MenuStyle.PINK);
+		magenta.alpha = 0.16;
+		magenta.scrollFactor.set();
 		magenta.visible = false;
-		magenta.antialiasing = true;
-		magenta.color = 0xFFfd719b;
 		add(magenta);
-		// magenta.scrollFactor.set();
 
-		menuItems = new FlxTypedGroup<FlxSprite>();
-		add(menuItems);
-
-		menuFrames = FlxAtlasFrames.fromSparrow('assets/images/FNF_main_menu_assets.png', 'assets/images/FNF_main_menu_assets.xml');
-
-		for (i in 0...optionShit.length) {
-			var menuItem:FlxSprite = new FlxSprite(0, 100 + (i * 160));
-			menuItem.frames = menuFrames;
-			menuItem.animation.addByPrefix('idle', optionShit[i] + " basic", 24);
-			menuItem.animation.addByPrefix('selected', optionShit[i] + " white", 24);
-			menuItem.animation.play('idle');
-			menuItem.ID = i;
-			menuItems.add(menuItem);
-			menuItem.scrollFactor.set();
-			menuItem.antialiasing = true;
-		}
-
-		FlxG.camera.follow(camFollow, null, 0.06);
+		// The front page: the engine's name, then the entries as a stack of big
+		// cards with the highlighted one open, and what it leads to beside them.
 		version = 'v' + EngineBranding.version();
 		var appName = Application.current.meta.get('name');
-		var versionShit:FlxText = new FlxText(5, FlxG.height - 18, 0, appName + ' ' + version, 12);
-		var usingSave:FlxText = new FlxText(5, FlxG.height - 36, 0, FlxG.save.name, 12);
-		versionShit.scrollFactor.set();
-		versionShit.setFormat("VCR OSD Mono", 16, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
-		usingSave.scrollFactor.set();
-		usingSave.setFormat("VCR OSD Mono", 16, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
-		add(versionShit);
-		importedModsHint = new FlxText(FlxG.width - 242, FlxG.height - 25, 236,
-			'Imported Mods  [I]', 14);
-		importedModsHint.setFormat(null, 14, 0xFFA0A0A0, RIGHT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+		var brand:FlxText = MenuWidgets.text(MainMenuLayout.LEFT, 76, 560, appName, 30, MenuStyle.CREAM);
+		brand.wordWrap = false;
+		add(brand);
+		saveLine = MenuWidgets.text(MainMenuLayout.LEFT, 112, 560, version, MenuStyle.SMALL_SIZE, MenuStyle.MUTED);
+		saveLine.wordWrap = false;
+		add(saveLine);
+		importedModsHint = MenuWidgets.text(FlxG.width - 304, 20, 280, 'Imported Mods  [I]', 16, MenuStyle.GOLD, flixel.text.FlxText.FlxTextAlign.RIGHT);
 		importedModsHint.scrollFactor.set();
 		add(importedModsHint);
-		if (OptionsHandler.options.useSaveDataMenu)
-			add(usingSave);
-		// NG.core.calls.event.logEvent('swag').send();
-		usingSave.text = switch (FlxG.save.name) {
+
+		menuItems = new FlxTypedGroup<MenuCard>();
+		add(menuItems);
+		for (i in 0...optionShit.length) {
+			var card = new MenuCard(rowLabel(optionShit[i]), MainMenuLayout.WIDTH, 28, MainMenuLayout.LOOK);
+			card.ID = i;
+			card.setCaption(rowCaption(optionShit[i]));
+			menuItems.add(card);
+		}
+		layoutMenuItems(true);
+
+		stagePanel = MenuWidgets.sizedPanel(this, MenuStyle.PINK, '');
+		stageBig = MenuWidgets.text(0, 0, MainMenuLayout.STAGE_WIDTH - 40, '', 44, MenuStyle.WHITE);
+		stageBig.wordWrap = false;
+		add(stageBig);
+		stageSub = MenuWidgets.text(0, 0, MainMenuLayout.STAGE_WIDTH - 40, '', 16, MenuStyle.MUTED);
+		stageSub.wordWrap = false;
+		add(stageSub);
+		for (slot in 0...MainMenuLayout.FACT_ROWS) {
+			var label = MenuWidgets.text(0, 0, MainMenuLayout.STAGE_WIDTH - 40, '', 16, MenuStyle.MUTED);
+			label.wordWrap = false;
+			var value = MenuWidgets.text(0, 0, MainMenuLayout.STAGE_WIDTH - 40, '', 16, MenuStyle.CREAM, flixel.text.FlxText.FlxTextAlign.RIGHT);
+			value.wordWrap = false;
+			add(label);
+			add(value);
+			stageLabels.push(label);
+			stageValues.push(value);
+		}
+		var menuFooter = new MenuFooter('MENU', MenuHints.mainMenu());
+		add(menuFooter);
+		var usingSave:String = switch (FlxG.save.name) {
 			case "save0":
 				 "bf";
 			case "save1":
@@ -172,6 +183,10 @@ class MainMenuState extends MusicBeatState {
 			default:
 				"null";
 		}
+		saveName = usingSave;
+		if (OptionsHandler.options.useSaveDataMenu)
+			saveLine.text = version + '   /   Save: ' + usingSave;
+		// NG.core.calls.event.logEvent('swag').send();
 
 		changeItem();
 		RuntimeStartupProbe.mark('main_menu_graphics_ready');
@@ -186,6 +201,99 @@ class MainMenuState extends MusicBeatState {
 		RuntimeStartupProbe.mark('main_menu_ready');
 	}
 
+	/** What the highlighted entry leads to, as the panel beside the stack shows it. */
+	function factFor(row:String):MainMenuFacts.MainMenuFact {
+		return switch (row) {
+			case 'story mode':
+				if (weekCount < 0) {
+					var weeks:Dynamic = Reflect.field(CoolUtil.parseJson(FNFAssets.getText('assets/data/storySonglist.json')), 'weeks');
+					weekCount = Std.isOfType(weeks, Array) ? (cast weeks:Array<Dynamic>).length : 0;
+				}
+				MainMenuFacts.story(weekCount);
+			case 'freeplay':
+				if (songCount < 0) {
+					var categories:Dynamic = FreeplayRegistry.exists() ? FreeplayRegistry.getJson() : [];
+					songCount = Std.isOfType(categories, Array) ? FreeplayLibraryView.songs(cast categories).length : 0;
+				}
+				var snapshot = importAvailability == null ? ImportRefreshManager.availabilitySnapshot() : importAvailability;
+				MainMenuFacts.freeplay(songCount, snapshot.committedOwnerRoots.length, snapshot.pendingOwnerRoots.length, snapshot.inspectionPending);
+			case 'options':
+				MainMenuFacts.options(OptionsHandler.options, saveName);
+			case 'import':
+				var snapshot = importAvailability == null ? ImportRefreshManager.availabilitySnapshot() : importAvailability;
+				MainMenuFacts.importer(snapshot.committedOwnerRoots.length, importWorkBusy, importStatusLabel,
+					ImportSettings.getSelectedType(), ImportSettings.getSourcePath(), snapshot.inspectionPending);
+			case 'donate':
+				MainMenuFacts.plain('DONATE', 'Support the project', 'Opens the donation page in your browser.', MenuStyle.GOLD);
+			case 'costumes':
+				MainMenuFacts.plain('COSTUMES', 'Dress up', 'Pick what your character wears.', MenuStyle.TEAL);
+			default:
+				MainMenuFacts.plain(row.toUpperCase(), rowLabel(row), '', MenuStyle.PINK);
+		};
+	}
+
+	/** Fill the context panel for the highlighted entry and size it to fit. */
+	function refreshFacts():Void {
+		if (stagePanel == null || curSelected < 0 || curSelected >= optionShit.length) return;
+		var fact = factFor(optionShit[curSelected]);
+		stagePanel.accent.color = fact.accent;
+		stagePanel.heading.color = fact.accent;
+		stagePanel.heading.text = fact.heading;
+		stageHeight = MainMenuFacts.panelHeight(fact);
+		stageTarget = MainMenuLayout.stageTop(MainMenuLayout.rowTop(curSelected, curSelected, menuItems.length, FlxG.height),
+			stageHeight, FlxG.height);
+		if (stageShown < 0) stageShown = stageTarget;
+		stageBig.text = fact.big;
+		stageSub.text = fact.sub;
+		for (slot in 0...stageLabels.length) {
+			var shown = slot < fact.rows.length;
+			stageLabels[slot].visible = stageValues[slot].visible = shown;
+			if (!shown) continue;
+			stageLabels[slot].text = fact.rows[slot].label;
+			stageValues[slot].text = fact.rows[slot].value;
+		}
+		placeStage(stageShown);
+	}
+
+	/** Put the context panel and its text with its top at `top`. */
+	function placeStage(top:Float):Void {
+		var left = MainMenuLayout.STAGE_X;
+		MenuWidgets.sizePanel(stagePanel, left, top, MainMenuLayout.STAGE_WIDTH, stageHeight);
+		stageBig.setPosition(left + 20, top + 28);
+		stageSub.setPosition(left + 20, top + 28 + 56);
+		for (slot in 0...stageLabels.length) {
+			var rowY = top + 28 + 56 + 30 + 12 + slot * 30;
+			stageLabels[slot].setPosition(left + 20, rowY);
+			stageValues[slot].setPosition(left + 20, rowY);
+		}
+	}
+
+	/** The name a row shows. */
+	static function rowLabel(row:String):String {
+		return switch (row) {
+			case 'story mode': 'Story Mode';
+			case 'freeplay': 'Freeplay';
+			case 'donate': 'Donate';
+			case 'options': 'Options';
+			case 'import': 'Import';
+			case 'costumes': 'Costumes';
+			default: row.charAt(0).toUpperCase() + row.substr(1);
+		};
+	}
+
+	/** The line a row shows under its name once it is selected. */
+	static function rowCaption(row:String):String {
+		return switch (row) {
+			case 'story mode': 'Play the story weeks one after another';
+			case 'freeplay': 'Pick any song and play it';
+			case 'donate': 'Open the donation page';
+			case 'options': 'Settings, controls and save slots';
+			case 'import': 'Add songs and mods from other engines';
+			case 'costumes': 'Change what your character wears';
+			default: '';
+		};
+	}
+
 	var selectedSomethin:Bool = false;
 	var startupImportCheckMarked:Bool = false;
 	var importWorkBusy:Bool = false;
@@ -193,14 +301,28 @@ class MainMenuState extends MusicBeatState {
 	var importAvailability:ImportRefreshAvailabilitySnapshot;
 
 	override function update(elapsed:Float) {
+		// The context panel follows the highlighted card, easing the way the cards do.
+		if (stagePanel != null && Math.abs(stageShown - stageTarget) > 0.5) {
+			stageShown += (stageTarget - stageShown) * Math.min(1, elapsed * 16);
+			placeStage(stageShown);
+		}
 		#if sys
 		if (!startupImportCheckMarked) RuntimeStartupProbe.mark('main_menu_import_check_enter');
 		var refresh = ImportRefreshManager.browseTick();
 		if (!startupImportCheckMarked) { RuntimeStartupProbe.mark('main_menu_import_check_ready'); startupImportCheckMarked = true; }
+		if (importWorkBusy != refresh.busy) {
+			importWorkBusy = refresh.busy;
+			importStatusLabel = refresh.label;
+			refreshFacts();
+		}
 		importWorkBusy = refresh.busy;
 		if (importAvailabilityRevision != ImportRefreshManager.availabilityRevision()) {
+			var wasChecking = importAvailability == null || importAvailability.inspectionPending;
 			importAvailability = ImportRefreshManager.availabilitySnapshot();
 			importAvailabilityRevision = importAvailability.revision;
+			// The counts on the panel stay hidden while the check runs; show them
+			// the moment it ends instead of waiting for the next selection change.
+			if (wasChecking != importAvailability.inspectionPending) refreshFacts();
 		}
 		#end
 		if (FlxG.sound.music.volume < 0.8) {
@@ -256,16 +378,16 @@ class MainMenuState extends MusicBeatState {
 
 					FlxFlicker.flicker(magenta, 1.1, 0.15, false);
 
-					menuItems.forEach(function(spr:FlxSprite) {
+					menuItems.forEach(function(spr:MenuCard) {
 						if (curSelected != spr.ID) {
-							FlxTween.tween(spr, {alpha: 0}, 0.4, {
+							FlxTween.tween(spr, {opacity: 0}, 0.4, {
 								ease: FlxEase.quadOut,
 								onComplete: function(twn:FlxTween) {
 									spr.kill();
 								}
 							});
 						} else {
-							FlxFlicker.flicker(spr, 1, 0.06, false, false, function(flick:FlxFlicker) {
+							spr.flicker(1, 0.06, function() {
 								var daChoice:String = optionShit[curSelected];
 
 								switch (daChoice) {
@@ -279,6 +401,10 @@ class MainMenuState extends MusicBeatState {
 									case 'options':
 										SaveDataState.prevPath = 'title';
 										LoadingState.loadAndSwitchState(new SaveDataState());
+									#if sys
+									case 'import':
+										LoadingState.loadAndSwitchState(new ImportSettingsState());
+									#end
 									case 'costumes':
 										if (hxcCostumeState != null)
 											LoadingState.loadAndSwitchState(cast hxcCostumeState);
@@ -291,10 +417,6 @@ class MainMenuState extends MusicBeatState {
 		}
 
 		super.update(elapsed);
-
-		menuItems.forEach(function(spr:FlxSprite) {
-			spr.screenCenter(X);
-		});
 	}
 
 	/**
@@ -560,7 +682,7 @@ class MainMenuState extends MusicBeatState {
 	/**
 		Native destination for the bounded CostumeMenuButtonv2 HXC adapter.
 		The imported module supplies only the manifest-scoped destination state;
-		this class owns the option list, atlas frames, and selection behavior.
+		this class owns the option list, cards, and selection behavior.
 	*/
 	public function hxcAddCostumeMenuItem(target:Dynamic, ?assetRoot:String):Bool {
 		if (target == null)
@@ -570,31 +692,46 @@ class MainMenuState extends MusicBeatState {
 		if (existing >= 0)
 			return true;
 		optionShit.push('costumes');
-		if (menuItems == null || menuFrames == null)
+		if (menuItems == null)
 			return true;
 
-		var menuItem:FlxSprite = new FlxSprite(0, 100 + (menuItems.length * 160));
+		var card = new MenuCard(rowLabel('costumes'), MainMenuLayout.WIDTH, 28, MainMenuLayout.LOOK);
+		card.ID = optionShit.length - 1;
+		card.setCaption(rowCaption('costumes'));
 		var scopedFrames = HxcStateAssetScope.sparrowAtlas(assetRoot,
 			'mainmenu/PleaseKrillMe', null, 'CostumeMenuButtonv2 main-menu item');
 		if (scopedFrames != null) {
-			menuItem.frames = scopedFrames;
-			menuItem.animation.addByPrefix('idle', 'costumes idle', 24);
-			menuItem.animation.addByPrefix('selected', 'costumes selected', 24);
-		} else {
-			// A missing/partial donor atlas is an explicit diagnostic from the
-			// manifest asset boundary; keep the menu action usable with native frames.
-			// The former asset-scope gap is therefore visible and recoverable.
-			menuItem.frames = menuFrames;
-			menuItem.animation.addByPrefix('idle', 'freeplay basic', 24);
-			menuItem.animation.addByPrefix('selected', 'freeplay white', 24);
+			// The donor's own button art becomes the card's icon.
+			var art = new FlxSprite();
+			art.frames = scopedFrames;
+			art.animation.addByPrefix('idle', 'costumes idle', 24);
+			if (art.animation.exists('idle')) {
+				art.animation.play('idle');
+				card.setIcon(art);
+			}
 		}
-		menuItem.animation.play('idle');
-		menuItem.ID = optionShit.length - 1;
-		menuItem.scrollFactor.set();
-		menuItem.antialiasing = true;
-		menuItems.add(menuItem);
+		// A missing/partial donor atlas is an explicit diagnostic from the
+		// manifest asset boundary; keep the menu action usable with a plain card.
+		// The former asset-scope gap is therefore visible and recoverable.
+		menuItems.add(card);
+		layoutMenuItems(true);
 		changeItem();
 		return true;
+	}
+
+	/**
+		Place every native row on the stack: the selected card is open and the
+		others sit above and below it.
+	*/
+	function layoutMenuItems(snap:Bool = false):Void {
+		var row = 0;
+		var count = menuItems.length;
+		for (card in menuItems.members) {
+			card.present(row == curSelected, false);
+			card.visible = MainMenuLayout.shown(row, curSelected, count, FlxG.height);
+			card.moveTo(MainMenuLayout.LEFT, MainMenuLayout.rowTop(row, curSelected, count, FlxG.height), snap);
+			row++;
+		}
 	}
 
 	function changeItem(huh:Int = 0) {
@@ -605,15 +742,7 @@ class MainMenuState extends MusicBeatState {
 		if (curSelected < 0)
 			curSelected = menuItems.length - 1;
 
-		menuItems.forEach(function(spr:FlxSprite) {
-			spr.animation.play('idle');
-
-			if (spr.ID == curSelected) {
-				spr.animation.play('selected');
-				camFollow.setPosition(spr.getGraphicMidpoint().x, spr.getGraphicMidpoint().y);
-			}
-
-			spr.updateHitbox();
-		});
+		layoutMenuItems();
+		refreshFacts();
 	}
 }

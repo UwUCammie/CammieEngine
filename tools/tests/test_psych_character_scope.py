@@ -334,6 +334,7 @@ class Probe {{
             (work / "Probe.hx").write_text(fixture, newline='\n')
             (work / "PsychCharacterDanceCompat.hx").write_text(
                 (ROOT / "source/PsychCharacterDanceCompat.hx").read_text(), newline='\n')
+            (work / "SourceCharacterId.hx").write_text((ROOT / "source/SourceCharacterId.hx").read_text(), newline=chr(10))
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(work), "--run", "Probe", str(work), str(donor)],
                 cwd=ROOT,
@@ -420,6 +421,7 @@ class Probe {{
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
             , newline='\n')
             (work / 'SourceCameraFollowPointMath.hx').write_text((ROOT / 'source/SourceCameraFollowPointMath.hx').read_text(), newline='\n')
+            (work / "SourceCharacterId.hx").write_text((ROOT / "source/SourceCharacterId.hx").read_text(), newline="\n")
             (work / "PsychCharacterPosition.hx").write_text(position, newline='\n')
             (work / "FNFAssets.hx").write_text('''
 class FNFAssets {

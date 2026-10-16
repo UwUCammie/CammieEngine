@@ -35,7 +35,9 @@ class ImportRevision {
 		// 4: HXC loadSparrow/loadTexture art and base-game sound lookups are planned, so older V-Slice imports re-plan.
 		// 5: Animate atlas characters and stage props are converted, so imports that skipped them re-plan.
 		// 6: Characters on base-game Animate art use the engine's own character, and data/subtitles is kept.
-		"V-Slice" => 6,
+		// 7: Standard base-stage ids and vocal files named after a character variant resolve like V-Slice does.
+		// 8: Static images, Animate atlases and FunkinSprite.create/loadTextureAtlas art a script names are planned, so older V-Slice imports re-plan.
+		"V-Slice" => 8,
 		"Kade Engine" => 2,
 		"Modding Plus" => 2,
 		"Psych Engine" => 14,

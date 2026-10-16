@@ -3,7 +3,6 @@ package;
 import flixel.FlxG;
 import flixel.FlxSprite;
 import flixel.FlxSubState;
-import flixel.addons.ui.FlxUIButton;
 import flixel.addons.ui.FlxUIInputText;
 import flixel.text.FlxText;
 import flixel.util.FlxColor;
@@ -21,8 +20,8 @@ class ImportPackageNameSubState extends FlxSubState {
 	var nameInput:FlxUIInputText;
 	var progressText:FlxText;
 	var statusText:FlxText;
-	var nextButton:FlxUIButton;
-	var cancelButton:FlxUIButton;
+	var nextButton:MenuButton;
+	var cancelButton:MenuButton;
 	var finished:Bool = false;
 
 	public function new(requests:Array<ImportPackageNameRequest>,
@@ -41,41 +40,41 @@ class ImportPackageNameSubState extends FlxSubState {
 		var height = 310;
 		var x = (FlxG.width - width) * 0.5;
 		var y = (FlxG.height - height) * 0.5;
-		var shade = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, 0xB0000000);
-		add(shade);
-		add(new FlxSprite(x, y).makeGraphic(width, height, 0xFF20242B));
+		// The same popup panel as the library menus: dimmed menu, shadow, teal
+		// border and a pink cap.
+		MenuWidgets.panel(this, x, y, width, height);
 
-		var title = new FlxText(x + 24, y + 18, width - 48, 'Name this imported mod', 28);
-		title.setFormat('assets/fonts/vcr.ttf', 28, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
+		var title = MenuWidgets.text(x + 28, y + 20, width - 56, 'Name this imported mod', 24, MenuStyle.CREAM);
 		add(title);
 
-		progressText = new FlxText(x + 28, y + 67, width - 56, '', 16);
-		progressText.setFormat('assets/fonts/vcr.ttf', 16, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
+		progressText = MenuWidgets.text(x + 28, y + 58, width - 56, '', MenuStyle.SMALL_SIZE, MenuStyle.TEAL);
 		add(progressText);
 
-		var explanation = new FlxText(x + 30, y + 102, width - 60,
-			'This package has no authored mod name. Enter a Freeplay label to recognize it on future imports.', 17);
-		explanation.setFormat('assets/fonts/vcr.ttf', 17, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
+		var explanation = MenuWidgets.text(x + 28, y + 92, width - 56,
+			'This package has no authored mod name. Enter a Freeplay label to recognize it on future imports.', 16, MenuStyle.TEXT);
 		explanation.wordWrap = true;
 		add(explanation);
 
-		nameInput = new FlxUIInputText(x + 42, y + 169, width - 84, '', 22);
+		nameInput = new FlxUIInputText(x + 28, y + 160, width - 56, '', 22);
 		nameInput.maxLength = 80;
 		nameInput.background = true;
-		nameInput.backgroundColor = FlxColor.WHITE;
-		nameInput.color = FlxColor.BLACK;
-		nameInput.caretColor = FlxColor.BLACK;
+		nameInput.backgroundColor = MenuStyle.CARD_SELECTED;
+		nameInput.color = MenuStyle.WHITE;
+		nameInput.caretColor = MenuStyle.GOLD;
 		nameInput.hasFocus = true;
 		add(nameInput);
 
-		statusText = new FlxText(x + 24, y + 207, width - 48, '', 15);
-		statusText.setFormat('assets/fonts/vcr.ttf', 15, FlxColor.YELLOW, CENTER, OUTLINE, FlxColor.BLACK);
+		statusText = MenuWidgets.text(x + 28, y + 204, width - 56, '', 15, MenuStyle.AMBER);
 		add(statusText);
 
-		nextButton = new FlxUIButton(x + width - 250, y + height - 58, 'Continue', function():Void submitCurrent());
+		nextButton = new MenuButton('Continue', 190, 44, function():Void submitCurrent());
+		nextButton.setPosition(x + width - 218, y + height - 66);
+		nextButton.setLook(true, true);
 		add(nextButton);
-		cancelButton = new FlxUIButton(x + 28, y + height - 58, 'Cancel', function():Void cancelPrompt());
+		cancelButton = new MenuButton('Cancel', 190, 44, function():Void cancelPrompt());
+		cancelButton.setPosition(x + 28, y + height - 66);
 		add(cancelButton);
+		add(MenuWidgets.text(x + 222, y + height - 50, width - 444, 'ENTER continue   ESC cancel', 12, MenuStyle.MUTED, flixel.text.FlxText.FlxTextAlign.CENTER));
 		showRequest();
 	}
 

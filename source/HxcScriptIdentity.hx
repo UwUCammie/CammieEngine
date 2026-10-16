@@ -308,7 +308,10 @@ class HxcScriptIdentity {
 		var dot = base.lastIndexOf('.');
 		var simple = (dot < 0 ? base : base.substr(dot + 1)).toLowerCase();
 		switch (simple) {
-			case 'sparrowcharacter' | 'multisparrowcharacter' | 'character' | 'basecharacter'
+			// The concrete character bases V-Slice itself ships (funkin.play.character):
+			// Sparrow, MultiSparrow, AnimateAtlas, MultiAnimateAtlas and Packer.
+			case 'sparrowcharacter' | 'multisparrowcharacter' | 'animateatlascharacter'
+				| 'multianimateatlascharacter' | 'packercharacter' | 'character' | 'basecharacter'
 				| 'funkincharacter' | 'characterinfobase' | 'multicharacter' | 'basesparrowcharacter':
 				return 'character';
 			case 'song': return 'song';

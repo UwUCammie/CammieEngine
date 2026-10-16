@@ -224,6 +224,50 @@ class Main {{
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_every_v_slice_character_base_class_owns_a_character_script(self):
+        """Tricky's Expurgation characters extend MultiAnimateAtlasCharacter; without
+        that base the script was never matched to its actor and every override of it
+        (hiding the prop hands, the intro, the countdown hold) silently never ran."""
+        bases = ["BaseCharacter", "SparrowCharacter", "MultiSparrowCharacter", "AnimateAtlasCharacter",
+                 "MultiAnimateAtlasCharacter", "PackerCharacter"]
+        main = '''import sys.FileSystem;
+import sys.io.File;
+
+class Main {
+  static function fail(message:String):Void throw message;
+  static function main() {
+    var bases = %s;
+    var directory = Sys.getCwd() + "/scripts/characters";
+    FileSystem.createDirectory(Sys.getCwd() + "/scripts");
+    FileSystem.createDirectory(directory);
+    for (base in bases) {
+      if (HxcScriptIdentity.familyForBase(base) != "character") fail(base + " is not a character base");
+      if (HxcScriptIdentity.familyForBase("funkin.play.character." + base) != "character")
+        fail("qualified " + base + " is not a character base");
+      var id = "id-" + base.toLowerCase();
+      var path = directory + "/" + id + ".hxc";
+      File.saveContent(path, "class Fixture" + base + " extends " + base + " {\n  function new() { super('" + id + "'); }\n}");
+      if (HxcScriptDiscovery.familyForPath(path) != "character"
+        || !HxcScriptDiscovery.characterMatches(path, [id]))
+        fail(base + " script was not matched to its actor");
+    }
+    if (HxcScriptIdentity.familyForBase("Stage") == "character" || HxcScriptIdentity.familyForBase("Module") == "character")
+      fail("a non-character base was accepted");
+  }
+}
+''' % json.dumps(bases)
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            temp = Path(folder)
+            (temp / "Main.hx").write_text(main, newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(temp), "--run", "Main"],
+                cwd=temp,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

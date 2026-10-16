@@ -19,7 +19,7 @@ class PsychCharacterDanceCompat {
 		frameWidth:Float, frameHeight:Float, width:Float, height:Float,
 		readText:String->Null<String>):Bool {
 		if (!needsScaledHitbox(scaleX, scaleY, frameWidth, frameHeight, width, height)
-			|| characterId == null || !~/^[A-Za-z0-9_-]+$/.match(characterId)
+			|| !SourceCharacterId.isFileName(characterId)
 			|| selectedRoot == null || !StringTools.startsWith(selectedRoot, 'assets/imported_mods/')
 			|| implementationPath == null || readText == null)
 			return false;

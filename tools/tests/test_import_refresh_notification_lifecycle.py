@@ -126,7 +126,7 @@ class ImportRefreshManager {
  public static var busy=false;
  public static function browseTick():Dynamic return {busy:busy};
 }
-class SaveDataState { public function new() {} }
+class MainMenuState { public function new() {} }
 class LoadingState {
  public static var loads=0;
  public static function loadAndSwitchState(state:Dynamic):Void loads++;

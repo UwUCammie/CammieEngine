@@ -85,6 +85,53 @@ class CodenameFrameAtlasAssetsTest(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_v_slice_shared_library_art_is_found_with_its_images_destination(self):
+        with tempfile.TemporaryDirectory(prefix="vslice-frame-atlas-", dir=ROOT / "tmp") as work:
+            base = Path(work)
+            owner = base / "owner"
+            (owner / "images/props/local").mkdir(parents=True)
+            (owner / "shared/images/props/gremlin").mkdir(parents=True)
+            (owner / "shared/images/props/flat").mkdir(parents=True)
+            (owner / "images/props/local/Animation.json").write_text("{}", newline='\n')
+            (owner / "shared/images/props/gremlin/Animation.json").write_text("{}", newline='\n')
+            (owner / "shared/images/props/gremlin/spritemap1.png").write_bytes(b"page")
+            (owner / "shared/images/props/flat.png").write_bytes(b"flat")
+            (owner / "shared/images/props/flat.xml").write_text("<TextureAtlas/>", newline='\n')
+            (base / "Main.hx").write_text(
+                """class Main {
+ static function main():Void {
+  var root = Sys.args()[0];
+  var local = CodenameFrameAtlasAssets.planWithSharedLibrary(root, "props/local");
+  if (local.mode != "animate" || local.files.length != 1 || local.files[0].source.indexOf("shared") >= 0)
+   throw "an art folder under images was not preferred: " + local.mode;
+  var shared = CodenameFrameAtlasAssets.planWithSharedLibrary(root, "props/gremlin");
+  if (shared.mode != "animate" || shared.files.length != 2
+      || shared.files[0].relative != "images/props/gremlin/Animation.json"
+      || shared.files[1].relative != "images/props/gremlin/spritemap1.png"
+      || shared.files[0].source.indexOf("shared") < 0)
+   throw "shared Animate folder was not planned: " + shared.mode + "/" + shared.files.length;
+  var flat = CodenameFrameAtlasAssets.planWithSharedLibrary(root, "props/flat");
+  if (flat.mode != "sparrow" || flat.files.length != 2 || flat.files[0].relative != "images/props/flat.png")
+   throw "shared Sparrow atlas was not planned";
+  var missing = CodenameFrameAtlasAssets.planWithSharedLibrary(root, "props/none");
+  if (missing.files.length != 0 || missing.diagnostics.length == 0)
+   throw "a missing key was not diagnosed";
+  if (CodenameFrameAtlasAssets.plan(root, "props/gremlin").files.length != 0)
+   throw "plain planning must stay scoped to the given root";
+ }
+}"""
+            , newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main", str(owner)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        module = (ROOT / "source/ModuleFunctions.hx").read_text()
+        self.assertIn("CodenameFrameAtlasAssets.planWithSharedLibrary(sourceRoot, stem)", module)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -83,6 +83,13 @@ class FlxTypedGroup<T:FlxBasic> extends FlxBasic {
 }''',
 }
 STUBS["ImportRefreshProgress.hx"] = (ROOT / "source/ImportRefreshProgress.hx").read_text(encoding="utf-8")
+# The card reads the shared Freeplay palette and builds its text through the shared widget.
+STUBS["MenuStyle.hx"] = (ROOT / "source/MenuStyle.hx").read_text(encoding="utf-8")
+STUBS["MenuWidgets.hx"] = r'''class MenuWidgets {
+ public static function text(x:Float,y:Float,width:Float,value:String,size:Int,color:Int,?alignment:Dynamic):flixel.text.FlxText {
+  var label=new flixel.text.FlxText(x,y,width,value,size); label.color=color; return label;
+ }
+}'''
 
 # Exercise actual pinned parent/group draw algorithms, including persistentDraw
 # with parent update paused. Drawing stubs measure calls, not pixels.

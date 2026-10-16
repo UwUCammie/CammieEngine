@@ -24,6 +24,7 @@ class Main {
  var dad=new Actor(); var boyfriend=new Actor(); var gf=new Actor();
  var duoMode=false; var opponentPlayer=false;
  var nightmareVisionLegacyFieldCameras=false;var tmr={loopsLeft:3};var due=false;
+ var silentPreRoll=false;var swagCounter=0;
  function girlfriendDanceDue(beat:Int):Bool {if(beat!=tmr.loopsLeft)throw 'countdown passed wrong beat';return due;}
  public function new() {}
  function countdown():Void {''' + body + '''}
@@ -44,6 +45,10 @@ class Main {
    throw 'mixed source/native actors must remain independent';
   state.nightmareVisionLegacyFieldCameras=true;state.countdown();if(state.gf.calls!=3)throw 'historical countdown ignored source gate';
   state.due=true;state.countdown();if(state.gf.calls!=4)throw 'historical countdown did not consume source gate';
+  // A script-held countdown that only asked for the lead-in clock still dances the cast but counts silently.
+  state.nightmareVisionLegacyFieldCameras=false;state.silentPreRoll=true;
+  var danced=state.gf.calls;state.countdown();
+  if(state.swagCounter!=1 || state.gf.calls!=danced+1) throw 'silent lead-in beat did not dance and count once';
  }
 }
 '''

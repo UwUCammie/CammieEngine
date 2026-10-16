@@ -722,17 +722,12 @@ class FreeplayState extends MusicBeatState {
 		}
 
 		// imagine making a sprite and not assigning a var
-		bg =  new FlxSprite();
-		if (FNFAssets.exists('assets/images/Custom_Menu_BGs/Default/menuDesat.png')) {
-			bg.loadGraphic('assets/images/Custom_Menu_BGs/Default/menuDesat.png');
- 		} else {
-			bg.loadGraphic('assets/images/menuDesat.png');
-		}
+		// The shared menu background, centred so it scales about the screen
+		// center (see update).
+		bg = MenuWidgets.backdrop();
 		add(bg);
-		// center it so the background scales about the screen center (see update)
-		bg.screenCenter();
 		if (denseBrowser) {
-			var shade = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, 0xE6101622);
+			var shade = MenuWidgets.shade();
 			add(shade);
 		}
 		// no fancy :)
@@ -1324,8 +1319,7 @@ class FreeplayState extends MusicBeatState {
 	// that camera's display object in front of the list so the chrome still
 	// draws on top. (Both cameras are the same screen size, so no scaling.)
 	function browserText(x:Float, y:Float, width:Float, text:String, size:Int, color:Int):FlxText {
-		var label = new FlxText(x, y, width, text, size);
-		label.setFormat('assets/fonts/vcr.ttf', size, color, LEFT);
+		var label = MenuWidgets.text(x, y, width, text, size, color);
 		add(label); uiChrome.push(label); return label;
 	}
 
@@ -1333,18 +1327,18 @@ class FreeplayState extends MusicBeatState {
 		var detailX = FreeplayBrowserLayout.detailX(FlxG.width);
 		var detailWidth = FlxG.width - detailX - 24;
 		scoreBG.visible = false;
-		browserText(detailX, FreeplayDetailSections.HEADER_Y, detailWidth, 'PICK YOUR NEXT TRACK', 20, 0xFFFF66B7);
+		browserText(detailX, FreeplayDetailSections.HEADER_Y, detailWidth, 'PICK YOUR NEXT TRACK', 20, MenuStyle.PINK);
 		// One backed card per group of details. Each accent spans its whole card and
 		// shares a color with the card heading, so it marks a section, not a row.
 		for (section in FreeplayDetailSections.layout()) {
-			var card = new FlxSprite(detailX - 12, section.y).makeGraphic(Std.int(detailWidth + 24), section.height, 0xFF182235);
-			card.alpha = 0.82; insert(members.indexOf(grpSongs), card); uiChrome.push(card);
-			var accent = new FlxSprite(detailX - 12, section.y).makeGraphic(4, section.height, section.color);
+			var card = new FlxSprite(detailX - 12, section.y).makeGraphic(Std.int(detailWidth + 24), section.height, MenuStyle.CARD);
+			card.alpha = MenuStyle.DETAIL_ALPHA; insert(members.indexOf(grpSongs), card); uiChrome.push(card);
+			var accent = new FlxSprite(detailX - 12, section.y).makeGraphic(MenuStyle.ACCENT_WIDTH, section.height, section.color);
 			add(accent); uiChrome.push(accent);
-			browserText(detailX, section.y + 6, detailWidth, section.title, 12, section.color);
+			browserText(detailX, section.y + 6, detailWidth, section.title, MenuStyle.SECTION_SIZE, section.color);
 		}
 		// Solid floor first, then bars anchored to it by their bottom edge.
-		var meterFloor = new FlxSprite(detailX, FreeplayDetailSections.METER_FLOOR).makeGraphic(12 * 19 - 7, 3, 0xFFFFF4DC);
+		var meterFloor = new FlxSprite(detailX, FreeplayDetailSections.METER_FLOOR).makeGraphic(12 * 19 - 7, 3, MenuStyle.CREAM);
 		add(meterFloor); uiChrome.push(meterFloor);
 		// Each bar is a stack of outlined blocks, coloured by height, like a
 		// hardware level meter. Sound only decides how many of them are lit.
@@ -1363,7 +1357,7 @@ class FreeplayState extends MusicBeatState {
 		// one gradient from the easiest to the hardest rating, marked every five.
 		var keyWidth = FreeplayPulse.KEY_WIDTH;
 		var keyX = 24 + FreeplayBrowserLayout.listWidth(FlxG.width) - keyWidth - 14;
-		browserText(keyX - 58, 33, 56, 'RATING', 12, 0xFF9DB2CC);
+		browserText(keyX - 58, 33, 56, 'RATING', MenuStyle.SECTION_SIZE, MenuStyle.MUTED);
 		// A light rim keeps the darkest ratings readable on the dark menu.
 		var keyRim = new FlxSprite(keyX - 1, 35).makeGraphic(keyWidth + 2, 10, 0xFF6C7C96); add(keyRim); uiChrome.push(keyRim);
 		var keyName = 'freeplay-rating-key'; var keyGraphic = FlxG.bitmap.get(keyName);
@@ -1377,56 +1371,44 @@ class FreeplayState extends MusicBeatState {
 		var keyValues = FreeplayPulse.ratingKey();
 		for (i in 0...keyValues.length) {
 			var at = keyX + FreeplayPulse.keyColumn(keyValues[i]);
-			var tick = new FlxSprite(at, 45).makeGraphic(1, 4, 0xFFCFD8E5); add(tick); uiChrome.push(tick);
-			var number = browserText(at - 15, 49, 32, keyValues[i] + (i == keyValues.length - 1 ? '+' : ''), 10, 0xFFCFD8E5);
+			var tick = new FlxSprite(at, 45).makeGraphic(1, 4, MenuStyle.TEXT); add(tick); uiChrome.push(tick);
+			var number = browserText(at - 15, 49, 32, keyValues[i] + (i == keyValues.length - 1 ? '+' : ''), 10, MenuStyle.TEXT);
 			number.alignment = CENTER; number.wordWrap = false;
 		}
 		// Clear of the optional FPS and memory counters in the top-left corner.
-		browserCount = browserText(150, 14, FlxG.width * 0.5, '', 18, 0xFF9DB2CC);
-		browserGroup = browserText(150, 38, FlxG.width * 0.5, '', 16, 0xFF80E3D0);
-		browserFavoritesHeader = browserText(26, 140, FreeplayBrowserLayout.listWidth(FlxG.width) - 48, 'FAVORITES', 14, 0xFFFFD166); browserFavoritesHeader.visible = false;
+		browserCount = browserText(150, 14, FlxG.width * 0.5, '', MenuStyle.BODY_SIZE, MenuStyle.MUTED);
+		browserGroup = browserText(150, 38, FlxG.width * 0.5, '', 16, MenuStyle.TEAL);
+		browserFavoritesHeader = browserText(26, 140, FreeplayBrowserLayout.listWidth(FlxG.width) - 48, 'FAVORITES', MenuStyle.SMALL_SIZE, MenuStyle.GOLD); browserFavoritesHeader.visible = false;
 		var trackY = FreeplayDetailSections.TRACK_Y; var difficultyY = FreeplayDetailSections.DIFFICULTY_Y; var scoreY = FreeplayDetailSections.SCORE_Y;
-		browserDetail = browserText(detailX, trackY + 22, detailWidth, '', 24, 0xFFFFFFFF);
-		browserSource = browserText(detailX, trackY + 80, detailWidth, '', 16, 0xFF9DB2CC);
+		browserDetail = browserText(detailX, trackY + 22, detailWidth, '', 24, MenuStyle.WHITE);
+		browserSource = browserText(detailX, trackY + 80, detailWidth, '', 16, MenuStyle.MUTED);
 		scoreText.setPosition(detailX, difficultyY + 22); scoreText.size = 20; scoreText.fieldWidth = detailWidth;
 		scoreText.alignment = LEFT; scoreText.visible = false;
 		diffText.setPosition(detailX, difficultyY + 22); diffText.size = 22; diffText.fieldWidth = detailWidth;
-		browserRating = browserText(detailX, difficultyY + 52, detailWidth, '', 14, 0xFF9DB2CC);
-		browserDensity = browserText(detailX, difficultyY + 96, detailWidth, '', 14, 0xFFCFD8E5);
-		browserMetric = browserText(detailX, difficultyY + 72, detailWidth, '', 14, 0xFF80E3D0);
+		browserRating = browserText(detailX, difficultyY + 52, detailWidth, '', MenuStyle.SMALL_SIZE, MenuStyle.MUTED);
+		browserDensity = browserText(detailX, difficultyY + 96, detailWidth, '', MenuStyle.SMALL_SIZE, MenuStyle.TEXT);
+		browserMetric = browserText(detailX, difficultyY + 72, detailWidth, '', MenuStyle.SMALL_SIZE, MenuStyle.TEAL);
 		browserMetric.wordWrap = false;
 		if (infoPanel != null) { infoPanel.setPosition(detailX, scoreY + 22); infoPanel.visible = false; }
 		// Detailed score cycling stays reachable; its compact panel uses the same score service.
 		if (infoPanel != null) infoPanel.setBrowserSize(Std.int(detailWidth), FreeplayDetailSections.SCORE_HEIGHT - 26);
 		qtooltip.visible = false; etooltip.visible = false;
-		browserCompletion = browserText(detailX, 600, detailWidth, 'COMPLETION BY DIFFICULTY', 16, 0xFF9DB2CC);
+		browserCompletion = browserText(detailX, 600, detailWidth, 'COMPLETION BY DIFFICULTY', 16, MenuStyle.MUTED);
 		browserStarPanel = new FlxSprite(detailX, 609).makeGraphic(Std.int(detailWidth), 30, 0xFFB8CBDD);
 		insert(members.indexOf(grpSongs), browserStarPanel);
 		browserEmpty = browserText(56, 280, FreeplayBrowserLayout.listWidth(FlxG.width) - 64,
-			'No songs match this view.\nClear your search or adjust Library filters.', 24, 0xFFCFD8E5);
-		searchBG.setPosition(0, FlxG.height - 68);
-		searchBG.makeGraphic(FlxG.width, 68, 0xFF101622); searchBG.alpha = 1;
+			'No songs match this view.\nClear your search or adjust Library filters.', 24, MenuStyle.TEXT);
+		searchBG.setPosition(0, FlxG.height - MenuStyle.BAR_HEIGHT);
+		searchBG.makeGraphic(FlxG.width, MenuStyle.BAR_HEIGHT, MenuStyle.BAR); searchBG.alpha = 1;
 		searchText.setPosition(24, FlxG.height - 62); searchText.size = 18; searchText.fieldWidth = 90;
 		searchInput.setPosition(120, FlxG.height - 62); searchInput.size = 18; searchInput.fieldWidth = FlxG.width - 144 - 270;
 		// Keys and what they do are colored apart, with a rule between each pair.
-		var hintX:Float = 24;
-		var hints = FreeplayPulse.hints();
-		for (index in 0...hints.length) {
-			var key = browserText(hintX, FlxG.height - 31, 0, hints[index].key, 15, 0xFFFFD166);
-			hintX += key.width + 5;
-			var action = browserText(hintX, FlxG.height - 31, 0, hints[index].action, 15, 0xFF9DB2CC);
-			hintX += action.width + 10;
-			if (index < hints.length - 1) {
-				var rule = new FlxSprite(hintX, FlxG.height - 30).makeGraphic(2, 16, 0xFF3A4A63);
-				add(rule); uiChrome.push(rule);
-				hintX += 12;
-			}
-		}
-		// Added last so the title sits above every other element, in the corner.
-		browserUnderline = new FlxSprite(FlxG.width - 244, FlxG.height - 13).makeGraphic(226, 5, 0xFFFF66B7); browserUnderline.angle = -2;
-		add(browserUnderline); uiChrome.push(browserUnderline);
-		browserHeading = browserText(FlxG.width - 246, FlxG.height - 62, 0, 'FREEPLAY', 44, 0xFFFFF4DC);
-		browserHeading.angle = -2;
+		// The shared footer adds its title last so it sits above every other
+		// element, in the corner.
+		var footer = new MenuFooter('FREEPLAY', FreeplayPulse.hints(), false);
+		add(footer);
+		for (item in footer.members) uiChrome.push(item);
+		browserUnderline = footer.underline; browserHeading = footer.heading;
 		updateBrowserDetails();
 	}
 

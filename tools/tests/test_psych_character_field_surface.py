@@ -73,6 +73,7 @@ class PsychCharacterFieldSurfaceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="character-fields-", dir=ROOT / "tmp") as folder:
             scratch = Path(folder)
             (scratch / "CharacterDefinitionFixture.hx").write_text(fixture, encoding="utf-8", newline="\n")
+            (scratch / "SourceCharacterId.hx").write_text((ROOT / "source/SourceCharacterId.hx").read_text(), newline="\n")
             (scratch / "SourceCharacterDefinition.hx").write_text(
                 (ROOT / "source/SourceCharacterDefinition.hx").read_text(encoding="utf-8"),
                 encoding="utf-8", newline="\n")

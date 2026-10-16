@@ -45,6 +45,9 @@ class ScriptNativeClasses {
 			// A private tween clock the script advances itself (manager.update(elapsed)).
 			// Flixel declares it inside the FlxTween module; scripts import the short path.
 			entry('FlxTweenManager', 'flixel.tweens.FlxTweenManager', flixel.tweens.FlxTween.FlxTweenManager),
+			// Likewise a private timer clock (new FlxTimer(manager)); flixel declares
+			// it inside the FlxTimer module.
+			entry('FlxTimerManager', 'flixel.util.FlxTimerManager', flixel.util.FlxTimer.FlxTimerManager),
 			entry('FlxFlicker', 'flixel.effects.FlxFlicker', flixel.effects.FlxFlicker),
 			entry('FlxEmitter', 'flixel.effects.particles.FlxEmitter', flixel.effects.particles.FlxEmitter.FlxTypedEmitter),
 			entry('FlxBar', 'flixel.ui.FlxBar', flixel.ui.FlxBar),

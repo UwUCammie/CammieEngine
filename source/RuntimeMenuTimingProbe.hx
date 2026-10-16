@@ -82,24 +82,24 @@ class RuntimeMenuTimingProbe {
 						RuntimeSmokeHarness.fail('menu-category-probe', 'Section selection did not wrap upward.');
 						return;
 					}
-					for (i in 0...menu.categoryRows.length) {
-						var row = menu.categoryRows.members[i];
-						if (!row.isMenuItem || row.targetY != i - menu.categorySelected || row.menuRowSpacing != 96) {
-							RuntimeSmokeHarness.fail('menu-category-probe', 'Section rows do not use shared scrolling selection.');
+					for (i in 0...menu.sectionCards.length) {
+						var row = menu.sectionCards[i];
+						if (row.selected != (i == menu.categorySelected) || !row.exists) {
+							RuntimeSmokeHarness.fail('menu-category-probe', 'Section cards do not mark the selected section.');
 							return;
 						}
 					}
 					key(38, false); return;
 				case 2: key(13, true); return;
 				case 3:
-					if (!menu.inOptionCategory || menu.categoryRows.visible) {
+					if (!menu.inOptionCategory || menu.sectionCards[menu.categorySelected].exists) {
 						RuntimeSmokeHarness.fail('menu-category-probe', 'Confirm did not open the selected section.');
 						return;
 					}
 					key(13, false); return;
 				case 4: key(27, true); return;
 				case 5:
-					if (menu.inOptionCategory || !menu.categoryRows.visible || menu.categorySelected != OptionsCategories.names().length - 1) {
+					if (menu.inOptionCategory || !menu.sectionCards[menu.categorySelected].exists || menu.categorySelected != OptionsCategories.names().length - 1) {
 						RuntimeSmokeHarness.fail('menu-category-probe', 'Back did not restore section selection.');
 						return;
 					}
