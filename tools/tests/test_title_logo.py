@@ -541,7 +541,8 @@ class TitleShineHaxeTests(unittest.TestCase):
 
     def test_update_log_describes_the_logo(self):
         text = (ROOT / "updateLog.txt").read_text(encoding="utf-8")
-        section = text[text.index("v0.0.44 development - CammieEngine"):]
+        # The heading reads "development" until release and "alpha" after it.
+        section = text[re.search(r"v0\.0\.44 (development|alpha) - CammieEngine", text).start():]
         section = section[:section.index("\nv0.0.43")]
         lines = [line for line in section.splitlines() if "title screen logo" in line]
         self.assertEqual(len(lines), 1, lines)
