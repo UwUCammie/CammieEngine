@@ -19,6 +19,10 @@ BODY=r'''  Sys.setCwd(root);
    check(corePlan.linkedOwners.indexOf("assets/imported_mods/core")<0,"requested package reported as its own link");
    check(File.getContent(root+"/assets/imported_mods/core/__nmv_core/core.bin")=="shared core payload","blocked core preview changed bytes");
   }
+  // The package folder (or one file of a surviving neighbour) was deleted by hand earlier.
+  function wipe(path:String):Void {if(FS.isDirectory(path)){for(name in FS.readDirectory(path))wipe(path+"/"+name);FS.deleteDirectory(path);}else FS.deleteFile(path);}
+  if(mode=="gone")wipe(root+"/"+ownerRoot);
+  if(mode=="gone-neighbour")FS.deleteFile(root+"/assets/imported_mods/beta/.cammie-owner.json");
   var plan=ImportRemovalTransaction.preview(root,[ownerRoot],[]);
   if(mode=="unowned") {check(plan.blockers.length>0,"unowned local file accepted");check(File.getContent(root+"/"+ownerRoot+"/local.txt")=="private local bytes","local file changed");return;}
   check(plan.blockers.length==0,"preview failed: "+plan.blockers.join("; "));
@@ -63,7 +67,7 @@ BODY=r'''  Sys.setCwd(root);
   if(mode!="cleanup-pending")check(ImportRemovalTransaction.recover(root).length==0,"recovery failed: "+ImportRemovalTransaction.recover(root).join("; "));
   if(mode=="moved" || mode=="moved-rollback")check(ImportRemovalTransaction.recover(root).length==0,"second launch recovery of a moved install failed");
   var installed=ImportRefreshTransaction.inspectRetainedManifests(root,root+"/import-cache/state",root+"/import-cache/records");
-  check(installed.length==((mode=="cancel" || mode=="cancel-prepare" || mode=="rollback" || mode=="moved-rollback" || mode=="edited" || mode=="partial" || mode=="family" || mode=="family3")?1:0),"receipt retirement wrong");
+  check(installed.length==((mode=="cancel" || mode=="cancel-prepare" || mode=="rollback" || mode=="moved-rollback" || mode=="edited" || mode=="partial" || mode=="family" || mode=="family3" || mode=="gone-neighbour")?1:0),"receipt retirement wrong");
   if(mode!="cancel" && mode!="edited")check(LibraryIdentityArchive.load(root).records.length==1,"identity archive lost");
   if(mode=="rollback") {
    // Removing the same package again after a rolled-back attempt must work, and the
@@ -123,10 +127,10 @@ class ImportRemovalTransactionTest(unittest.TestCase):
   fixture=fixture.replace('  var ownerRoot=',RECOVERY+'  var ownerRoot=')
   with tempfile.TemporaryDirectory(dir=TEST_TMP) as folder:
    work=Path(folder); (work/'Main.hx').write_text(fixture,encoding='utf-8')
-   for mode in ('valid','cancel','cancel-prepare','cleanup-pending','edited','rollback','moved','moved-rollback','moved-unfinished','partial','family','family3','unowned', *['crash-'+phase for phase in PHASES], *['partial-crash-'+phase for phase in PHASES]):
+   for mode in ('valid','gone','gone-neighbour','cancel','cancel-prepare','cleanup-pending','edited','rollback','moved','moved-rollback','moved-unfinished','partial','family','family3','unowned', *['crash-'+phase for phase in PHASES], *['partial-crash-'+phase for phase in PHASES]):
     install=work/str(len(list(work.iterdir())));install.mkdir()
     current=fixture
-    if mode in ('partial','family','family3') or mode.startswith('partial-crash-'):
+    if mode in ('partial','family','family3','gone-neighbour') or mode.startswith('partial-crash-'):
      current=current.replace('roots:[{namespace:"alpha",engine:engine}]','roots:[{namespace:"alpha",engine:engine,relative:"alpha"},{namespace:"beta",engine:engine,relative:"beta"}]')
      current=current.replace('  var committed=ImportRefreshTransaction.apply',r'''  write(stage+"/other-provenance",{version:1,destinationFolder:"other",sourceFolder:"other",sourceEngine:engine,sourceOwner:"assets/imported_mods/beta",sourceIdentity:engine.toLowerCase()+"|id|beta-package",sourceFingerprint:""});
   write(stage+"/other-compat",{version:1,selectedRoot:"assets/imported_mods/beta",roots:[{path:"assets/imported_mods/beta",engine:engine}]});

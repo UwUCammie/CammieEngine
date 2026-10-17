@@ -19,7 +19,11 @@ import flixel.text.FlxText;
 	it the way a player does (the song's Library actions, then its removal
 	entry), `--smoke-removal-state-timeout-ms <ms>` bounds the wait and
 	`--smoke-removal-state-shots` saves a framebuffer PNG whenever the popup's
-	heading changes. Nothing is ever confirmed or removed.
+	heading changes. Nothing is confirmed or removed unless
+	`--smoke-removal-state-confirm` is given: then the review's YES choice is
+	taken (twice when linked mods ask again), the result is read, Return is
+	pressed the way a player does, and Freeplay must come back within the
+	timeout. Only ever run that against a private copy of an install.
 **/
 @:access(RuntimeSmokeHarness)
 @:access(LibraryMenuSubState)
@@ -42,6 +46,11 @@ class RuntimeRemovalStateProbe {
 	static var openedAt:Float = 0;
 	static var lastLog:Float = 0;
 	static var blankSince:Float = -1;
+	static var confirm:Bool = false;
+	static var confirmedAt:Float = 0;
+	static var lastYes:Float = 0;
+	static var resultSeen:String = '';
+	static var returnPressed:Float = 0;
 
 	static function argument(name:String):Null<String> {
 		var args = Sys.args();
@@ -61,6 +70,7 @@ class RuntimeRemovalStateProbe {
 			if (Math.isFinite(limit) && limit > 0) timeoutMs = limit;
 			back = Sys.args().indexOf('--smoke-removal-state-back') >= 0;
 			viaMenu = Sys.args().indexOf('--smoke-removal-state-via-menu') >= 0;
+			confirm = Sys.args().indexOf('--smoke-removal-state-confirm') >= 0;
 			shots = Sys.args().indexOf('--smoke-removal-state-shots') >= 0;
 			var backDelay = Std.parseFloat(argument('--smoke-removal-state-back-ms'));
 			if (Math.isFinite(backDelay) && backDelay >= 0) backAfterMs = backDelay;
@@ -83,6 +93,17 @@ class RuntimeRemovalStateProbe {
 				result.push(StringTools.trim(text.text).split('\n').join(' / '));
 		}
 		return result;
+	}
+
+	/** Takes the dialog's red YES choice; false when the dialog is not offering one yet. */
+	static function takeYes(menu:LibraryMenuSubState, now:Float):Bool {
+		var index = -1;
+		for (i in 0...menu.actions.length) if (StringTools.startsWith(menu.actions[i].label, 'YES')) index = i;
+		if (index < 0) return false;
+		lastYes = now;
+		RuntimeSmokeHarness.emit('removal_state_confirm', {choice: menu.actions[index].label});
+		menu.actions[index].run();
+		return true;
 	}
 
 	public static function tick():Void {
@@ -167,9 +188,33 @@ class RuntimeRemovalStateProbe {
 				if (menu == null || !Std.isOfType(menu, LibraryRemovalSubState) || refresh.busy) return;
 				if (removal.phase != 'preview' && removal.phase != 'blocked') return;
 				if (removal.busy) return;
-				RuntimeSmokeHarness.emit('removal_state_review', {phase: removal.phase, choices: [for (action in menu.actions) action.label], texts: texts});
-				if (!back) { RuntimeSmokeHarness.succeed(); return; }
+				RuntimeSmokeHarness.emit('removal_state_review', {phase: removal.phase, choices: [for (action in menu.actions) action.label], texts: texts,
+					activeMenuOwners: ImportedMenuEntry.activeOwnerRoots(), reservedOwners: ImportRefreshManager.removalActiveOwners()});
+				if (confirm && removal.phase == 'preview') {
+					if (!takeYes(menu, now)) throw 'Removal review has no YES choice';
+					confirmedAt = now; phase = 3; return;
+				}
+				if (!back && !confirm) { RuntimeSmokeHarness.succeed(); return; }
 				menu.backAction(); phase = 2; return;
+			}
+			if (phase == 3) {
+				if (now - confirmedAt > timeoutMs / 1000)
+					throw 'Removal did not return to Freeplay: state=' + Type.getClassName(Type.getClass(FlxG.state)) + ' result=' + resultSeen + ' phase=' + removal.phase + ' busy=' + removal.busy;
+				if (Std.isOfType(FlxG.state, FreeplayState)) {
+					RuntimeSmokeHarness.emit('removal_state_returned', {state: 'FreeplayState', result: resultSeen,
+						returnMs: returnPressed > 0 ? Math.round((now - returnPressed) * 1000) : -1});
+					RuntimeSmokeHarness.succeed(); return;
+				}
+				if (menu != null && Std.isOfType(menu, LibraryRemovalSubState) && !removal.busy) {
+					if (removal.phase == 'preview') { if (now - lastYes >= 1) takeYes(menu, now); return; }
+					if (resultSeen == '') {
+						// What a player reads after confirming; Return follows a moment later.
+						resultSeen = removal.phase; lastYes = now;
+						RuntimeSmokeHarness.emit('removal_state_result', {phase: removal.phase, label: removal.label, choices: [for (action in menu.actions) action.label], texts: texts});
+					} else if (returnPressed == 0 && now - lastYes >= 1) {
+						returnPressed = now; menu.backAction();
+					}
+				}
 			}
 			if (phase == 2) {
 				if (!Std.isOfType(FlxG.state, FreeplayState)) {

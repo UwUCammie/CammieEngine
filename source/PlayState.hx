@@ -12444,7 +12444,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (files == null) return null;
 		var png = files[0];
 		var cacheKey = Path.withoutExtension(png);
-		var cached = nightmareVisionPaths.tempAtlasFramesCache.get(cacheKey);
+		var cached = nightmareVisionPaths.liveCachedFrames(cacheKey);
 		if (cached != null) return cached;
 		var graphic = FNFAssets.getFlxGraphic(png);
 		if (graphic == null) return null;

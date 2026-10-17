@@ -61,6 +61,7 @@ class Assets {public static var cache:AssetCache=new AssetCache();}
 package flixel.graphics.frames;
 class FlxAtlasFrames {
  public var parent:flixel.graphics.FlxGraphic;
+ public var frames:Array<Dynamic>=[{}];
  public function new(?parent:flixel.graphics.FlxGraphic) this.parent=parent;
  public function addAtlas(other:FlxAtlasFrames, overwrite:Bool):Void {}
  public static function fromSparrow(image:flixel.graphics.FlxGraphic, text:String):FlxAtlasFrames return new FlxAtlasFrames(image);

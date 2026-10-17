@@ -490,6 +490,38 @@ class Main {{
         result = self.run_fixture(main)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_native_hud_pieces_keep_the_base_games_draw_order(self):
+        """A bar overlay a script places at `healthBarBG.zIndex + 1` must land under the health icons."""
+        main = '''class Main {
+  static function fail(value:String):Void throw value;
+  static function main() {
+    HxcCompatRuntime.clear();
+    var bg:Dynamic = {}; var bar:Dynamic = {}; var score:Dynamic = {}; var icon1:Dynamic = {}; var icon2:Dynamic = {};
+    var opponent:Dynamic = {}; var player:Dynamic = {}; var splashes:Dynamic = {}; var notes:Dynamic = {members: []};
+    var stranger:Dynamic = {};
+    HxcCompatRuntime.beginActiveSong({healthBarBG: bg, healthBar: bar, scoreText: score, iconP1: icon1, iconP2: icon2,
+      opponentStrumline: opponent, playerStrumline: player, grpNoteSplashes: splashes, notes: notes, unspawnNotes: []});
+    if (HxcCompatRuntime.getZIndex(bg) != 800 || HxcCompatRuntime.getZIndex(bar) != 801 || HxcCompatRuntime.getZIndex(score) != 802)
+      fail("bar and score order");
+    if (HxcCompatRuntime.getZIndex(icon1) != 850 || HxcCompatRuntime.getZIndex(icon2) != 850) fail("icon order");
+    if (HxcCompatRuntime.getZIndex(opponent) >= HxcCompatRuntime.getZIndex(player) || HxcCompatRuntime.getZIndex(player) >= HxcCompatRuntime.getZIndex(splashes)
+      || HxcCompatRuntime.getZIndex(splashes) >= HxcCompatRuntime.getZIndex(notes) || HxcCompatRuntime.getZIndex(opponent) <= 850)
+      fail("strumline, splash and note order");
+    if (HxcCompatRuntime.getZIndex(stranger) != 0) fail("an unrelated sprite changed layer");
+    // The Tricky style bar art: placed one above the bar's back, it stays under the icons.
+    var flames:Dynamic = {};
+    HxcCompatRuntime.setZIndex(flames, HxcCompatRuntime.getZIndex(bg) + 1);
+    if (HxcCompatRuntime.getZIndex(flames) >= HxcCompatRuntime.getZIndex(icon1)) fail("bar art drew over the icons");
+    // A script that moves a piece owns its value from then on.
+    HxcCompatRuntime.setZIndex(icon1, 5);
+    if (HxcCompatRuntime.getZIndex(icon1) != 5) fail("script-set zIndex was overridden");
+    HxcCompatRuntime.clearActiveState();
+    if (HxcCompatRuntime.getZIndex(bg) != 0) fail("order outlived the song");
+  }
+}'''
+        result = self.run_fixture(main)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_real_vslice_zindex_writers_are_lowered_in_song_and_modules(self):
         paths = {
             "song": DONOR / "v-slice/TAKEOVER-PLUS-PLUS-V10/DDTO++_V10_RELEASE/scripts/songs/dokidoggle.hxc",

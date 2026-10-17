@@ -24,6 +24,7 @@ class TimedStage extends Stage {
     function onUpdate(event) {
         var t = Conductor.instance.currentBeatTime + Conductor.instance.currentStepTime;
         var m = Conductor.instance.measureLengthMs / Conductor.instance.bpm;
+        var whole = Conductor.instance.currentBeat + Conductor.instance.currentStep;
     }
 }
 '''
@@ -52,7 +53,7 @@ MAIN = '''class Main {
     if (generated.indexOf("Conductor.instance") >= 0) fail("a Conductor.instance member was left for a null object: " + generated);
     for (call in ["HxcCompatRuntime.conductorGetBeatTimeInMs(8)", "HxcCompatRuntime.conductorGetStepTimeInMs(4)",
         "HxcCompatRuntime.conductorGetTypeLengthAtMs(hit, 'step')", "HxcCompatRuntime.conductorCurrentBeatTime",
-        "HxcCompatRuntime.conductorCurrentStepTime", "HxcCompatRuntime.conductorMeasureLengthMs", "HxcCompatRuntime.conductorBpm"])
+        "HxcCompatRuntime.conductorCurrentStepTime", "HxcCompatRuntime.conductorCurrentBeat", "HxcCompatRuntime.conductorCurrentStep", "HxcCompatRuntime.conductorMeasureLengthMs", "HxcCompatRuntime.conductorBpm"])
       if (generated.indexOf(call) < 0) fail("missing " + call + " in " + generated);
     // The stub below is the native Conductor's surface at 100 BPM: a beat is
     // 600 ms and a step 150 ms.
@@ -65,6 +66,16 @@ MAIN = '''class Main {
     Conductor.songPosition = 1500;
     if (!near(HxcCompatRuntime.conductorCurrentStepTime, 10) || !near(HxcCompatRuntime.conductorCurrentBeatTime, 2.5))
       fail("song position in steps/beats " + HxcCompatRuntime.conductorCurrentStepTime);
+    // The whole beat follows the song position as it is now, so an event placed on a beat line
+    // sees that beat, not the one before it; a line that float rounding leaves a hair short counts too.
+    Conductor.songPosition = 1800;
+    if (HxcCompatRuntime.conductorCurrentBeat != 3 || HxcCompatRuntime.conductorCurrentStep != 12)
+      fail("on the line: beat " + HxcCompatRuntime.conductorCurrentBeat + " step " + HxcCompatRuntime.conductorCurrentStep);
+    Conductor.songPosition = 1799.9996;
+    if (HxcCompatRuntime.conductorCurrentBeat != 3) fail("a hair short of the line stayed on beat " + HxcCompatRuntime.conductorCurrentBeat);
+    Conductor.songPosition = 1799;
+    if (HxcCompatRuntime.conductorCurrentBeat != 2 || HxcCompatRuntime.conductorCurrentStep != 11)
+      fail("before the line: beat " + HxcCompatRuntime.conductorCurrentBeat + " step " + HxcCompatRuntime.conductorCurrentStep);
     Sys.println("conductor-ok");
   }
 }

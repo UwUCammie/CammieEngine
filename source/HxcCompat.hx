@@ -9604,8 +9604,11 @@ class HxcCompat {
 		// route reads to the native clock and route the donor update call through a
 		// bounded numeric setter/no-op facade. Other Conductor members remain
 		// diagnosed until they have a native equivalent.
+		// currentBeat and currentStep read the song position as it is now: the native counters are refreshed at the
+		// start of the frame, before the clock advances and before that frame's song events run, so an event placed
+		// on a beat line would still see the beat before it.
 		output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*currentBeat\\b', 'g')
-			.replace(output, 'curBeat');
+			.replace(output, 'HxcCompatRuntime.conductorCurrentBeat');
 		output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*stepLengthMs\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.conductorStepLengthMs');
 		output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*beatLengthMs\\b', 'g')
@@ -9627,7 +9630,7 @@ class HxcCompat {
 		output = RegexCache.get('\\bnew\\s+Conductor\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.newConductor()');
 		output = RegexCache.get('\\bConductor\\s*\\.\\s*instance\\s*\\.\\s*currentStep\\b', 'g')
-			.replace(output, 'curStep');
+			.replace(output, 'HxcCompatRuntime.conductorCurrentStep');
 		// Tempo-map conversions and the remaining clock reads go to the native
 		// Conductor's own functions (beatToSeconds, stepToSeconds,
 		// getCrotchetAtTime, getBeat, getStep) through the runtime.

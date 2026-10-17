@@ -429,6 +429,8 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 			newsplash.setPosition(members[c].x + (members[c].width - newsplash.width) * 0.5,
 				members[c].y + (members[c].height - newsplash.height) * 0.5);
 		newsplash.sourceStrumline = this;
+		if (newsplash.nightmareVisionSkin == null) newsplash.alignOnVSliceReceptor(members[c]);
+		RuntimeSmokeHarness.markNoteSplashPlacement(newsplash, members[c]);
 		noteSplashes.add(newsplash);
 		return newsplash;
 	}

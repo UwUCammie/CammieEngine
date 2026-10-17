@@ -690,9 +690,23 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 		try return scopeAssetPath(path) catch (_:Dynamic) return null;
 	}
 
+	/** A cached atlas whose graphic was destroyed (cache clear, retry or state
+	 * switch) has no frames left, so every animation added from it is missing.
+	 * Such entries are dropped and the atlas is loaded again. */
+	public function liveCachedFrames(key:String):Null<FlxAtlasFrames> {
+		var cached = tempAtlasFramesCache.get(key);
+		if (cached == null) return null;
+		if (usableFrames(cached)) return cached;
+		tempAtlasFramesCache.remove(key);
+		return null;
+	}
+	public static function usableFrames(frames:FlxAtlasFrames):Bool {
+		return frames != null && frames.frames != null && frames.frames.length > 0 && frames.parent != null && frames.parent.bitmap != null;
+	}
+
 	public function getSparrowAtlas(key:String, ?parentFolder:String, allowGPU:Bool = true, checkMods:Bool = true):FlxAtlasFrames {
 		var directPath = haxe.io.Path.withoutExtension(getPath('images/' + key + '.png', parentFolder, checkMods));
-		var cached = tempAtlasFramesCache.get(directPath);
+		var cached = liveCachedFrames(directPath);
 		if (cached != null) return cached;
 		var metadata = getPath('images/' + key + '.xml', parentFolder, checkMods);
 		var frames = FlxAtlasFrames.fromSparrow(image(key, parentFolder, allowGPU, checkMods), exists(metadata) ? FNFAssets.getText(metadata) : null);
@@ -701,7 +715,7 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 	}
 	public function getPackerAtlas(key:String, ?parentFolder:String, allowGPU:Bool = true, checkMods:Bool = true):FlxAtlasFrames {
 		var directPath = haxe.io.Path.withoutExtension(getPath('images/' + key + '.png', parentFolder, checkMods));
-		var cached = tempAtlasFramesCache.get(directPath);
+		var cached = liveCachedFrames(directPath);
 		if (cached != null) return cached;
 		var metadata = getPath('images/' + key + '.txt', parentFolder, checkMods);
 		var frames = FlxAtlasFrames.fromSpriteSheetPacker(image(key, parentFolder, allowGPU, checkMods), exists(metadata) ? FNFAssets.getText(metadata) : null);
@@ -710,7 +724,7 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 	}
 	public function getAtlasFrames(key:String, ?parentFolder:String, allowGPU:Bool = true, checkMods:Bool = true):FlxAtlasFrames {
 		var directPath = haxe.io.Path.withoutExtension(getPath('images/' + key + '.png', parentFolder, checkMods));
-		var cached = tempAtlasFramesCache.get(directPath);
+		var cached = liveCachedFrames(directPath);
 		if (cached != null) return cached;
 		var xml = getPath('images/' + key + '.xml', parentFolder, checkMods);
 		var txt = getPath('images/' + key + '.txt', parentFolder, checkMods);

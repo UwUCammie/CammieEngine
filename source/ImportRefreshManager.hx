@@ -78,6 +78,10 @@ private typedef ImportRefreshAvailabilityReservation = {
 	var manual:Bool;
 	var historyRoots:Array<String>;
 	var recoveryBlocked:Bool;
+	/** The package is only held out of use because an outdated import cannot be refreshed
+	 * by this version. No import, refresh or recovery is running on it and nothing on disk
+	 * is being changed, so the player's own removal of it must not wait on this hold. */
+	var idleGate:Bool;
 }
 
 private typedef ImportRefreshRuntimeDependencyMetadata = {
@@ -196,15 +200,23 @@ class ImportRefreshManager {
 	}
 	static var removalToken:String = "";
 
+	/** Whether any reservation stands for work or recovery that is still going. Idle gates, which only
+	 * keep an unrefreshable import out of use, do not count. Caller holds mutex. */
+	static function busyReservationLocked():Bool {
+		for (reservation in reservations) if (!reservation.idleGate) return true;
+		return false;
+	}
+
 	public static function removalActiveOwners():Array<String> {
 		mutex.acquire(); var roots:Array<String> = [];
-		for (reservation in reservations) for (root in reservation.roots) if (roots.indexOf(root) < 0) roots.push(root);
+		for (reservation in reservations) if (!reservation.idleGate)
+			for (root in reservation.roots) if (roots.indexOf(root) < 0) roots.push(root);
 		for (leased in runtimeOwnerLeases) for (root in leased) if (roots.indexOf(root) < 0) roots.push(root);
 		mutex.release(); roots.sort(Reflect.compare); return roots;
 	}
 	public static function reserveRemovalRecovery():String {
 		mutex.acquire();
-		if (removalToken != "" || active || inspectionRunning || queue.length > 0 || pendingHandoffs.length > 0 || reservations.keys().hasNext() || runtimeOwnerLeases.keys().hasNext()) { mutex.release(); return ""; }
+		if (removalToken != "" || active || inspectionRunning || queue.length > 0 || pendingHandoffs.length > 0 || busyReservationLocked() || runtimeOwnerLeases.keys().hasNext()) { mutex.release(); return ""; }
 		removalToken = nextReservationTokenLocked("removal");
 		reserveLocked(removalToken,"managed-import-removal",[],null,true);
 		var token = removalToken; mutex.release(); return token;
@@ -212,7 +224,7 @@ class ImportRefreshManager {
 	public static function reserveForRemoval(plan:ImportRemovalPlan):String {
 		mutex.acquire();
 		if (plan == null || plan.blockers.length > 0 || removalToken != "" || active || inspectionRunning
-			|| queue.length > 0 || pendingHandoffs.length > 0 || unresolvedRecovery || reservations.keys().hasNext() || runtimeOwnersBusyLocked(plan.affectedOwners)) { mutex.release(); return ""; }
+			|| queue.length > 0 || pendingHandoffs.length > 0 || unresolvedRecovery || busyReservationLocked() || runtimeOwnersBusyLocked(plan.affectedOwners)) { mutex.release(); return ""; }
 		removalToken = nextReservationTokenLocked("removal");
 		var reservation = reserveLocked(removalToken,"managed-import-removal",plan.affectedOwners,null,true);
 		reservation.touchedPaths = [for (file in plan.candidateFiles) file.path].concat(plan.registryPaths);
@@ -234,6 +246,13 @@ class ImportRefreshManager {
 			for (root in removedRoots) {
 				committedOwnerRoots.remove(root); committedPathsByOwner.remove(root);
 				committedAssetIndexBindings.remove(root); dependentRootsByOwner.remove(root);
+			}
+			// An unrefreshable import's hold ends with the import itself. The receipt pass
+			// that follows only creates holds for the imports that are still installed.
+			for (heldToken in [for (name in reservations.keys()) name]) {
+				var held = reservations.get(heldToken);
+				if (held == null || !held.idleGate) continue;
+				for (root in held.roots) if (removedRoots.indexOf(root) >= 0) { releaseReservationLocked(heldToken); break; }
 			}
 			// Rebuild owner/path edges from the next authoritative receipt read.
 			committedPathOwners = new Map(); familyOwnerRootCache = new Map();
@@ -369,7 +388,7 @@ class ImportRefreshManager {
 		if (reservation == null) {
 			reservation = {token:token, transactionOwner:transactionOwner == null ? "" : transactionOwner,
 				roots:[], committedRoots:[], waitForOwnerRoots:[], songs:[], touchedPaths:[], committed:false, handoffPending:false,
-				handoffNames:[], manual:manual, historyRoots:[], recoveryBlocked:false};
+				handoffNames:[], manual:manual, historyRoots:[], recoveryBlocked:false, idleGate:false};
 			reservations.set(token, reservation);
 		}
 		var changed = false;
@@ -2819,6 +2838,7 @@ class ImportRefreshManager {
 				setReservationDependenciesLocked(reservation, dependencies);
 				reservation.touchedPaths = [];
 				reservation.recoveryBlocked = false;
+				reservation.idleGate = false;
 				reservation.committed = false;
 				reservation.handoffPending = false;
 				reservation.handoffNames = [];
@@ -2890,6 +2910,8 @@ class ImportRefreshManager {
 			var priorManifest:Dynamic = null;
 			var priorRecord:Dynamic = null;
 			var recoveryPaths:Array<String> = [];
+			// Set once a stored failure says this import cannot be refreshed: no recovery is owed for it.
+			var unrefreshable = false;
 			try {
 				ImportWorkScheduler.cooperate();
 				priorManifest = committedManifest(Path.join([cache,"state"]),owner);
@@ -2955,8 +2977,10 @@ class ImportRefreshManager {
 				// would fail the same way. Keep the package gated and say why instead.
 				if (stale) {
 					var knownFailure = readRefreshFailure(install, id);
-					if (ImportRefreshFailure.blocks(knownFailure, ImportRefreshFailure.fingerprint(record, EngineBranding.version())))
+					if (ImportRefreshFailure.blocks(knownFailure, ImportRefreshFailure.fingerprint(record, EngineBranding.version()))) {
+						unrefreshable = true;
 						throw ImportRefreshFailure.message(knownFailure, Std.string(record.label));
+					}
 				}
 				if (!stale && dependencyMetadata.complete && !ownerLeased) {
 					var priorAnalysisTransaction:String = manifest.transactionId;
@@ -3003,6 +3027,7 @@ class ImportRefreshManager {
 					}
 					reserveRecoveryBlock("refresh:" + id, owner, priorRecord, priorManifest,
 						recoveryPaths, stagedCommittedRoots);
+					if (unrefreshable && recoveryPaths.length == 0) markIdleGate("refresh:" + id);
 					protectedRecords.set("refresh:" + id, priorRecord);
 				} else {
 					if (recoveryPaths.length == 0) try {
@@ -3123,6 +3148,14 @@ class ImportRefreshManager {
 		mutex.release();
 	}
 
+	/** The reservation only keeps an import that cannot be refreshed out of use; see ImportRefreshAvailabilityReservation.idleGate. */
+	static function markIdleGate(token:String):Void {
+		mutex.acquire();
+		var reservation = reservations.get(token);
+		if (reservation != null && !reservation.idleGate) { reservation.idleGate = true; bumpAvailabilityLocked(); }
+		mutex.release();
+	}
+
 	static function reserveUnknownRecoveryBlock(token:String, owner:String, recoveryPaths:Array<String>):Void {
 		var roots:Array<String> = [];
 		var paths:Array<String> = [];
@@ -3179,6 +3212,9 @@ class ImportRefreshManager {
 				}
 				paths.sort(Reflect.compare);
 				reservation.touchedPaths = paths;
+				// Rolled back cleanly: the files are intact and nothing is running, so the
+				// gate only keeps the outdated package out of use. Removing it stays possible.
+				if (conflicts.length == 0) reservation.idleGate = true;
 				bumpAvailabilityLocked();
 			} else releaseReservationLocked(token);
 		}

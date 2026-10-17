@@ -147,7 +147,7 @@ class FlxG {public static var bitmap:FlxBitmapCache=new FlxBitmapCache(); public
             "flixel/graphics/FlxGraphic.hx": '''package flixel.graphics;
 class FlxGraphic {public var key:String;public var bitmap:openfl.display.BitmapData;public var persist:Bool=false;public var destroyOnNoUse:Bool=true;public function new(key:String,?bitmap:openfl.display.BitmapData){this.key=key;this.bitmap=bitmap==null?new openfl.display.BitmapData():bitmap;}}''',
             "flixel/graphics/frames/FlxAtlasFrames.hx": '''package flixel.graphics.frames;
-class FlxAtlasFrames {public var kind:String;public var image:flixel.graphics.FlxGraphic;public var text:String;public var parent:flixel.graphics.FlxGraphic;
+class FlxAtlasFrames {public var kind:String;public var image:flixel.graphics.FlxGraphic;public var text:String;public var parent:flixel.graphics.FlxGraphic;public var frames:Array<Dynamic>=[{}];
 public function new(parent:flixel.graphics.FlxGraphic){this.parent=parent;kind='plain';image=parent;}
 public function addAtlas(other:FlxAtlasFrames, overwrite:Bool):Void kind='merged';
 public static function fromSparrow(i:flixel.graphics.FlxGraphic,t:String):FlxAtlasFrames {var a=new FlxAtlasFrames(i);a.kind='xml';a.text=t;return a;}

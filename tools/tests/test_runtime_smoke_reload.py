@@ -73,6 +73,7 @@ class RuntimeDecodeMetrics {
  public static function snapshot():Dynamic return {};
 }
 class RuntimeSmokeState {public function new() {}}
+class RuntimeSmokeKeyScript {public static function install():Void {}}
 // Readiness only probes the collector in frame stats or pacing runs, which
 // this fixture leaves off, so a stub that would fail loudly is enough.
 class EngineMemory {

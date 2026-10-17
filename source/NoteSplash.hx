@@ -4,6 +4,7 @@ import flixel.math.FlxPoint;
 import DynamicSprite.DynamicAtlasFrames;
 import flixel.FlxG;
 import Judgement.TUI;
+import Strumline.StrumNote;
 
 class NoteSplash extends FlxSprite {
 	public var nightmareVisionRGB:NightmareVisionRGBGraphics;
@@ -143,7 +144,9 @@ class NoteSplash extends FlxSprite {
         updateHitbox();
         if (!isPixel) {
 			var ui = curUiType;
-            if (ui.splashOffsetX != null || ui.splashOffsetY != null)
+            // An imported V-Slice style's offsets move the splash from its lane the way the receptor
+            // moves; alignOnVSliceReceptor places it, so the usual centring stays under it.
+            if (ui.vSliceAlias == null && (ui.splashOffsetX != null || ui.splashOffsetY != null))
                 offset.set(ui.splashOffsetX == null ? 0 : ui.splashOffsetX,
                     ui.splashOffsetY == null ? 0 : ui.splashOffsetY);
             else
@@ -151,6 +154,25 @@ class NoteSplash extends FlxSprite {
         }
         else
             offset.set(0.5, 13.5);
+    }
+
+    /** Put an imported V-Slice style's splash where the base game would: the style's splash and strumline
+     * offsets decide how far its centre lies from the receptor's, not the lane alone. */
+    public function alignOnVSliceReceptor(receptor:StrumNote):Void {
+        var ui = curUiTypeFor(uiType);
+        if (isPixel || ui == null || ui.vSliceAlias == null || receptor == null || !receptor.settlesConfirm
+            || (ui.splashOffsetX == null && ui.splashOffsetY == null))
+            return;
+        var bounds = receptor.getGraphicBounds();
+        var centerX = bounds.x + bounds.width / 2 + NoteStyleAlignment.vSliceSplashCenterX(width,
+            ui.splashOffsetX == null ? 0 : ui.splashOffsetX, ui.strumlineOffsetX == null ? 0 : ui.strumlineOffsetX,
+            receptor.vSliceAnchorWidth);
+        var centerY = bounds.y + bounds.height / 2 + NoteStyleAlignment.vSliceSplashCenterY(height,
+            ui.splashOffsetY == null ? 0 : ui.splashOffsetY, ui.strumlineOffsetY == null ? 0 : ui.strumlineOffsetY,
+            receptor.vSliceAnchorHeight);
+        bounds.put();
+        offset.set(0.3 * width, 0.3 * height);
+        setPosition(centerX - width / 2 + offset.x, centerY - height / 2 + offset.y);
     }
 
     static function curUiTypeFor(type:String):TUI {

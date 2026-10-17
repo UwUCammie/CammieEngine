@@ -30,6 +30,22 @@ class NoteStyleAlignment {
 			laneHeight / 2 - hostReceptorCenter);
 	}
 
+	/** Where a donor note splash's centre lies from its receptor's centre, horizontally.
+	 * The donor puts the splash at its lane plus the style's splash offset and draws it 0.3 of
+	 * its width to the left, and the receptor at the same lane plus the strumline offset, so the
+	 * lane's own start cancels. A style authors the two offsets so the splash looks centred. */
+	public static function vSliceSplashCenterX(splashWidth:Float, splashOffsetX:Float, strumlineOffsetX:Float,
+		receptorAnchorWidth:Float):Float {
+		return splashOffsetX - strumlineOffsetX + 0.2 * splashWidth - receptorAnchorWidth / 2;
+	}
+
+	/** The vertical counterpart. The donor lifts the splash by INITIAL_OFFSET while the receptor only
+	 * takes its strumline offset, which is why this carries that term and the horizontal one does not. */
+	public static function vSliceSplashCenterY(splashHeight:Float, splashOffsetY:Float, strumlineOffsetY:Float,
+		receptorAnchorHeight:Float):Float {
+		return -VSLICE_INITIAL_OFFSET + splashOffsetY - strumlineOffsetY + 0.2 * splashHeight - receptorAnchorHeight / 2;
+	}
+
 	public static function centeredOffsetX(width:Float, originX:Float, scaleX:Float,
 		laneWidth:Float, authoredOffsetX:Float):Float {
 		// FlxSprite.getGraphicBounds() starts at

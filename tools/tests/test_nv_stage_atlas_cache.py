@@ -8,12 +8,12 @@ class AtlasCacheTest(unittest.TestCase):
  def test_cache_selection_missing_metadata_and_native_owner_key_translation(self):
   actual=(ROOT/'source/NightmareVisionPaths.hx').read_text()
   donor=(ROOT.parent/'fnf_sources/NightmareVision/source/funkin/Paths.hx').read_text()
-  methods='\n'.join(extract_method(actual,'public function '+n+'(') for n in ['getSparrowAtlas','getPackerAtlas','getAtlasFrames','forgetAtlasGraphic'])
+  methods='\n'.join(extract_method(actual,'public function '+n+'(') for n in ['getSparrowAtlas','getPackerAtlas','getAtlasFrames','forgetAtlasGraphic','liveCachedFrames'])+chr(10)+extract_method(actual,'public static function usableFrames(')
   reference='\n'.join(extract_method(donor,'public static inline function '+n+'(').replace('public static inline function','public function') for n in ['getSparrowAtlas','getPackerAtlas','getAtlasFrames'])
   main=r'''
 import haxe.io.Path;using StringTools;using haxe.io.Path;
-class FlxGraphic {public var key:String;public function new(k:String)key=k;}
-class FlxAtlasFrames {public var parent:FlxGraphic;public var kind:String;public function new(g:FlxGraphic,k:String){parent=g;kind=k;}
+class FlxGraphic {public var key:String;public var bitmap:Dynamic={};public function new(k:String)key=k;}
+class FlxAtlasFrames {public var parent:FlxGraphic;public var kind:String;public var frames:Array<Dynamic>=[{}];public function new(g:FlxGraphic,k:String){parent=g;kind=k;}
  public static function fromSparrow(g:FlxGraphic,t:String):FlxAtlasFrames return t==null?null:new FlxAtlasFrames(g,"xml");
  public static function fromAseprite(g:FlxGraphic,t:String):FlxAtlasFrames return t==null?null:new FlxAtlasFrames(g,"json");
  public static function fromSpriteSheetPacker(g:FlxGraphic,t:String):FlxAtlasFrames return t==null?null:new FlxAtlasFrames(g,"txt");}

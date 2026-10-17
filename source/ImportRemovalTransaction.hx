@@ -125,6 +125,12 @@ class ImportRemovalTransaction {
 			// favorites, categories, difficulty preferences and settings are retained.
 			LibraryIdentityArchive.prepare(install,current.affectedOwners,protectedRoots,cancel);
 			check(cancel);
+			// Files another import still owns that were already gone before this removal started.
+			// They are not this removal's doing, so the survivor check at the end skips them
+			// instead of reading a damaged neighbour as a change this removal made.
+			var absentSurvivors:Map<String,Bool> = new Map();
+			for (manifest in manifests) for (file in manifest.files) if (survives(manifest,file.path,current,partition)
+				&& !FileSystem.exists(safe(install,file.path))) absentSurvivors.set(file.path,true);
 			id = ImportRefreshTransaction.makeTransactionId();
 			var scope = safe(install,STATE);
 			ImportRefreshTransaction.ensureDirectoryUnder(install,scope + '/transactions');
@@ -133,7 +139,11 @@ class ImportRemovalTransaction {
 			ImportRefreshTransaction.ensureDirectoryUnder(install,txn + '/staging');
 			var scopes:Array<Dynamic> = [];
 			var registries:Map<String,String> = new Map();
-			for (file in current.candidateFiles) addOperation(install,txn,operations,file.path,file.sha256,null,cancel);
+			// A file the import owned that is already gone (a package folder deleted by hand, or lost
+			// to an earlier interrupted operation) has nothing left to remove. Its claim is retired
+			// with the owner's receipt below, so the rest of the import can still be removed.
+			for (file in current.candidateFiles) if (FileSystem.exists(safe(install,file.path)))
+				addOperation(install,txn,operations,file.path,file.sha256,null,cancel);
 			for (manifest in manifests) if (current.transactionOwners.indexOf(manifest.owner) >= 0) {
 				var record:Dynamic = Reflect.field(manifest.revision,'importRecord');
 				var pointer = 'import-cache/records/' + Std.string(Reflect.field(record,'id')) + '.json';
@@ -202,15 +212,13 @@ class ImportRemovalTransaction {
 				if (Json.stringify(tree(install,entry.path,cancel)) != Json.stringify(entry.inventory)) throw 'Ownership metadata changed before removal.';
 				FileSystem.rename(safe(install,entry.path,true),safe(txn,entry.backupPath));
 				if (progress != null) progress({phase:"removal-scope-retired",current:entry.path});
-				if (entry.replacement != null) publishReplacement(install,entry,registries);
+				if (entry.replacement != null) publishReplacement(install,entry,registries,absentSurvivors);
 				if (progress != null) progress({phase:"removal-scope-published",current:entry.path});
 			}
 			check(cancel);
 			// Revalidate shared files and all survivors immediately before commit.
 			for (manifest in manifests)
-				for (file in manifest.files) if (!ImportIO.isRegistry(file.path)
-					&& (current.transactionOwners.indexOf(manifest.owner) < 0 || (partition.retainedFiles.exists(manifest.owner)
-					&& partition.retainedFiles.get(manifest.owner).indexOf(file.path) >= 0))) {
+				for (file in manifest.files) if (survives(manifest,file.path,current,partition) && !absentSurvivors.exists(file.path)) {
 					check(cancel);
 					if (digest(safe(install,file.path,true)) != file.sha256) throw 'Surviving asset changed before removal commit: ' + file.path;
 				}
@@ -242,6 +250,14 @@ class ImportRemovalTransaction {
 				blockers:[Std.string(error)],affectedOwners:reviewed == null ? [] : reviewed.affectedOwners,transactionId:id};
 		}
 	}
+	/** A managed file this removal leaves in place: any file of an import that stays installed,
+	 * and the part of a split import that is kept. Registry files are reconciled, not kept as is. */
+	static function survives(manifest:ImportRefreshManifest,path:String,plan:ImportRemovalPlan,partition:ImportRemovalPartition.ImportRemovalPartitionResult):Bool {
+		if (ImportIO.isRegistry(path)) return false;
+		return plan.transactionOwners.indexOf(manifest.owner) < 0
+			|| (partition.retainedFiles.exists(manifest.owner) && partition.retainedFiles.get(manifest.owner).indexOf(path) >= 0);
+	}
+
 	static function replacementFiles(install:String,manifest:ImportRefreshManifest,revision:Dynamic,retained:Array<String>,id:String):Dynamic {
 		var files:Array<Dynamic> = [for (file in manifest.files) if (retained.indexOf(file.path) >= 0)
 			{path:file.path,sha256:file.sha256,owner:file.owner}];
@@ -266,8 +282,8 @@ class ImportRemovalTransaction {
 		replacement.metadata = [{path:'transactions/' + replacement.id + '/journal-00000001.json',text:journal},
 			{path:'manifest.json',text:manifest},{path:'transactions/' + replacement.id + '/receipt.json',text:receipt}];
 	}
-	static function publishReplacement(install:String,entry:Dynamic,registries:Map<String,String>):Void {
-		for (file in (cast entry.replacement.files:Array<Dynamic>)) if (digest(safe(install,file.path,true)) != file.sha256)
+	static function publishReplacement(install:String,entry:Dynamic,registries:Map<String,String>,absent:Map<String,Bool>):Void {
+		for (file in (cast entry.replacement.files:Array<Dynamic>)) if (!absent.exists(file.path) && digest(safe(install,file.path,true)) != file.sha256)
 			throw 'Surviving aggregate file changed: ' + file.path;
 		for (file in (cast entry.replacement.metadata:Array<Dynamic>)) {
 			var path = safe(install,entry.path + '/' + file.path);

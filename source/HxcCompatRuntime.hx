@@ -558,6 +558,19 @@ class HxcCompatRuntime {
 	static function get_conductorCurrentStepTime():Float
 		return conductorCall('getStep', [conductorNumber('songPosition'), 0]);
 
+	/** Float rounding can leave a beat line a hair short of the next whole beat. */
+	static inline var BEAT_LINE_TOLERANCE:Float = 0.000001;
+
+	/** V-Slice Conductor.currentBeat: the whole beat at the song position as it is now. */
+	public static var conductorCurrentBeat(get, never):Int;
+	static function get_conductorCurrentBeat():Int
+		return Math.floor(conductorCurrentBeatTime + BEAT_LINE_TOLERANCE);
+
+	/** V-Slice Conductor.currentStep, from the same live position. */
+	public static var conductorCurrentStep(get, never):Int;
+	static function get_conductorCurrentStep():Int
+		return Math.floor(conductorCurrentStepTime + BEAT_LINE_TOLERANCE);
+
 	/** V-Slice Conductor.measureLengthMs, four beats as above. */
 	public static var conductorMeasureLengthMs(get, never):Float;
 	static function get_conductorMeasureLengthMs():Float
@@ -982,7 +995,28 @@ class HxcCompatRuntime {
 						return result;
 				} catch (_:Dynamic) {}
 		}
-		return 0;
+		var hud = nativeHudZIndex(target);
+		return hud == null ? 0 : hud;
+	}
+
+	/**
+		V-Slice's stock draw order for the HUD pieces the native PlayState owns: the
+		health bar's back and fill, then the score text, the health icons above them
+		and the strumlines above those, with their splashes and notes kept in the order the
+		native PlayState draws them. Scripts place their own sprites relative to
+		these (`healthBarBG.zIndex + 1`) and call refresh(), so a bar overlay lands
+		under the icons as it does in the base game, not on top of them.
+	*/
+	static function nativeHudZIndex(target:Dynamic):Null<Int> {
+		var state = activeState != null ? activeState : resolveActiveState();
+		if (state == null)
+			return null;
+		var fields = ['healthBarBG', 'healthBar', 'scoreText', 'iconP1', 'iconP2', 'opponentStrumline', 'playerStrumline', 'grpNoteSplashes', 'notes'];
+		var layers = [800, 801, 802, 850, 850, 1000, 1001, 1002, 1003];
+		for (i in 0...fields.length)
+			if (runtimeField(state, fields[i]) == target)
+				return layers[i];
+		return null;
 	}
 
 	/**

@@ -127,7 +127,10 @@ class NightmareVisionNoteSplash extends NightmareVisionSplashSprite {
 		colorSwap.hue = hue; colorSwap.saturation = saturation; colorSwap.lightness = brightness;
 		animation.play('note' + lane + '-' + flixel.FlxG.random.int(1, 2), true);
 		offset.set(-20, -20);
-		if (animation.curAnim == null) throw '[nightmare-vision-note-splash] Missing historical animation for lane ' + lane + ' in ' + texture;
+		// The historical setup only sets the frame rate when the lane animation
+		// exists. A splash texture that failed to load (already reported once by
+		// the skin) or lacks this lane shows no splash; it never stops the song.
+		if (animation.curAnim == null) { kill(); return; }
 		animation.curAnim.frameRate = 24 + flixel.FlxG.random.int(-2, 2);
 		rgbGraphics.apply(this);
 	}

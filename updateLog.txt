@@ -1,8 +1,14 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.45 development - CammieEngine
-- Development continues after the published v0.0.44 checkpoint; remaining roadmap requirements stay open.
+v0.0.45 alpha - CammieEngine
+- Fixed deleting a mod that could not be refreshed after an update, such as an older copy imported as the wrong engine. The mod stayed held "active or reserved" so the removal was refused, and a removal that did start stopped on the first file that was already gone from disk and left the library locked. A mod held only because it cannot be refreshed can now be removed, files that are already missing are skipped, and a neighbouring mod with a missing file no longer blocks the removal.
+- Fixed V-Slice songs whose script draws over the health bar, such as Expurgation: the bar art was drawn on top of the health icons and hid them. Health bar parts, icons and strumlines now keep the base game's draw order when a script adds its own sprites.
+- Fixed the note splash of V-Slice note styles with their own offsets, such as Tricky's, appearing about 50 pixels right and 100 pixels low of the receptor. It now lands centred on the receptor as in the base game.
+- Fixed V-Slice scripts reading the current beat or step one frame late. An event placed on a beat line saw the beat before it, which moved Expurgation's pillar dodge a whole beat early; pressing space in the last beat of the countdown now dodges as in the base game.
+- Fixed Nightmare Vision songs such as Silly Billy stopping with "Missing historical animation for lane 0 in noteSplashes". A note splash sheet whose image had been freed was reused from the cache with no frames left; it is now loaded again, and a splash that still has no animation for its lane is simply not shown.
+- Added smoke test options for key presses at song times and for confirming a removal, used to check the fixes above in a private copy of an install.
+- Incremental alpha release after v0.0.44; remaining roadmap requirements stay open.
 
 v0.0.44 alpha - CammieEngine
 - Updated the title screen logo: the CAMMIE letters no longer have the trans flag stripes inside and are now dark with a pink neon outline like ENGINE. Instead, a soft shine in the trans flag colours (light blue, pink and white) sweeps across the neon lettering from left to right every few seconds. The shine is left out when shaders are turned off (Low quality) and when a custom title screen uses its own logo.

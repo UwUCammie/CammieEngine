@@ -256,6 +256,55 @@ class Main {
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_vslice_splash_offsets_keep_the_splash_centred_the_way_the_style_authored_it(self):
+        """Splash and strumline offsets are positional and move together; the lane's start cancels in x.
+
+        The Tricky style authors splash offsets of (25, -5) against strumline offsets of (25, 30).
+        With a 260x298 splash and a 110px receptor the base game lands the splash a few pixels from the
+        receptor's centre. Replacing the usual centring with those offsets put it about 50px right and
+        100px low instead.
+        """
+        source = r'''
+class Main {
+  static function fail(message:String):Void throw message;
+  static function near(actual:Float, expected:Float, label:String):Void {
+    if (Math.abs(actual - expected) > 0.0001) fail(label + ": " + actual + " != " + expected);
+  }
+  static function main() {
+    var dx = NoteStyleAlignment.vSliceSplashCenterX(260, 25, 25, 110);
+    var dy = NoteStyleAlignment.vSliceSplashCenterY(298, -5, 30, 110);
+    near(dx, -3, "tricky splash x from the receptor centre");
+    near(dy, 0.2 * 298 + 0.275 * 104 - 5 - 30 - 55, "tricky splash y from the receptor centre");
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) fail("the authored splash is not centred on its receptor: " + dx + ", " + dy);
+    // Offsets are positional: moving the splash offset moves the splash one for one, the strumline offset the other way.
+    near(NoteStyleAlignment.vSliceSplashCenterX(260, 35, 25, 110) - dx, 10, "splash offset moves the splash");
+    near(NoteStyleAlignment.vSliceSplashCenterX(260, 25, 35, 110) - dx, -10, "strumline offset moves the receptor");
+    near(NoteStyleAlignment.vSliceSplashCenterY(298, 5, 30, 110) - dy, 10, "vertical splash offset");
+    // The donor draws the splash 0.3 of its size up and left, so a bigger splash sits that much further out.
+    near(NoteStyleAlignment.vSliceSplashCenterX(360, 25, 25, 110) - dx, 20, "splash size");
+    Sys.println("splash-ok");
+  }
+}
+'''
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            Path(folder, "Main.hx").write_text(source, newline=chr(10))
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
+                 "-main", "Main", "--interp"],
+                cwd=ROOT, capture_output=True, text=True, timeout=120,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("splash-ok", result.stdout)
+
+    def test_native_splash_places_imported_vslice_styles_on_their_receptor(self):
+        splash = (ROOT / "source/NoteSplash.hx").read_text(encoding="utf-8")
+        strumline = (ROOT / "source/Strumline.hx").read_text(encoding="utf-8")
+        # An imported style's offsets no longer replace the usual centring.
+        self.assertIn("if (ui.vSliceAlias == null && (ui.splashOffsetX != null || ui.splashOffsetY != null))", splash)
+        self.assertIn("NoteStyleAlignment.vSliceSplashCenterX(", splash)
+        self.assertIn("NoteStyleAlignment.vSliceSplashCenterY(", splash)
+        self.assertIn("if (newsplash.nightmareVisionSkin == null) newsplash.alignOnVSliceReceptor(members[c]);", strumline)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -34,7 +34,7 @@ class FakeAnim {
 }
 class FakeRandom { public function new() {} public function int(min:Int,max:Int):Int return min; }
 class FlxG { public static var random=new FakeRandom(); }
-class TUI { public var splashAlpha:Null<Float>=null; public var splashOffsetX:Null<Float>=null; public var splashOffsetY:Null<Float>=null; public function new() {} }
+class TUI { public var splashAlpha:Null<Float>=null; public var splashOffsetX:Null<Float>=null; public var splashOffsetY:Null<Float>=null; public var vSliceAlias:Null<String>=null; public var strumlineOffsetX:Null<Float>=null; public var strumlineOffsetY:Null<Float>=null; public function new() {} }
 class Judgement { public static var uiJson:Dynamic={normal:new TUI()}; }
 class NightmareVisionNoteSkin {
  public var calls:Array<Int>=[];

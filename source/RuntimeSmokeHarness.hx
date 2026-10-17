@@ -952,6 +952,7 @@ class RuntimeSmokeHarness {
 			#end
 		} else visitsReady = 1;
 		playStateReady = true;
+		RuntimeSmokeKeyScript.install();
 		// A target-selected Freeplay smoke spends a variable amount of time
 		// traversing the real menus. Give PlayState its full requested window
 		// after it has finished creating, like a direct chart smoke.
@@ -1115,6 +1116,24 @@ class RuntimeSmokeHarness {
 		Reflect.setField(snapshot, 'sourcePlayfieldIndex', note.sourcePlayfieldIndex);
 		Reflect.setField(snapshot, 'isSustainNote', note.isSustainNote);
 		emit('nightmare_vision_note_visual', snapshot);
+	}
+
+	static var noteSplashPlacements:Int = 0;
+	/** Where a native note splash landed against the receptor it belongs to; the first few of a run. */
+	public static function markNoteSplashPlacement(splash:NoteSplash, receptor:flixel.FlxSprite):Void {
+		if (!enabled() || finished || splash == null || receptor == null || noteSplashPlacements >= 12) return;
+		noteSplashPlacements++;
+		var box = splash.getScreenBounds(null, receptor.camera);
+		var target = receptor.getScreenBounds(null, receptor.camera);
+		emit('note_splash_placement', {
+			direction: splash.direction, uiType: splash.uiType,
+			splashX: box.x, splashY: box.y, splashWidth: box.width, splashHeight: box.height,
+			splashCenterX: box.x + box.width / 2, splashCenterY: box.y + box.height / 2,
+			offsetX: splash.offset.x, offsetY: splash.offset.y, scaleX: splash.scale.x,
+			receptorCenterX: target.x + target.width / 2, receptorCenterY: target.y + target.height / 2,
+			receptorWidth: target.width
+		});
+		box.put(); target.put();
 	}
 
 	public static function markNightmareVisionSplashVisual(splash:NoteSplash):Void {
@@ -2010,6 +2029,7 @@ class RuntimeSmokeHarness {
 		FlxG.signals.preDraw.add(onFramePreDraw);
 		FlxG.signals.postDraw.add(onFramePostDraw);
 		RuntimeSmokePauseInput.install();
+		RuntimeSmokeKeyScript.install();
 		installRenderTiming();
 	}
 
@@ -2966,6 +2986,7 @@ class RuntimeSmokeHarness {
 			case 'left': openfl.ui.Keyboard.LEFT;
 			case 'right': openfl.ui.Keyboard.RIGHT;
 			case 'escape': openfl.ui.Keyboard.ESCAPE;
+			case 'space': openfl.ui.Keyboard.SPACE;
 			default: openfl.ui.Keyboard.ENTER;
 		};
 		try {
