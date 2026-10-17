@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.46 development - CammieEngine
+- Development continues after the published v0.0.45 checkpoint; remaining roadmap requirements stay open.
+
 v0.0.45 alpha - CammieEngine
 - Fixed deleting a mod that could not be refreshed after an update, such as an older copy imported as the wrong engine. The mod stayed held "active or reserved" so the removal was refused, and a removal that did start stopped on the first file that was already gone from disk and left the library locked. A mod held only because it cannot be refreshed can now be removed, files that are already missing are skipped, and a neighbouring mod with a missing file no longer blocks the removal.
 - Fixed V-Slice songs whose script draws over the health bar, such as Expurgation: the bar art was drawn on top of the health icons and hid them. Health bar parts, icons and strumlines now keep the base game's draw order when a script adds its own sprites.
