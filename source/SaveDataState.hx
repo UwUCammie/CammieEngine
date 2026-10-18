@@ -534,7 +534,7 @@ class SaveDataState extends MusicBeatState {
 		var installedLabel = currentTag == 'unknown'
 			? 'unknown (app version v' + EngineBranding.version() + ')'
 			: currentTag;
-		showUpdateDialog('Checking GitHub releases...\nInstalled release: ' + installedLabel
+		showUpdateDialog('Checking uwucammie.com...\nInstalled release: ' + installedLabel
 			+ '\n\nBACK: dismiss', 'checking');
 		updateCheckRequestId = UpdateChecker.beginCheck(currentTag);
 	}
@@ -563,9 +563,9 @@ class SaveDataState extends MusicBeatState {
 		}
 		updateOffer = latest;
 		showUpdateDialog('Update available\nInstalled: ' + currentLabel + '\nLatest: ' + latest.tag
-			+ '\nDownload size: ' + UpdateChecker.formatSize(latest.sizeBytes)
+			+ '\nFull download size: ' + UpdateChecker.formatSize(latest.sizeBytes)
 			+ '\n\nThe full Windows package will download and install after you close the game.'
-			+ '\nSettings and imported content are preserved. Existing asset files stay in place, so static asset changes require a manual clean install.'
+			+ '\nOnly changed or missing files are downloaded. Settings, imports and edited assets are preserved.'
 			+ '\n\nACCEPT: download and install\nBACK: cancel', 'prompt');
 	}
 
@@ -576,14 +576,14 @@ class SaveDataState extends MusicBeatState {
 		lastInstallStatus = status;
 		if (updateProgressDismissed) return;
 		switch (status) {
-			case 'downloading':
-				showUpdateDialog('Downloading the full Windows package...\nThis can take a while. You can keep playing; the verified update installs after the game closes.\n\nBACK: hide this message', 'progress');
+			case 'checking-files', 'downloading-files', 'downloading':
+				showUpdateDialog('Checking installed files and downloading changes from uwucammie.com...\nYou can keep playing; the verified update installs after the game closes.\n\nBACK: hide this message', 'progress');
 			case 'verifying':
-				showUpdateDialog('Download complete. Verifying the ZIP against GitHub and its release checksum...\n\nBACK: hide this message', 'progress');
+				showUpdateDialog('Verifying the website manifest and downloaded files...\n\nBACK: hide this message', 'progress');
 			case 'extracting':
 				showUpdateDialog('The package is verified. Preparing the files for installation...\n\nBACK: hide this message', 'progress');
 			case 'ready':
-				showUpdateDialog('The update is verified and ready. It will install automatically after you close the game. You can keep playing.\n\nSettings and imported content are preserved. Existing asset files stay in place, so static asset changes require a manual clean install.\n\nBACK: close', 'ready');
+				showUpdateDialog('The update is verified and ready. It will install automatically after you close the game. You can keep playing.\n\nOnly changed or missing files are downloaded. Settings, imports and edited assets are preserved.\n\nBACK: close', 'ready');
 			case 'installing':
 				showUpdateDialog('Installing the verified update.\n\nThe update helper will ask whether to start the new version when installation finishes.', 'progress');
 			case 'complete':
@@ -608,7 +608,7 @@ class SaveDataState extends MusicBeatState {
 					updateInstallStatusPath = started.statusPath;
 					lastInstallStatus = null;
 					updateProgressDismissed = false;
-					showUpdateDialog('The Windows update helper has started. It downloads and verifies the full package, then installs it after you close the game.\n\nYou can keep playing. BACK hides this message.', 'progress');
+					showUpdateDialog('The Windows update helper has started. It checks your files and downloads only changes, then installs after you close the game.\n\nYou can keep playing. BACK hides this message.', 'progress');
 				}
 			} else if (updateDialogMode == 'checking') {
 				updateCheckRequestId = -1;

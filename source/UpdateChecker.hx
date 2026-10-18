@@ -17,6 +17,8 @@ typedef UpdateRelease = {
 	var checksumUrl:String;
 	var sha256:String;
 	var sizeBytes:Int;
+	@:optional var manifestUrl:String;
+	@:optional var manifestSha256:String;
 }
 
 typedef UpdateCheckResult = {
@@ -45,7 +47,7 @@ typedef UpdateProgress = {
 @:headerCode('extern "C" __declspec(dllimport) unsigned long __stdcall GetCurrentProcessId(void);')
 #end
 class UpdateChecker {
-	public static inline var RELEASES_API:String = 'https://api.github.com/repos/UwUCammie/CammieEngine/releases?per_page=20';
+	public static inline var RELEASES_API:String = 'https://uwucammie.com/cammie-engine/latest.json';
 	public static inline var RELEASE_DOWNLOAD_ROOT:String = 'https://github.com/UwUCammie/CammieEngine/releases/download/';
 	static var nextRequestId:Int = 0;
 	#if (sys && windows)
@@ -147,6 +149,26 @@ class UpdateChecker {
 		return match.matched(1).toLowerCase();
 	}
 
+	public static function parseWebsiteRelease(body:String):UpdateRelease {
+		var data:Dynamic = Json.parse(body);
+		if (data == null || data.schema != 1 || data.platform != 'windows-x64'
+			|| !Std.isOfType(data.tag, String) || versionFromTag(data.tag) == null)
+			throw 'The website returned invalid release metadata.';
+		var root = WebsiteUpdateManifest.releaseRoot(data.tag);
+		var name = archiveFileName(data.tag);
+		if (name == null || data.archive == null || data.manifest == null
+			|| data.archive.name != name || data.archive.url != root + name
+			|| data.checksumUrl != root + 'SHA256SUMS.txt'
+			|| data.manifest.url != root + 'manifest.json'
+			|| !Std.isOfType(data.archive.sha256, String) || parseSha256(data.archive.sha256) == null
+			|| !Std.isOfType(data.manifest.sha256, String) || parseSha256(data.manifest.sha256) == null
+			|| !Std.isOfType(data.archive.size, Int) || data.archive.size <= 0)
+			throw 'The website release URLs or checksums are invalid.';
+		return {tag:data.tag, archiveName:name, archiveUrl:data.archive.url,
+			checksumUrl:data.checksumUrl, sha256:parseSha256(data.archive.sha256), sizeBytes:data.archive.size,
+			manifestUrl:data.manifest.url, manifestSha256:parseSha256(data.manifest.sha256)};
+	}
+
 	public static function formatSize(sizeBytes:Int):String {
 		if (sizeBytes <= 0) return 'size unavailable';
 		var sizeMb:Float = sizeBytes / 1048576.0;
@@ -174,7 +196,7 @@ class UpdateChecker {
 			var result:UpdateCheckResult;
 			try {
 				var body = WindowsUpdateDownload.getText(RELEASES_API);
-				var latest = parseLatestRelease(body);
+				var latest = parseWebsiteRelease(body);
 				result = {
 					requestId:requestId,
 					currentTag:currentTag == null || currentTag == '' ? 'unknown' : currentTag,
@@ -203,10 +225,14 @@ class UpdateChecker {
 	}
 
 	public static function startInstall(release:UpdateRelease):UpdateStartResult {
+		var root:String;
+		try root = WebsiteUpdateManifest.releaseRoot(release.tag) catch (_:Dynamic)
+			return {statusPath:null, error:'The selected release information is invalid.'};
 		if (release == null || archiveFileName(release.tag) != release.archiveName
 			|| parseSha256(release.sha256) == null
-			|| release.archiveUrl != releaseAssetUrl(release.tag, release.archiveName)
-			|| release.checksumUrl != releaseAssetUrl(release.tag, 'SHA256SUMS.txt'))
+			|| release.archiveUrl != root + release.archiveName
+			|| release.checksumUrl != root + 'SHA256SUMS.txt'
+			|| release.manifestUrl != root + 'manifest.json' || parseSha256(release.manifestSha256) == null)
 			return {statusPath:null, error:'The selected release information is invalid.'};
 
 		try {
@@ -238,7 +264,7 @@ class UpdateChecker {
 			}
 			var process = new sys.io.Process(helperPath, [statusPath, Sys.programPath(), installRoot,
 				release.archiveUrl, release.checksumUrl, release.archiveName,
-				release.sha256, release.tag, Std.string(gamePid())]);
+				release.sha256, release.tag, Std.string(gamePid()), release.manifestUrl, release.manifestSha256]);
 			process.close();
 			activeStatusPath = statusPath;
 			activeRelease = release;
@@ -263,8 +289,10 @@ class UpdateChecker {
 			return {status:status, label:status.substr('error:'.length), fraction:0};
 		if (status == 'complete')
 			return {status:status, label:'Update installed', fraction:1};
-		if (status == 'verifying' || status == 'extracting' || status == 'installing' || status == 'rolling-back') {
+		if (status == 'checking-files' || status == 'downloading-files' || status == 'verifying' || status == 'extracting' || status == 'installing' || status == 'rolling-back') {
 			var label = switch (status) {
+				case 'checking-files': 'Checking installed files';
+				case 'downloading-files': 'Downloading changed files';
 				case 'verifying': 'Verifying update';
 				case 'extracting': 'Preparing files';
 				case 'installing': 'Installing update';

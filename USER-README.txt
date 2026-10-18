@@ -11,6 +11,14 @@ Back up the extracted game folder and your saves before updating an alpha.
 The release includes a default V-Slice-style results screen. Imported mods can
 provide their own ending screen.
 
+UPDATES
+Downloads and changelogs: https://uwucammie.com/cammie-engine/
+In Settings, choose Check for Updates. The updater downloads only changed or
+missing files, checks their SHA-256 hashes, and installs after the game closes.
+Settings, imports and edited assets are preserved. If installation fails, the
+previous files are restored. v0.0.46 is the final GitHub release; update to it
+once to move to website updates, or extract the latest ZIP from the site.
+
 IMPORT MODS
 Use the engine's import menu to select a supported source package. Imports
 are stored separately from the bundled songs; identically named songs can
@@ -57,7 +65,8 @@ does not replace the format-specific documentation of the source engine.
 
 HELP, SOURCE AND UPDATES
 https://github.com/UwUCammie/CammieEngine
-https://github.com/UwUCammie/CammieEngine/releases
+https://uwucammie.com/cammie-engine/
+https://uwucammie.com/cammie-engine/changelog/
 https://github.com/UwUCammie/CammieEngine/issues
 
 CREDITS

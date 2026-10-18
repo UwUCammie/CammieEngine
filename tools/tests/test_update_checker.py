@@ -224,8 +224,8 @@ class Main {
 
     def test_settings_warn_about_preserved_assets_and_dismiss_stale_check(self):
         settings = (ROOT / "source/SaveDataState.hx").read_text(encoding="utf-8")
-        self.assertIn("Existing asset files stay in place", settings)
-        self.assertIn("static asset changes require a manual clean install", settings)
+        self.assertIn("Only changed or missing files are downloaded", settings)
+        self.assertIn("Settings, imports and edited assets are preserved", settings)
         self.assertIn("if (updateCheckRequestId < 0) return;", settings)
         self.assertIn("if (updateDialogMode == 'checking') updateCheckRequestId = -1;", settings)
         self.assertIn("updateDialogMode == 'progress' || updateDialogMode == 'ready'", settings)

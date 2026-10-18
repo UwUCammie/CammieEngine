@@ -1,8 +1,11 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.46 development - CammieEngine
-- Development continues after the published v0.0.45 checkpoint; remaining roadmap requirements stay open.
+v0.0.46 alpha - CammieEngine
+- Downloads, future releases and changelogs now live at https://uwucammie.com/cammie-engine/. This is the final GitHub release: update once to move to the website updater, or download the latest complete ZIP from the site.
+- Windows updates now compare the installed files with a verified release manifest and download only changed or missing files. Each downloaded file is checked with SHA-256 before installation. Updates still install after the game closes and roll back if installation fails.
+- Settings, imported mods and edited assets are preserved. Unchanged official assets can receive updates. Files removed from later website releases are removed only when their installed contents still match the previous official release.
+- Incremental alpha release after v0.0.45; remaining roadmap requirements stay open.
 
 v0.0.45 alpha - CammieEngine
 - Fixed deleting a mod that could not be refreshed after an update, such as an older copy imported as the wrong engine. The mod stayed held "active or reserved" so the removal was refused, and a removal that did start stopped on the first file that was already gone from disk and left the library locked. A mod held only because it cannot be refreshed can now be removed, files that are already missing are skipped, and a neighbouring mod with a missing file no longer blocks the removal.

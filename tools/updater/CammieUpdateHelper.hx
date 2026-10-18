@@ -84,7 +84,7 @@ class CammieUpdateHelper {
 			return;
 		}
 		#end
-		if (args.length < 8 || args.length > 9) {
+		if (args.length != 8 && args.length != 9 && args.length != 11) {
 			Sys.println("CammieUpdateHelper expects eight arguments and an optional game PID.");
 			Sys.exit(2);
 			return;
@@ -115,8 +115,11 @@ class CammieUpdateHelper {
 		var archiveName = args[5];
 		var apiSha256 = args[6].toLowerCase();
 		var releaseTag = args[7];
-		var originPid = args.length == 9 ? Std.parseInt(args[8]) : 0;
+		var originPid = args.length >= 9 ? Std.parseInt(args[8]) : 0;
 		validateArguments(exePath, installRoot, archiveUrl, checksumUrl, archiveName, apiSha256, releaseTag);
+		var website = args.length == 11;
+		if (website && (args[9] != WebsiteUpdateManifest.releaseRoot(releaseTag) + 'manifest.json'
+			|| !~/^[0-9a-f]{64}$/.match(args[10]))) throw 'Invalid website manifest arguments.';
 
 		var workRoot = Path.directory(Path.normalize(statusPath));
 		var archivePath = Path.join([workRoot, archiveName]);
@@ -129,10 +132,20 @@ class CammieUpdateHelper {
 		var backupIndex:Map<String, String> = new Map();
 		var installing = false;
 		var progress = {count:0, failAfter:-1};
+		#if updater_test
+		progress.failAfter = testFailAfter;
+		#end
 		currentInstallRoot = installRoot;
 		progressStatusPath = statusPath;
 
 		try {
+			if (website) {
+				beginProgress(statusPath, 'checking-files');
+				var manifestPath = Path.join([workRoot, 'manifest.json']);
+				downloadHttps(args[9], manifestPath);
+				if (sha256File(manifestPath) != args[10]) throw 'The website manifest failed its SHA-256 check.';
+				prepareWebsitePayload(manifestPath, payloadRoot, installRoot, releaseTag);
+			} else {
 			setStatus(statusPath, "downloading");
 			downloadHttps(archiveUrl, archivePath);
 			downloadHttps(checksumUrl, checksumPath);
@@ -148,6 +161,7 @@ class CammieUpdateHelper {
 			beginProgress(statusPath, "extracting");
 			if (FileSystem.exists(stageRoot)) throw "The temporary extraction path already exists.";
 			payloadRoot = extractArchive(archivePath, stageRoot, releaseTag);
+			}
 			if (!FileSystem.exists(exePath) || FileSystem.isDirectory(exePath))
 				throw "The installed executable could not be found.";
 			setStatus(statusPath, "ready");
@@ -160,6 +174,10 @@ class CammieUpdateHelper {
 			installTotal = fileTotal;
 			installing = true;
 			copyReleaseTree(payloadRoot, installRoot, "", backupRoot, backupIndex, backedUp, createdFiles, progress);
+			if (website) removeObsoleteFiles(payloadRoot, installRoot, releaseTag, backupRoot, backupIndex, backedUp);
+			#if updater_test
+			if (testFailBeforeCommit) throw 'Injected failure before release commit.';
+			#end
 			var stagedTag = StringTools.trim(File.getContent(Path.join([payloadRoot, "RELEASE_TAG"])));
 			if (stagedTag != releaseTag) throw "The release tag changed after package validation.";
 			installOne(Path.join([payloadRoot, "RELEASE_TAG"]), Path.join([installRoot, "RELEASE_TAG"]),
@@ -252,8 +270,9 @@ class CammieUpdateHelper {
 		if (archiveName != expectedName) throw "The selected release archive name is invalid.";
 		if (!~/^[0-9a-f]{64}$/.match(apiSha256)) throw "The selected release SHA-256 is invalid.";
 		var expectedPrefix = "https://github.com/UwUCammie/CammieEngine/releases/download/" + releaseTag + "/";
-		if (!StringTools.startsWith(archiveUrl, expectedPrefix + archiveName)
-			|| !StringTools.startsWith(checksumUrl, expectedPrefix + "SHA256SUMS.txt"))
+		var websitePrefix = WebsiteUpdateManifest.releaseRoot(releaseTag);
+		if (!((archiveUrl == expectedPrefix + archiveName && checksumUrl == expectedPrefix + "SHA256SUMS.txt")
+			|| (archiveUrl == websitePrefix + archiveName && checksumUrl == websitePrefix + "SHA256SUMS.txt")))
 			throw "The selected release download URLs are invalid.";
 		if (exePath == null || exePath == "" || installRoot == null || installRoot == "")
 			throw "The installed game path is invalid.";
@@ -325,8 +344,98 @@ class CammieUpdateHelper {
 	}
 
 	/** The shared Windows transport streams through URLMon with Wine TLS support. */
-	static function downloadHttps(url:String, destination:String):Void
+	#if updater_test
+	public static var testDownload:Null<(String, String)->Void>;
+	public static var testFailAfter:Int = -1;
+	public static var testFailBeforeCommit:Bool = false;
+	#end
+
+	static function downloadHttps(url:String, destination:String):Void {
+		#if updater_test
+		if (testDownload != null) { testDownload(url, destination); return; }
+		#end
 		WindowsUpdateDownload.toFile(url, destination);
+	}
+
+	/** Hash only packaged paths. Imports and the user's other files are never scanned. */
+	public static function prepareWebsitePayload(manifestPath:String, payload:String, installed:String, tag:String):Void {
+		downloadedObjects.clear();
+		var body = File.getContent(manifestPath);
+		var entries = WebsiteUpdateManifest.parse(body, tag);
+		createDirectory(payload);
+		var ownership = [for (entry in entries) if (entry.path == 'BUNDLED_ASSETS.json') entry][0];
+		fetchWebsiteObject(ownership, Path.join([payload, ownership.path]), installed);
+		loadBundledAssetBaselines(payload);
+		var pending:Array<{path:String, sha256:String, size:Int}> = [];
+		var total = 0.0;
+		for (index in 0...entries.length) {
+			var entry = entries[index];
+			progressFile = entry.path;
+			progressFiles = index + 1;
+			reportProgress(index + 1, entries.length);
+			if (entry.path == 'BUNDLED_ASSETS.json') continue;
+			var target = Path.join([installed, entry.path]);
+			if (FileSystem.exists(target)) {
+				if (FileSystem.isDirectory(target)) throw 'A directory blocks release file: ' + entry.path;
+				if (entry.path != 'RELEASE_TAG' && FileSystem.stat(target).size == entry.size
+					&& sha256File(target) == entry.sha256) continue;
+				if (isProtectedRelative(entry.path) && !isUnmodifiedBundledAsset(entry.path, target)) continue;
+			}
+			pending.push(entry);
+			total += entry.size;
+		}
+		beginProgress(progressStatusPath, 'downloading-files');
+		var completed = 0.0;
+		for (entry in pending) {
+			progressFile = entry.path;
+			fetchWebsiteObject(entry, Path.join([payload, entry.path]), installed);
+			completed += entry.size;
+			progressFiles++;
+			reportProgress(completed, total, true);
+		}
+		if (StringTools.trim(File.getContent(Path.join([payload, 'RELEASE_TAG']))) != tag)
+			throw 'The website release tag does not match its manifest.';
+		File.saveContent(Path.join([payload, WebsiteUpdateManifest.INSTALLED]), body);
+	}
+
+	static var downloadedObjects:Map<String, String> = new Map();
+
+	static function fetchWebsiteObject(entry:{path:String, sha256:String, size:Int}, destination:String, installed:String):Void {
+		createDirectory(Path.directory(destination));
+		var existing = Path.join([installed, entry.path]);
+		var cached = downloadedObjects.get(entry.sha256);
+		if (cached != null) File.copy(cached, destination);
+		else if (FileSystem.exists(existing) && !FileSystem.isDirectory(existing)
+			&& FileSystem.stat(existing).size == entry.size && sha256File(existing) == entry.sha256)
+			File.copy(existing, destination);
+		else downloadHttps(WebsiteUpdateManifest.ROOT + 'objects/' + entry.sha256, destination);
+		if (FileSystem.stat(destination).size != entry.size || sha256File(destination) != entry.sha256)
+			throw 'A downloaded release file failed verification: ' + entry.path;
+		downloadedObjects.set(entry.sha256, destination);
+	}
+
+	/** Delete only unchanged files owned by the previous website release. */
+	static function removeObsoleteFiles(payload:String, installed:String, tag:String, backupRoot:String,
+		backupIndex:Map<String, String>, backedUp:Array<String>):Void {
+		var oldPath = Path.join([backupRoot, WebsiteUpdateManifest.INSTALLED]);
+		if (!FileSystem.exists(oldPath)) return;
+		var old:Dynamic = haxe.Json.parse(File.getContent(oldPath));
+		var previous = WebsiteUpdateManifest.parse(File.getContent(oldPath), old.tag);
+		var current = WebsiteUpdateManifest.parse(File.getContent(Path.join([payload, WebsiteUpdateManifest.INSTALLED])), tag);
+		var keep:Map<String, Bool> = new Map();
+		for (entry in current) keep.set(entry.path.toLowerCase(), true);
+		for (entry in previous) {
+			if (keep.exists(entry.path.toLowerCase())) continue;
+			if (isProtectedRelative(entry.path)) continue;
+			var target = Path.join([installed, entry.path]);
+			if (!FileSystem.exists(target) || FileSystem.isDirectory(target) || sha256File(target) != entry.sha256) continue;
+			var saved = Path.join([backupRoot, entry.path]);
+			copyFile(target, saved);
+			backupIndex.set(entry.path.toLowerCase(), saved);
+			FileSystem.deleteFile(target);
+			backedUp.push(entry.path);
+		}
+	}
 
 	/** Parse local ZIP headers and stream file contents; no archive-sized allocation. */
 	public static function extractArchive(archivePath:String, stageRoot:String, releaseTag:String):String {

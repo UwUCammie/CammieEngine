@@ -11,22 +11,23 @@ code where the supplied engines have identical behavior.
 
 ## Play on Windows
 
-Download the **Windows x64 ZIP** from [GitHub Releases](https://github.com/UwUCammie/CammieEngine/releases), extract
-it to a writable folder, and run **Funkin.exe**. Keep the included assets, DLLs,
-and tools beside it. Players do not need a compiler or source checkout.
+Download the **Windows x64 ZIP** from [uwucammie.com](https://uwucammie.com/cammie-engine/), extract
+it to a writable folder, and run **Funkin.exe**. Players do not need a compiler
+or source checkout. [Changelogs](https://uwucammie.com/cammie-engine/changelog/)
+are also available on the site.
 
-On Windows, including under Wine, **Settings → Check for Updates** checks
-published releases and asks before downloading. A bundled Windows helper
-uses the Windows HTTPS and certificate APIs to verify and install the package
-after the game closes; it also replaces its own installed copy. Download
-progress stays visible in Settings, Main Menu, and Freeplay browsing. Local
-settings and imports remain in place; an existing
-asset file is kept, so a clean extraction is needed when a release changes
-bundled static assets. Releases before alpha.6 need one manual ZIP extraction
-to acquire the bundled helper.
+On Windows, including under Wine, **Settings → Check for Updates** checks the
+website and asks before downloading. The bundled helper compares packaged files
+with the installed copy and downloads only changed or missing files. A verified
+manifest and per-file SHA-256 checks protect download integrity. Installation
+runs after the game closes, replaces the helper too, and rolls back on failure.
+Settings, imported mods and edited assets remain in place. Unchanged official
+assets can be updated; removed official files are deleted only if unmodified.
 
-Maintainers build the Windows release locally and upload its ZIP and checksum
-to GitHub Releases. Native Windows smoke checks cover startup and Tutorial gameplay.
+**v0.0.46 is the final GitHub release.** Older installations can update to it
+once through GitHub to acquire the website updater, or extract the latest site
+ZIP manually. Future releases are published on the site. The source repository
+and issue tracker remain on GitHub.
 
 ## Freeplay browser
 
@@ -164,7 +165,7 @@ results screen:
 The script uses `.tools/llvm-mingw` when installed locally; otherwise set
 `HXCPP_MINGW_EXE` and `MINGW_ROOT` for a MinGW-w64 compiler. Add `--wine-smoke`
 after the tag for a bounded Wine launch check. The ZIP and `SHA256SUMS.txt`
-appear in `dist/`; upload both to the matching GitHub prerelease. The
+appear in `dist/`; publish them to the website as described below. The
 cross-build uses `-Dwindows -DHXCPP_MINGW -DHXCPP_M64`.
 `run.bat` is the native Windows entry point.
 The optional Wine check uses GNU `timeout` and accepts `WINE_BIN` to select
@@ -175,6 +176,32 @@ or use `APPIMAGE_EXTRACT_AND_RUN=1` when running the read-only AppImage. Build
 scratch files use the project-local `tmp/` directory. The Windows build stages
 its ASTC decoder under `export/<mode>/windows/bin/tools/`. Close the game before
 rebuilding. To check an existing Windows build only, run `./build.sh wine-smoke`.
+
+## Publish website updates
+
+After the normal `run.bat package` gate passes, prepare the tested ZIP:
+
+```powershell
+python tools/prepare_website_release.py --archive dist/CammieEngine-vX.Y.Z-windows-x64.zip --output dist/site-vX.Y.Z --tag vX.Y.Z
+```
+
+The output contains the full initial download, its checksum, changelog, a
+versioned file manifest, and deduplicated content objects. Only this packaged
+inventory is read, never the imported asset library. Publish through the
+existing SSH configuration:
+
+```powershell
+python tools/publish_website_release.py --prepared dist/site-vX.Y.Z --tag vX.Y.Z
+```
+
+The publisher transfers only absent objects plus the full ZIP, refuses to
+overwrite versioned release directories, and keeps its maintenance scripts
+outside the public root. The activation helper verifies all content objects,
+the full ZIP and manifest before atomically replacing `latest.json` and the
+full-download symlink. Include `tools/website/nginx.conf` in the existing HTTPS
+server on first setup. Later releases need no web-service restart.
+Historical release URLs stay available. Do not
+publish another GitHub build after the v0.0.46 migration release.
 
 ## Local imports
 
