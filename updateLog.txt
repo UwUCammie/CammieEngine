@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.47 development - CammieEngine
+- Development continues after the published v0.0.46 website migration checkpoint; remaining roadmap requirements stay open. Future packaged releases and changelogs are hosted at https://uwucammie.com/cammie-engine/.
+
 v0.0.46 alpha - CammieEngine
 - Downloads, future releases and changelogs now live at https://uwucammie.com/cammie-engine/. This is the final GitHub release: update once to move to the website updater, or download the latest complete ZIP from the site.
 - Windows updates now compare the installed files with a verified release manifest and download only changed or missing files. Each downloaded file is checked with SHA-256 before installation. Updates still install after the game closes and roll back if installation fails.
