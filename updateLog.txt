@@ -1,23 +1,17 @@
 CammieEngine update log
 
 v0.0.47 alpha - CammieEngine
-- Online play: race other players on the same song in lobbies of 2 to 16, from the new Online entry in the main menu
-- Sign in with your uwucammie.com account in your browser; the game never sees your password
-- Create a lobby, join one from the list or with its six-letter code, or make a private lobby with a password
-- The host picks a song from Freeplay and players who do not have it get it from the host, up to 250 MB per song
-- Songs you receive are kept in their own cache, never added to your library, and scripts in them run with file, network and system access blocked
-- New Online Song Cache option sets how much space received songs may use (2 GB by default)
-- Live scoreboard during the song and a results screen with everyone's scores at the end
-- Scores are checked by the server from your key presses, and only visual modifiers are allowed online
-- Match history on your uwucammie.com profile and global leaderboards for each song
-- New scoring: a perfect full combo is worth 1,000,000 on every song, with osu!lazer style ranks (SS, S, A, B, C, D)
-- Your saved scores were converted to the new scale; the old values are kept in your save
-- Smaller modifier score bonuses; Practice, Autoplay, Two Players, Play Both Sides and Opponent Play runs do not save a score
-- New results screen: an accuracy ring that fills to your rank, score, combo, hit counts and a timing graph; it opens instantly even after very long songs
-- The modifiers menu is now a panel in Freeplay and Story mode (F2) with plain names, and it explains why a modifier cannot be combined with another instead of switching it off
-- Removed the Slow, Fast and Accel modifiers; use the scroll speed options instead
-- Songs now start straight from Freeplay; character select moved to F3
-- Signing in to uwucammie.com no longer signs you out everywhere else, and the account page has a Sessions list where you can sign out other devices and games
+- Online play: race other players on the same song in lobbies of 2 to 16
+- Sign in with your uwucammie.com account
+- Songs you don't have are sent by the host and kept in a separate cache
+- Scores are checked by the server, with match history and song leaderboards
+- New scoring: 1,000,000 for a perfect full combo, with SS to D ranks
+- Your old scores were converted to the new scale
+- New results screen that opens instantly
+- Modifiers are now a panel in Freeplay and Story mode (F2)
+- Removed the Slow, Fast and Accel modifiers
+- Character select moved to F3
+- Signing in on the website no longer signs you out everywhere else
 
 v0.0.46 alpha - CammieEngine
 - Downloads and updates now come from https://uwucammie.com/cammie-engine/ instead of GitHub
@@ -72,7 +66,7 @@ v0.0.40 alpha - CammieEngine
 - Less stutter when pausing and while playing
 
 v0.0.39 alpha - CammieEngine
-- Skip cutscenes with Left Alt; Enter pauses again during videos
+- Skip cutscenes with Left Alt, and Enter pauses again during videos
 
 v0.0.38 alpha - CammieEngine
 - New Freeplay star field, difficulty colour key and block-style visualizer
