@@ -15,7 +15,7 @@ class NightmareVisionLegacyMissFlow {
 		state.applySourceMissHealth(note, true, true, true);
 		state.killOnSourceMiss(false);
 		state.setSourceVocalVolume('player', 0);
-		state.applySourceMiss();
+		state.applySourceMiss(false, note);
 		state.RecalculateRating();
 		var actor = note.forceGfSing ? state.gf : state.boyfriend;
 		if (actor != null && !note.noMissAnimation && actor.hasMissAnimations

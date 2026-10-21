@@ -57,6 +57,8 @@ typedef TOptions = {
     var hitSounds:Bool;
     var titleToggle:Bool;
     var fpsCap:Int;
+    /** Size limit of the multiplayer song cache (mpcache), in GiB. */
+    var ?mpCacheLimitGB:Float;
     var unlimitedFPS:Bool;
     var showFPS:Bool;
     var showMemory:Bool;
@@ -127,6 +129,16 @@ class OptionsHandler {
     // The menu accepts the full positive range of that native value.
     public static inline var MAX_FPS_CAP:Int = 2147483647;
 
+    /** Half-GiB steps from 0.5 to 50; anything else is the 2 GiB default. */
+    public static function sanitizeCacheLimit(raw:Dynamic):Float {
+        if (raw == null || !(Std.isOfType(raw, Float) || Std.isOfType(raw, Int)))
+            return 2;
+        var value:Float = raw;
+        if (!Math.isFinite(value))
+            return 2;
+        return Math.min(50, Math.max(0.5, Math.round(value * 2) / 2));
+    }
+
     public static function sanitizeFpsCap(raw:Dynamic):Int {
         if (raw == null || !(Std.isOfType(raw, Float) || Std.isOfType(raw, Int)))
             return 60;
@@ -180,6 +192,7 @@ class OptionsHandler {
         // triple must stay unlocked and retain its exact values.
         var quality = CodenameOptionsQualityCompat.infer(opt);
         opt.fpsCap = sanitizeFpsCap(Reflect.field(opt, "fpsCap"));
+        opt.mpCacheLimitGB = sanitizeCacheLimit(Reflect.field(opt, "mpCacheLimitGB"));
         opt.offset = sanitizeOffset(Reflect.field(opt, "offset"));
         opt.unlimitedFPS = sanitizeBool(Reflect.field(opt, "unlimitedFPS"), false);
         opt.fastSceneTransitions = sanitizeBool(Reflect.field(opt, "fastSceneTransitions"), false);
@@ -292,6 +305,7 @@ class OptionsHandler {
             lastOptions.hitSounds = false;
             lastOptions.titleToggle = true;
             lastOptions.fpsCap = 60;
+            lastOptions.mpCacheLimitGB = 2;
             lastOptions.unlimitedFPS = false;
             lastOptions.scrollSpeed = 1;
             lastOptions.dynamicScrollSpeed = 0;

@@ -2,6 +2,7 @@ package;
 
 import OptionsHandler.TOptions;
 import Judge.Jury;
+import StandardScore.ScoreDetail;
 import flixel.FlxG;
 @:forward
 enum abstract FCLevel(Int) from Int to Int {
@@ -26,6 +27,10 @@ class Highscore {
 	public static var songJudge:Map<String, Int> = new Map();
 	public static var songOptionsUsed:Map<String, OptionsHandler.TOptions> = new Map();
 	public static var songModifiersUsed:Map<String, Dynamic> = new Map();
+	/** Standardised scoring record (rank, judgement counts, modifiers) of each saved play. */
+	public static var songDetails:Map<String, ScoreDetail> = new Map();
+	/** Raw score an entry had before the one-time conversion to StandardScore. */
+	public static var songLegacyScores:Map<String, Int> = new Map();
 
 	static var saveCategories = ['best-score', 'recent', 'best-accuracy', 'best-fullcombo', 'best'];
 
@@ -65,7 +70,7 @@ class Highscore {
 		return storage;
 	}
 
-	public static function saveScore(song:String, score:Int = 0, ?diff:Int = 0, ?accuracy:Float = 0, ?rating:FCLevel, ?judge:Jury, ?performance:PlayPerformance.PlayPerformanceRecord):Void {
+	public static function saveScore(song:String, score:Int = 0, ?diff:Int = 0, ?accuracy:Float = 0, ?rating:FCLevel, ?judge:Jury, ?performance:PlayPerformance.PlayPerformanceRecord, ?detail:ScoreDetail):Void {
 		// we don't need the current options or modifiers as we can assume they haven't changed
 		var daSong:String = formatSong(song, diff, "best-score");
 		var recentSong:String = formatSong(song, diff, "recent");
@@ -73,9 +78,10 @@ class Highscore {
 		var bestFC:String = formatSong(song, diff, "best-fullcombo");
 		var bestOfAll:String = formatSong(song, diff, "best");
 		var curOptions = OptionsHandler.options;
-		var modifierDynamic = ModifierState.namedModifiers;
+		var modifierDynamic = ModifierState.snapshot();
 		setScore(recentSong, score);
 			setPerformance(recentSong, performance);
+			setDetail(recentSong, detail);
 		setAccuracy(recentSong, accuracy);
 		setFCLevel(recentSong, rating);
 		setJudge(recentSong, judge);
@@ -85,6 +91,7 @@ class Highscore {
 			if (songScores.get(daSong) < score) {
 				setScore(daSong, score);
 			setPerformance(daSong, performance);
+			setDetail(daSong, detail);
 				setAccuracy(daSong, accuracy);
 				setFCLevel(daSong, rating);
 				setJudge(daSong,judge);
@@ -95,6 +102,7 @@ class Highscore {
 		} else {
 			setScore(daSong, score);
 			setPerformance(daSong, performance);
+			setDetail(daSong, detail);
 			setAccuracy(daSong, accuracy);
 			setFCLevel(daSong, rating);
 			setJudge(daSong, judge);
@@ -106,6 +114,7 @@ class Highscore {
 			if (songAccuracy.get(bestAccuracy) < accuracy) {
 				setScore(bestAccuracy, score);
 			setPerformance(bestAccuracy, performance);
+			setDetail(bestAccuracy, detail);
 				setAccuracy(bestAccuracy, accuracy);
 				setFCLevel(bestAccuracy, rating);
 				setJudge(bestAccuracy, judge);
@@ -116,6 +125,7 @@ class Highscore {
 		} else {
 			setScore(bestAccuracy, score);
 			setPerformance(bestAccuracy, performance);
+			setDetail(bestAccuracy, detail);
 			setAccuracy(bestAccuracy, accuracy);
 			setFCLevel(bestAccuracy, rating);
 			setJudge(bestAccuracy, judge);
@@ -128,6 +138,7 @@ class Highscore {
 			if (songFCLevels.get(bestFC) <= rating) {
 				setScore(bestFC, score);
 			setPerformance(bestFC, performance);
+			setDetail(bestFC, detail);
 				setAccuracy(bestFC, accuracy);
 				setFCLevel(bestFC, rating);
 				setJudge(bestFC, judge);
@@ -139,6 +150,7 @@ class Highscore {
 		} else {
 			setScore(bestFC, score);
 			setPerformance(bestFC, performance);
+			setDetail(bestFC, detail);
 			setAccuracy(bestFC, accuracy);
 			setFCLevel(bestFC, rating);
 			setJudge(bestFC, judge);
@@ -169,6 +181,8 @@ class Highscore {
 			var daSong:String = formatSong(song, diff, saveCode);
 			songScores.remove(daSong);
 			songPerformance.remove(daSong);
+			songDetails.remove(daSong);
+			songLegacyScores.remove(daSong);
 			songAccuracy.remove(daSong);
 			songCompletions.remove(daSong);
 			songFCLevels.remove(daSong);
@@ -228,6 +242,16 @@ class Highscore {
 		var valid = PlayPerformance.read(value);
 		if (valid == null) songPerformance.remove(key); else songPerformance.set(key, valid);
 	}
+	static function setDetail(key:String, value:Null<ScoreDetail>):Void {
+		if (value == null) songDetails.remove(key); else songDetails.set(key, value);
+	}
+	public static function peekDetail(song:String, diff:Int, category:String = 'best-score'):Null<ScoreDetail>
+		return songDetails.get(formatSong(song, diff, category));
+	/** Rank saved with a score, or an empty string when the entry has none. */
+	public static function getRank(song:String, diff:Int, useFor:String = "best"):String {
+		var detail = songDetails.get(formatSong(song, diff, useFor));
+		return detail == null ? '' : detail.rank;
+	}
 	public static function peekPerformance(song:String, diff:Int, category:String = 'best-score'):Null<PlayPerformance.PlayPerformanceRecord>
 		return PlayPerformance.read(songPerformance.get(formatSong(song, diff, category)));
 	static function songFlush():Void {
@@ -239,6 +263,8 @@ class Highscore {
 		FlxG.save.data.songJudge = songJudge;
 		FlxG.save.data.songOptionsUsed = songOptionsUsed;
 		FlxG.save.data.songModifiersUsed = songModifiersUsed;
+		FlxG.save.data.songDetails = songDetails;
+		FlxG.save.data.songLegacyScores = songLegacyScores;
 		FlxG.save.flush();
 	}
 	public static function formatSong(song:String, diff:Int, saving:String):String {
@@ -360,5 +386,36 @@ class Highscore {
 			songOptionsUsed = FlxG.save.data.songOptionsUsed;
 		else
 			songOptionsUsed = [];
+
+		songDetails = FlxG.save.data.songDetails == null ? [] : FlxG.save.data.songDetails;
+		songLegacyScores = FlxG.save.data.songLegacyScores == null ? [] : FlxG.save.data.songLegacyScores;
+		migrateScoring();
+	}
+
+	/**
+		Convert saved scores to StandardScore once. The converted maps are built
+		aside (ScoreMigration never touches the old ones), the raw scores move to
+		songLegacyScores, and the scoring version is stamped only in the same
+		flush that stores the result, so an interrupted run converts again from
+		the untouched save and an entry is never converted twice.
+	**/
+	static function migrateScoring():Void {
+		var saved:Dynamic = FlxG.save.data.scoringVersion;
+		if (saved != null && Std.isOfType(saved, Int) && saved >= StandardScore.SCORING_VERSION)
+			return;
+		var result = ScoreMigration.migrate({
+			scores: songScores,
+			accuracy: songAccuracy,
+			fcLevels: songFCLevels,
+			performance: songPerformance,
+			modifiers: songModifiersUsed,
+			legacy: songLegacyScores,
+			details: songDetails
+		});
+		songScores = result.scores;
+		songLegacyScores = result.legacy;
+		songDetails = result.details;
+		FlxG.save.data.scoringVersion = StandardScore.SCORING_VERSION;
+		songFlush();
 	}
 }

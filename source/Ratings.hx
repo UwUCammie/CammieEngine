@@ -4,60 +4,19 @@ import flixel.FlxG;
 
 class Ratings
 {
-	public static function GenerateLetterRank(accuracy:Float) // generate a letter ranking
-	{
-		var ranking:String = "N/A";
-		if (FlxG.save.data.botplay)
-			ranking = "BotPlay";
-		switch (CalculateFCRating()) {
-			case Sick:
-				ranking = "(MFC)";
-			case Good:
-				ranking = "(GFC)";
-			case Bad:
-				ranking = "(FC)";
-			case Sdcb:
-				ranking = "(SDCB)";
-			default:
-				ranking = "(Clear)";
-		}
-
-		// WIFE TIME :)))) (based on Wife3)
-		ranking += wifeLetter(accuracy);
-
-		if (accuracy == 0)
-			ranking = "N/A";
-		else if (FlxG.save.data.botplay)
-			ranking = "BotPlay";
-
-		return ranking;
-	}
-
 	/**
-		The Wife3 letter for an accuracy, with its leading space. The first
-		threshold that matches wins. This runs for the score line, so it checks
-		the thresholds in order instead of building a table on every call. NaN
-		matches none of them and adds nothing, as the table did.
+		The standardised rank (SS, S, A, B, C, D, with silver SSH and SH when a
+		hidden style modifier is on) for an accuracy percentage from 0 to 100.
+		Ported scripts call this by name, so the signature stays. It gives N/A
+		before anything is judged and BotPlay under botplay.
 	**/
-	static function wifeLetter(accuracy:Float):String
+	public static function GenerateLetterRank(accuracy:Float):String
 	{
-		if (accuracy >= 99.9935) return " AAAAA";
-		if (accuracy >= 99.980) return " AAAA:";
-		if (accuracy >= 99.970) return " AAAA.";
-		if (accuracy >= 99.955) return " AAAA";
-		if (accuracy >= 99.90) return " AAA:";
-		if (accuracy >= 99.80) return " AAA.";
-		if (accuracy >= 99.70) return " AAA";
-		if (accuracy >= 99) return " AA:";
-		if (accuracy >= 96.50) return " AA.";
-		if (accuracy >= 93) return " AA";
-		if (accuracy >= 90) return " A:";
-		if (accuracy >= 85) return " A.";
-		if (accuracy >= 80) return " A";
-		if (accuracy >= 70) return " B";
-		if (accuracy >= 60) return " C";
-		if (accuracy < 60) return " D";
-		return "";
+		if (accuracy == 0 || Math.isNaN(accuracy))
+			return "N/A";
+		if (FlxG.save.data.botplay)
+			return "BotPlay";
+		return StandardScore.rankFromPercent(accuracy, StandardScore.hasHiddenModifier(ModifierState.modifierIds(true)));
 	}
 
 	public static function CalculateRating(noteDiff:Float, ?customSafeZone:Float):String // Generate a judgement through some timing shit
@@ -178,7 +137,7 @@ class Ratings
 	{
 		return (FlxG.save.data.npsDisplay ? "NPS: " + nps + (!FlxG.save.data.botplay ? " | " : "") : "") + (!FlxG.save.data.botplay ? // NPS Toggle
 			"Score:"
-			+ (Conductor.safeFrames != 10 ? score + " (" + scoreDef + ")" : "" + score)
+			+ score
 			+ // Score
 			" | Misses:"
 			+ PlayState.misses

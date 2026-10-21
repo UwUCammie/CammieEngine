@@ -460,7 +460,16 @@ class FreeplayState extends MusicBeatState {
 		hxcRuntime.dispatch(kind, EngineCompat.hxcFreeplayPayload(kind, this, hxcCapsuleView(curSelected), curDifficulty, null));
 	}
 
+	/** ENTER plays the song straight away; modifiers are set beforehand from the F2 panel. */
 	function launchSelection(index:Int, difficulty:Int):Bool {
+		return openSelection(index, difficulty, false);
+	}
+
+	/** Load the chart of a row and go to the song, or to character select first. */
+	/** Set while a lobby host picks the next song: ENTER hands the chart back instead of playing it. */
+	public static var lobbyPick:Null<{chosen:(chartPath:String, title:String, difficulty:String) -> Void, cancelled:Void->Void}> = null;
+
+	function openSelection(index:Int, difficulty:Int, chooseCharacter:Bool):Bool {
 		if (soundTest || index < 0 || index >= songs.length)
 			return false;
 		if (!availabilityAllowsLaunch(index, difficulty)) {
@@ -475,6 +484,13 @@ class FreeplayState extends MusicBeatState {
 			if (index >= songs.length || songs[index].songName != songName
 				|| !availabilityAllowsLaunch(index, difficulty)) return;
 			var chartName = songName.toLowerCase() + DifficultyIcons.getEndingFP(difficulty);
+			if (lobbyPick != null && !chooseCharacter) {
+				var pick = lobbyPick;
+				lobbyPick = null;
+				pick.chosen('assets/data/' + songName.toLowerCase() + '/' + chartName.toLowerCase() + '.json',
+					FreeplaySongTitle.display(songName), DifficultyManager.getDiffName(difficulty));
+				return;
+			}
 			PlayState.SONG = Song.loadFromJson(chartName, songName.toLowerCase());
 			Song.attachFreeplayScoreSongId(PlayState.SONG, songName);
 			PlayState.isStoryMode = false;
@@ -482,18 +498,34 @@ class FreeplayState extends MusicBeatState {
 			PlayState.watchedCutscene = false;
 			ModifierState.isStoryMode = false;
 			PlayState.storyDifficulty = difficulty;
-			if (!OptionsHandler.options.skipModifierMenu)
-				LoadingState.loadAndSwitchState(new ModifierState());
-			else {
-				if (FlxG.sound.music != null)
-					FlxG.sound.music.stop();
-				LoadingState.loadAndSwitchState(new PlayState());
+			if (chooseCharacter) {
+				LoadingState.loadAndSwitchState(new ChooseCharState(PlayState.SONG.player1));
+				return;
 			}
+			if (FlxG.sound.music != null)
+				FlxG.sound.music.stop();
+			LoadingState.loadAndSwitchState(new PlayState());
 		};
-		if (OptionsHandler.options.skipModifierMenu)
-			return LoadingState.prepareSongTransition(songName, prepare);
-		prepare();
-		return true;
+		// Picking for a lobby loads nothing, so it skips the loading screen.
+		if (chooseCharacter || lobbyPick != null) {
+			prepare();
+			return true;
+		}
+		return LoadingState.prepareSongTransition(songName, prepare);
+	}
+
+	function openModifiers():Void {
+		if (soundTest || subState != null) return;
+		stopPreviewSound();
+		previewTimer = 0;
+		clearHxcConfirm();
+		scrollMotion.reset();
+		var panel = new ModifierMenuSubState(false);
+		var index = curSelected;
+		if (index >= 0 && index < songs.length && songMatches(index) && songs[index].songName.toLowerCase() != 'random-song')
+			panel.onCharacters = function() openSelection(index, curDifficulty, true);
+		panel.cameras = [camUI];
+		openSubState(panel);
 	}
 
 	/** Native equivalent of the default capsule confirm used by imported modules. */
@@ -1865,6 +1897,7 @@ class FreeplayState extends MusicBeatState {
 		if (Math.abs(lerpScore - intendedScore) <= 10) lerpScore = intendedScore;
 		if (!soundTest)
 			scoreText.text = "PERSONAL BEST:" + Math.floor(lerpScore) + ", " + lerpAccuracy + "%"
+				+ savedRankSuffix()
 				+ (denseBrowser && curSelected >= 0 && curSelected < songs.length ? '\n' + PlayPerformance.label(Highscore.peekPerformance(songs[curSelected].songName, curDifficulty)) : '');
 		else
 			scoreText.text = "Sound Test";
@@ -1931,6 +1964,16 @@ class FreeplayState extends MusicBeatState {
 		}
 		if (!searchFocused && !focusChanged && !soundTest && (FlxG.keys.justPressed.TAB || FlxG.gamepads.anyJustPressed(BACK))) {
 			openLibraryActions();
+			return;
+		}
+		if (!searchFocused && !focusChanged && !soundTest && (FlxG.keys.justPressed.F2 || FlxG.gamepads.anyJustPressed(Y))) {
+			openModifiers();
+			return;
+		}
+		if (!searchFocused && !focusChanged && !soundTest && FlxG.keys.justPressed.F3 && subState == null
+			&& curSelected >= 0 && curSelected < songs.length && songMatches(curSelected)
+			&& songs[curSelected].songName.toLowerCase() != 'random-song') {
+			openSelection(curSelected, curDifficulty, true);
 			return;
 		}
 
@@ -2016,7 +2059,11 @@ class FreeplayState extends MusicBeatState {
 				FlxG.autoPause = OptionsHandler.options.autoPause;
 				if (soundTest)
 					LoadingState.loadAndSwitchState(new SaveDataState());
-				else {
+				else if (lobbyPick != null) {
+					var pick = lobbyPick;
+					lobbyPick = null;
+					pick.cancelled();
+				} else {
 					var importedCaller = ImportedFreeplayCaller.take(directOwnerRoot);
 					if (importedCaller != null) {
 						if (importedCaller.returnKind == 'package-picker') {
@@ -2122,6 +2169,13 @@ class FreeplayState extends MusicBeatState {
 		var name = DifficultyManager.getDiffName(curDifficulty);
 		if (UserLibrary.data().lastDifficulty(key) != name)
 			UserLibrary.change(function(data) data.setLastDifficulty(key, name));
+	}
+
+	/** The saved standardised rank of the selected chart as a suffix, empty when it has none. */
+	function savedRankSuffix():String {
+		if (curSelected < 0 || curSelected >= songs.length) return '';
+		var rank = Highscore.getRank(songs[curSelected].songName, curDifficulty, denseBrowser ? 'best-score' : 'best');
+		return rank == '' ? '' : ' ' + rank;
 	}
 
 	function changeDiff(change:Int = 0) {

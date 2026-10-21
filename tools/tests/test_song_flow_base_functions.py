@@ -152,7 +152,8 @@ class FlxG {
         self.assertIn('PlayState.exitToMenu();', method(pause, 'function exitPauseToMenu()'))
         self.assertIn('PlayState.loadSongByName(null, diffs[curSelected - 1]);', pause)
         self.assertIn('PlayState.restartCurrentSong();', method(game_over, 'function endBullshit():Void'))
-        self.assertEqual(game_over.count('PlayState.exitToMenu('), 2)
+        # Back, source back, and retrying a lobby song (played once) all leave through exitToMenu.
+        self.assertEqual(game_over.count('PlayState.exitToMenu('), 3)
 
     def test_script_end_song_drops_remaining_notes_first(self):
         play = (ROOT / 'source/PlayState.hx').read_text(encoding='utf-8')

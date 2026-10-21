@@ -1,19 +1,8 @@
 package;
 
-import Controls.Control;
-import flash.text.TextField;
 import flixel.FlxG;
-import flixel.FlxSprite;
-import flixel.group.FlxGroup.FlxTypedGroup;
-import flixel.math.FlxMath;
-import flixel.text.FlxText;
-import flixel.util.FlxColor;
-import lime.utils.Assets;
-#if sys
-import sys.io.File;
-#end
-import haxe.Json;
 using StringTools;
+
 typedef TModifierNoName = {
 	var value:Bool;
 	var conflicts:Array<String>;
@@ -32,470 +21,397 @@ typedef TModifier = {
 	> TModifierNoName,
 	var name:String;
 	var internName:String;
-	
+	/** Section of the modifiers panel: Rules, Visual, Health or Play style. */
+	var ?group:String;
 }
-class ModifierState extends MusicBeatState {
 
-	// use only in this class
+/**
+	The gameplay modifiers: what each one is, which ones are on, and the
+	standardised score multiplier they make. PlayState and scripts read the
+	switches through `namedModifiers`; the choices are made in
+	ModifierMenuSubState, opened from Freeplay and Story mode (F2) or as this
+	song setup screen (from the pause menu and character select).
+
+	Modifiers never switch each other off. A modifier that clashes with one that
+	is on is shown as unavailable, with the reason, until that one is turned off.
+**/
+class ModifierState extends MusicBeatState {
+	public static inline var RULES:String = 'Rules';
+	public static inline var VISUAL:String = 'Visual';
+	public static inline var HEALTH:String = 'Health';
+	public static inline var PLAY_STYLE:String = 'Play style';
+	public static final GROUPS:Array<String> = [RULES, VISUAL, HEALTH, PLAY_STYLE];
+
+	static final FAIL_RULES:Array<String> = ['mfc', 'gfc', 'fc'];
+	static final HEALTH_IDS:Array<String> = ['healthloss', 'healthgain', 'regen', 'degen', 'poison'];
+	static final PLAYERS:Array<String> = ['nos', 'duo', 'oppnt', 'demo'];
+
 	public static var modifiers:Array<TModifier> = [
 		{
-			name: "",
-			internName: "antijank",
-			value: false,
-			conflicts: [],
-			multi: 1,
-			times: true,
-			desc: ""
-		},
-		{
-			name: "Play",
-			internName: "play",
-			value: false,
-			conflicts: [],
-			multi: 1,
-			times: true,
-			desc: "Play the Funkin Game!"
-		},
-		{
-			name: "Char Select...",
-			internName: "charselect",
-			value: false,
-			conflicts: [],
-			multi: 1,
-			times: true,
-			desc: "You can just select some custom characters"
-		},
-		{
-			name: "Sick Mode",
+			name: "Sicks Only",
 			internName: "mfc",
+			group: RULES,
 			value: false,
-			conflicts: [
-				"fc",
-				"gfc",
-				"practice",
-				"healthloss",
-				"healthgain", "regen", "degen", "poison", "duo", "demo"],
-			multi: 3,
-			times: true,
-			desc: "Instantly fail when you don't get 'Sick'"
+			conflicts: ["gfc", "fc", "practice", "healthloss", "healthgain", "regen", "degen", "poison", "duo", "demo"],
+			multi: StandardScore.multiplierOf("mfc"),
+			desc: "Anything worse than a Sick ends the song."
 		},
 		{
-			name: "Good Full Combo",
-			internName : "gfc",
+			name: "Goods or Better",
+			internName: "gfc",
+			group: RULES,
 			value: false,
 			conflicts: ["mfc", "fc", "practice", "healthloss", "healthgain", "regen", "degen", "poison", "duo", "demo"],
-			multi : 2.5,
-			times: true,
-			desc: "Instantly fall if you get worse than 'Good'"
+			multi: StandardScore.multiplierOf("gfc"),
+			desc: "Anything worse than a Good ends the song."
 		},
 		{
-			name: "FC Mode",
+			name: "Full Combo",
 			internName: "fc",
+			group: RULES,
 			value: false,
-			conflicts: [
-				"mfc","gfc", "practice", "healthloss", "healthgain", "regen", "degen", "poison", "duo", "demo"],
-			multi: 2,
-			times: true,
-			desc: "Fail when you miss a note, Go for the Perfect!"
+			conflicts: ["mfc", "gfc", "practice", "healthloss", "healthgain", "regen", "degen", "poison", "duo", "demo"],
+			multi: StandardScore.multiplierOf("fc"),
+			desc: "A single miss ends the song."
 		},
 		{
-			name: "Practice Mode",
+			name: "Practice",
 			internName: "practice",
+			group: RULES,
 			value: false,
-			conflicts: ["mfc","gfc", "fc", "duo", "demo"],
-			multi: 0,
-			times: true,
-			desc: "You can't die while you're in practice! (DISABLES SCORE)"
-		},
-		/*
-		{
-			name: "Health Gain \\^",
-			internName: "hgu",
-			value: false,
-			conflicts: ["mfc", "fc", 4, 19, 21],
-			multi: -0.5,
-			desc: "Raise your health gain a little"
+			conflicts: ["mfc", "gfc", "fc", "duo", "demo", "loop"],
+			multi: StandardScore.multiplierOf("practice"),
+			desc: "You cannot die. The score is not saved."
 		},
 		{
-			name: "Health Gain \\v",
-			internName: "hgd",
+			name: "Restart on Death",
+			internName: "loop",
+			group: RULES,
 			value: false,
-			conflicts: [0, 1, 3, 19, 21],
-			multi: 0.5,
-			desc: "Lower your health gain a little."
-		},
-		{
-			name: "Health Loss \\^",
-			internName: "hlu",
-			value: false,
-			conflicts: [0, 1, 6, 19, 21],
-			multi: 0.5,
-			desc: "Raise your health loss a little."
-		},
-		{
-			name: "Health Loss \\v",
-			internName: "hld",
-			value: false,
-			conflicts: [0, 1, 5, 19, 21],
-			multi: -0.5,
-			desc: "Lower your health loss a little."
-		},
-		*/
-		{
-			name: "Health Loss",
-			internName: "healthloss",
-			value:false,
-			conflicts: ["mfc", "fc", "gfc"],
-			multi: 0.1,
-			amount: 1,
-			defAmount: 1,
-			precision: 0.5,
-			minimum: 0,
-			maximum: 10,
-			desc: "How much health you lose. Can be changed numerically."
-		},
-		{
-			name: "Health Gain",
-			internName: "healthgain",
-			value: false,
-			conflicts: ["mfc", "fc", "gfc"],
-			multi: -0.1,
-			amount: 1,
-			defAmount: 1,
-			precision: 0.5,
-			minimum: 0,
-			maximum: 10,
-			desc: "How much health you gain. Can be changed numerically."
-		},
-		{
-			name: "Sup. Love",
-			internName: "regen",
-			value: false,
-			conflicts: ["fc", "mfc", "degen", "duo", "demo", "gfc"],
-			multi: -0.03,
-			amount: 0,
-			defAmount: 0,
-			precision: 5,
-			minimum: 0,
-			maximum: 500,
-			desc: "Who knew simping could be so healthy?"
-		},
-		{
-			name: "Poison Fright",
-			internName: "degen",
-			value: false,
-			conflicts: ["fc", "mfc", "duo", "regen", "demo", "gfc"],
-			multi: 0.03,
-			amount: 0,
-			defAmount: 0,
-			precision: 5,
-			minimum: 0,
-			maximum: 500,
-			desc: "You are constantly losing health!"
-		},
-		{
-			name: "Fragile Funkin",
-			internName: "poison",
-			value: false,
-			conflicts: ["fc", "mfc", "duo", "demo", "gfc"],
-			multi: 1,
-			desc: "Missed note makes you lose a lot of health. You wanna have a bad time?"
+			conflicts: ["practice"],
+			multi: StandardScore.multiplierOf("loop"),
+			desc: "The song restarts right away when you die."
 		},
 		{
 			name: "Flipped Notes",
 			internName: "flipped",
+			group: VISUAL,
 			value: false,
 			conflicts: ["invis"],
-			multi: 0.1,
-			desc: "Notes are flipped"
+			multi: StandardScore.multiplierOf("flipped"),
+			desc: "Notes are drawn upside down."
 		},
 		{
-			name: "Slow Notes",
-			internName: "slow",
-			value: false,
-			conflicts: ["fast", "accel"],
-			multi: -0.3,
-			desc: "Notes are slow"
-		},
-		{
-			name: "Fast Notes",
-			value: false,
-			internName: "fast",
-			conflicts: ["slow", "accel"],
-			multi: 0.8,
-			desc: "Notes gotta go fast!"
-		},
-		{
-			name: "Accel Notes",
-			internName: "accel",
-			value: false,
-			conflicts: ["fast", "slow"],
-			multi: 0.4,
-			desc: "Notes get faster and faster"
-		},
-		{
-			name: "Vnsh Notes",
+			name: "Vanishing Notes",
 			internName: "vanish",
+			group: VISUAL,
 			value: false,
 			conflicts: ["invis"],
-			multi: 0.5,
-			desc: "Notes vanish when they get close to the strum line."
+			multi: StandardScore.multiplierOf("vanish"),
+			desc: "Notes fade out as they get close to the receptors."
 		},
 		{
-			name: "Invs Notes",
+			name: "Invisible Notes",
 			internName: "invis",
+			group: VISUAL,
 			value: false,
 			conflicts: ["flipped", "vanish", "snake", "drunk"],
-			multi: 1.5,
-			desc: "Notes are now invisible! Hard enough for you?"
+			multi: StandardScore.multiplierOf("invis"),
+			desc: "Notes cannot be seen at all."
 		},
 		{
 			name: "Snake Notes",
 			internName: "snake",
+			group: VISUAL,
 			value: false,
 			conflicts: ["invis"],
-			multi: 0.5,
-			desc: "Notes smoove across the screen"
+			multi: StandardScore.multiplierOf("snake"),
+			desc: "Notes sway from side to side as they scroll."
 		},
 		{
 			name: "Drunk Notes",
 			internName: "drunk",
+			group: VISUAL,
 			value: false,
 			conflicts: ["invis"],
-			multi: 0.5,
-			desc: "Notes be like my dad after a long day at work"
+			multi: StandardScore.multiplierOf("drunk"),
+			desc: "Notes wobble on their way to the receptors."
 		},
 		{
-			name: "Stuck in a loop",
-			internName: "loop",
+			name: "Health Loss",
+			internName: "healthloss",
+			group: HEALTH,
 			value: false,
-			conflicts: ["practice"],
-			multi: 0,
-			desc: "Insta-replay the level after you die!"
+			conflicts: ["mfc", "fc", "gfc"],
+			multi: StandardScore.multiplierOf("healthloss"),
+			amount: 1,
+			defAmount: 1,
+			precision: 0.5,
+			minimum: 0,
+			maximum: 10,
+			desc: "How much health a miss costs, as a multiple of normal."
 		},
 		{
-			name: "Solo Mode",
-			internName : "nos",
+			name: "Health Gain",
+			internName: "healthgain",
+			group: HEALTH,
 			value: false,
-			conflicts: [
-				"oppnt",
-				"duo",
-				"demo"
-			],
-			multi : 0,
-			times: true,
-			desc: "You play all the notes. Every. Last. One. (No score for you)"
+			conflicts: ["mfc", "fc", "gfc"],
+			multi: StandardScore.multiplierOf("healthgain"),
+			amount: 1,
+			defAmount: 1,
+			precision: 0.5,
+			minimum: 0,
+			maximum: 10,
+			desc: "How much health a hit gives, as a multiple of normal."
 		},
 		{
-			name: "Duo Mode",
+			name: "Health Regen",
+			internName: "regen",
+			group: HEALTH,
+			value: false,
+			conflicts: ["fc", "mfc", "gfc", "degen", "duo", "demo"],
+			multi: StandardScore.multiplierOf("regen"),
+			amount: 0,
+			defAmount: 0,
+			precision: 5,
+			minimum: 0,
+			maximum: 500,
+			desc: "Health slowly refills over time."
+		},
+		{
+			name: "Health Drain",
+			internName: "degen",
+			group: HEALTH,
+			value: false,
+			conflicts: ["fc", "mfc", "gfc", "regen", "duo", "demo"],
+			multi: StandardScore.multiplierOf("degen"),
+			amount: 0,
+			defAmount: 0,
+			precision: 5,
+			minimum: 0,
+			maximum: 500,
+			desc: "Health slowly drains over time."
+		},
+		{
+			name: "Fragile",
+			internName: "poison",
+			group: HEALTH,
+			value: false,
+			conflicts: ["fc", "mfc", "gfc", "duo", "demo"],
+			multi: StandardScore.multiplierOf("poison"),
+			desc: "Every miss costs a lot of health."
+		},
+		{
+			name: "Play Both Sides",
+			internName: "nos",
+			group: PLAY_STYLE,
+			value: false,
+			conflicts: ["oppnt", "duo", "demo"],
+			multi: StandardScore.multiplierOf("nos"),
+			desc: "You play the opponent's notes too. The score is not saved."
+		},
+		{
+			name: "Two Players",
 			internName: "duo",
+			group: PLAY_STYLE,
 			value: false,
-			conflicts: ["mfc", "fc", "gfc", "healthloss", "regen", "degen", "poison", "oppnt", "demo", "nos"],
-			multi: 0,
-			times: true,
-			desc: "Boogie with a friend! (FRIEND NOT REQUIRED)"
+			conflicts: ["mfc", "fc", "gfc", "practice", "healthloss", "regen", "degen", "poison", "oppnt", "demo", "nos"],
+			multi: StandardScore.multiplierOf("duo"),
+			desc: "A second player takes the opponent's side. The score is not saved."
 		},
 		{
-			name: "Oppnt. Play",
+			name: "Opponent Play",
 			internName: "oppnt",
+			group: PLAY_STYLE,
 			value: false,
 			conflicts: ["duo", "demo", "nos"],
-			multi: 0,
-			desc: "Play as the enemy that wanted to beat up Boyfriend!"
+			multi: StandardScore.multiplierOf("oppnt"),
+			desc: "Play as the opponent. The score is not saved."
 		},
 		{
-			name: "Demo Mode",
+			name: "Autoplay",
 			internName: "demo",
+			group: PLAY_STYLE,
 			value: false,
-			conflicts: ["mfc", "fc","gfc", "healthloss", "regen", "degen", "poison", "oppnt", "duo", "nos"],
-			multi: 0,
-			times: true,
-			desc: "Let the game play itself!"
+			conflicts: ["mfc", "fc", "gfc", "practice", "healthloss", "regen", "degen", "poison", "oppnt", "duo", "nos"],
+			multi: StandardScore.multiplierOf("demo"),
+			desc: "The game plays the song by itself. The score is not saved."
 		}
 	];
-	var grpAlphabet:FlxTypedGroup<Alphabet>;
-	var curSelected:Int = 1;
-	var checkmarks:Array<FlxSprite> = [];
-	var numberdisplays:Array<NumberDisplay> = [];
-	var multiTxt:FlxText;
+
+	/**
+		Modifiers that no longer exist. Speed changes moved to the scroll speed
+		option; the old menu's Play and Char Select rows are now keys. They stay
+		readable (always off) because PlayState and older scripts look them up.
+	**/
+	static final RETIRED:Array<String> = ['slow', 'fast', 'accel', 'play', 'charselect', 'antijank', 'chart'];
+
 	public static var isStoryMode:Bool = false;
 	public static var scoreMultiplier:Float = 1;
-	var description:FlxText;
 	public static var namedModifiers:Dynamic = {};
+
 	public static function init() {
-		for (modifier in 0...modifiers.length) {
-			Reflect.setField(namedModifiers, modifiers[modifier].internName, modifiers[modifier]);
-		}
+		for (id in RETIRED)
+			if (!Reflect.hasField(namedModifiers, id))
+				Reflect.setField(namedModifiers, id, {name: id, internName: id, value: false, conflicts: [], multi: 1.0, desc: ''});
+		for (modifier in modifiers)
+			Reflect.setField(namedModifiers, modifier.internName, modifier);
 	}
-	override function create() {
-		grpAlphabet = new FlxTypedGroup<Alphabet>();
 
-		var menuBG:FlxSprite = new FlxSprite().loadGraphic('assets/images/menuDesat.png');
-		menuBG.color = 0xFFea71fd;
-		menuBG.setGraphicSize(Std.int(menuBG.width * 1.1));
-		menuBG.updateHitbox();
-		menuBG.screenCenter();
-		menuBG.antialiasing = true;
-
-		multiTxt = new FlxText(800, 60, 0, "", 200);
-		multiTxt.setFormat("assets/fonts/vcr.ttf", 40, FlxColor.WHITE, RIGHT, OUTLINE, FlxColor.BLACK);
-		multiTxt.text = "Multiplier: 1";
-		multiTxt.scrollFactor.set();
-
-		description = new FlxText(750, 150, 350, "", 90);
-		description.setFormat("assets/fonts/vcr.ttf", 32, FlxColor.WHITE, LEFT, OUTLINE, FlxColor.BLACK);
-		description.text = "Instantly fail when you don't get \"Sick\"";
-		description.scrollFactor.set();
-
-		for (modifier in 0...modifiers.length) {
-			var swagModifier = new Alphabet(0, 10, "   "+modifiers[modifier].name, true, false, true);
-			swagModifier.isMenuItem = true;
-			swagModifier.targetY = modifier;
-			var coolCheckmark:FlxSprite = new FlxSprite().loadGraphic('assets/images/checkmark.png');
-			coolCheckmark.visible = modifiers[modifier].value;
-			var displayNum:NumberDisplay = new NumberDisplay(0, 0, modifiers[modifier].defAmount, modifiers[modifier].precision, modifiers[modifier].minimum, modifiers[modifier].maximum);
-			displayNum.visible = modifiers[modifier].amount != null;
-			if (displayNum.visible)
-				displayNum.value = modifiers[modifier].amount;
-			displayNum.size = 90;
-			checkmarks.push(coolCheckmark);
-			numberdisplays.push(displayNum);
-			displayNum.x += swagModifier.width + displayNum.width;
-			swagModifier.add(coolCheckmark);
-			swagModifier.add(displayNum);
-			grpAlphabet.add(swagModifier);
-			
-			Reflect.setField(namedModifiers, modifiers[modifier].internName, modifiers[modifier]);
-		}
-		add(menuBG);
-		add(grpAlphabet);
-		add(multiTxt);
-		add(description);
-		calculateMultiplier();
-		multiTxt.text = "Multiplier: "+scoreMultiplier;
-		changeSelection(0);
-		super.create();
+	public static function find(id:String):Null<TModifier> {
+		for (modifier in modifiers)
+			if (modifier.internName == id)
+				return modifier;
+		return null;
 	}
-	override function update(elapsed:Float) {
-		super.update(elapsed);
-		if (controls.BACK) {
-			if (isStoryMode)
-				LoadingState.loadAndSwitchState(new StoryMenuState());
-			else
-				LoadingState.loadAndSwitchState(new FreeplayState());
-		}
-		if (controls.UP_MENU)
-			changeSelection(-1);
-		if (controls.DOWN_MENU)
-			changeSelection(1);
-		if (controls.RIGHT_MENU) {
-			changeAmount(true);
-		}  else if (controls.LEFT_MENU) {
-			changeAmount(false);
-		}
-		if (controls.ACCEPT)
-			toggleSelection();
-	}
-	function changeAmount(increase:Bool=false) {
-		if (!numberdisplays[curSelected].visible)
-			// not meant to be here...
-			return;
-		numberdisplays[curSelected].changeAmount(increase);
-		modifiers[curSelected].amount = numberdisplays[curSelected].value;
-		if (numberdisplays[curSelected].value == numberdisplays[curSelected].useDefaultValue && modifiers[curSelected].value) {
-			toggleSelection();
-		}
-		else if (numberdisplays[curSelected].value != numberdisplays[curSelected].useDefaultValue && !modifiers[curSelected].value) {
-			toggleSelection();
-		}
-		calculateMultiplier();
-	}
-	function changeSelection(change:Int = 0) {
-		FlxG.sound.play('assets/sounds/custom_menu_sounds/'
-			+ CoolUtil.parseJson(FNFAssets.getJson("assets/sounds/custom_menu_sounds/custom_menu_sounds")).customMenuScroll+'/scrollMenu' + TitleState.soundExt, 0.4);
 
-		curSelected += change;
-
-		curSelected = Std.int(FlxMath.wrap(curSelected, 1, modifiers.length - 1));
-		var bullShit:Int = 0;
-
-		for (item in grpAlphabet.members) {
-			item.targetY = bullShit - curSelected;
-			bullShit++;
-
-			item.alpha = 0.6;
-			// item.setGraphicSize(Std.int(item.width * 0.8));
-
-			if (item.targetY == 0) {
-				item.alpha = 1;
-				// item.setGraphicSize(Std.int(item.width));
-			}
-		}
-		description.text = modifiers[curSelected].desc;
-	}
-	function calculateMultiplier() {
-		scoreMultiplier = 1;
-		var timesThings:Array<Float> = [];
-		var i = 0;
+	/** The name of a modifier that is on and clashes with `id`, or null when `id` can be turned on. */
+	public static function blockedBy(id:String):Null<String> {
+		var target = find(id);
 		for (modifier in modifiers) {
-			if (modifier.value) {
-				if (modifier.times)
-					timesThings.push(modifier.multi);
-				else {
-					trace(numberdisplays[i].changedBy);
-					if (modifier.amount != null)
-						scoreMultiplier += numberdisplays[i].changedBy * modifier.multi;
-					else
-						scoreMultiplier += modifier.multi;
-				}
-			}
-			i++;
+			if (!modifier.value || modifier.internName == id)
+				continue;
+			if (modifier.conflicts.indexOf(id) >= 0 || (target != null && target.conflicts.indexOf(modifier.internName) >= 0))
+				return modifier.name;
 		}
-		for (timesThing in timesThings) {
-			scoreMultiplier *= timesThing;
-		}
-		if (scoreMultiplier <= 0 && timesThings.length == 0) {
-			scoreMultiplier = 0.1;
-		}
-		multiTxt.text = "Multiplier: " + scoreMultiplier;
+		return null;
 	}
-	function toggleSelection() {			
-		switch(modifiers[curSelected].internName) {
-			case 'play':
-				if (FlxG.sound.music != null)
-					FlxG.sound.music.stop();
-				LoadingState.loadAndSwitchState(new PlayState());
-			case 'chart':
-				LoadingState.loadAndSwitchState(new ChartingState());
-			case 'charselect':
-				LoadingState.loadAndSwitchState(new ChooseCharState(PlayState.SONG.player1));
-			case 'antijank':
-				// do nothi n
-			default:
-					checkmarks[curSelected].visible = !checkmarks[curSelected].visible;
-					for (conflicting in modifiers[curSelected].conflicts)
-					{
-						var coolNum = 0;
-						for (modifier in 0...modifiers.length) {
-							if (modifiers[modifier].internName == conflicting) {
-								coolNum = modifier;
-							}
-						}
-						checkmarks[coolNum].visible = false;
-						modifiers[coolNum].value = false;
-					}
-					calculateMultiplier();
 
-					modifiers[curSelected].value = checkmarks[curSelected].visible;
-				if (modifiers[curSelected].value
-					&& modifiers[curSelected].amount != null
-					&& numberdisplays[curSelected].value == numberdisplays[curSelected].useDefaultValue) {
-						numberdisplays[curSelected].changeAmount(true);
-					} else if (!modifiers[curSelected].value){
-						numberdisplays[curSelected].resetValues();
-					}
-					calculateMultiplier();
-					multiTxt.text = "Multiplier: " + scoreMultiplier;
+	/** Turn a modifier on or off. Turning on a blocked one does nothing and returns false. */
+	public static function setOn(id:String, on:Bool):Bool {
+		var modifier = find(id);
+		if (modifier == null)
+			return false;
+		if (on && blockedBy(id) != null)
+			return false;
+		modifier.value = on;
+		if (modifier.amount != null) {
+			if (!on)
+				modifier.amount = modifier.defAmount;
+			else if (modifier.amount == modifier.defAmount)
+				modifier.amount = stepAmount(modifier, true);
 		}
+		refreshScoreMultiplier();
+		return true;
+	}
+
+	/** Step a numeric modifier. It is on exactly while its amount is away from the default. */
+	public static function changeAmount(id:String, increase:Bool):Bool {
+		var modifier = find(id);
+		if (modifier == null || modifier.amount == null)
+			return false;
+		var next = stepAmount(modifier, increase);
+		if (next == modifier.amount)
+			return false;
+		var on = next != modifier.defAmount;
+		if (on && !modifier.value && blockedBy(id) != null)
+			return false;
+		modifier.amount = next;
+		modifier.value = on;
+		refreshScoreMultiplier();
+		return true;
+	}
+
+	static function stepAmount(modifier:TModifier, increase:Bool):Float {
+		var step = modifier.precision == null ? 1.0 : modifier.precision;
+		var next = modifier.amount + (increase ? step : -step);
+		if (modifier.minimum != null && next < modifier.minimum)
+			next = modifier.minimum;
+		if (modifier.maximum != null && next > modifier.maximum)
+			next = modifier.maximum;
+		// Steps are halves or whole numbers; drop float noise so equality with the default holds.
+		return Math.round(next * 1000) / 1000;
+	}
+
+	public static function resetAll():Void {
+		for (modifier in modifiers) {
+			modifier.value = false;
+			if (modifier.amount != null)
+				modifier.amount = modifier.defAmount;
+		}
+		refreshScoreMultiplier();
+	}
+
+	/** Internal names of the modifiers that are switched on. `applied` is kept for older callers. */
+	public static function modifierIds(applied:Bool = true):Array<String> {
+		var ids:Array<String> = [];
+		for (modifier in modifiers)
+			if (modifier.value)
+				ids.push(modifier.internName);
+		return ids;
+	}
+
+	/** The multiplier a play starting now uses, also stored in `scoreMultiplier`. */
+	public static function refreshScoreMultiplier():Float {
+		scoreMultiplier = StandardScore.multiplierFor(modifierIds(true));
+		return scoreMultiplier;
+	}
+
+	public static function unrankedActive():Bool
+		return StandardScore.isUnranked(modifierIds(false));
+
+	/** Detached copy of the switches, for storing with a score. */
+	public static function snapshot():Dynamic {
+		var copy:Dynamic = {};
+		for (modifier in modifiers)
+			Reflect.setField(copy, modifier.internName, {value: modifier.value, amount: modifier.amount});
+		return copy;
+	}
+
+	/** Put back switches saved by snapshot(), e.g. after a multiplayer match fixed them. */
+	public static function restore(saved:Dynamic):Void {
+		if (saved == null)
+			return;
+		for (modifier in modifiers) {
+			var entry:Dynamic = Reflect.field(saved, modifier.internName);
+			if (entry == null)
+				continue;
+			modifier.value = entry.value == true;
+			if (modifier.amount != null && entry.amount != null)
+				modifier.amount = entry.amount;
+		}
+		refreshScoreMultiplier();
+	}
+
+	/** The score line under the panel: the multiplier, or why nothing is saved. */
+	public static function multiplierLabel():String {
+		if (unrankedActive())
+			return 'Unranked: the score will not be saved';
+		var value = Math.round(refreshScoreMultiplier() * 100) / 100;
+		var text = Std.string(value);
+		if (text.indexOf('.') < 0)
+			text += '.00';
+		else if (text.length - text.indexOf('.') == 2)
+			text += '0';
+		return 'Score x' + text;
+	}
+
+	/** The song setup screen: the modifiers panel with a Start song row, over the menu background. */
+	override function create() {
+		MenuWidgets.background(this);
+		super.create();
+		persistentUpdate = false;
+		openPanel();
+	}
+
+	function openPanel():Void {
+		var panel = new ModifierMenuSubState(true);
+		panel.onStart = startSong;
+		panel.onBack = leave;
+		openSubState(panel);
+	}
+
+	function startSong():Void {
+		if (FlxG.sound.music != null)
+			FlxG.sound.music.stop();
+		LoadingState.loadAndSwitchState(new PlayState());
+	}
+
+	function leave():Void {
+		if (isStoryMode)
+			LoadingState.loadAndSwitchState(new StoryMenuState());
+		else
+			LoadingState.loadAndSwitchState(new FreeplayState());
 	}
 }

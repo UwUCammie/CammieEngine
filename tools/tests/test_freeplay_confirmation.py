@@ -83,7 +83,7 @@ class Animations {
         # Expression-bodied selection key is supplied below; extract actual action methods.
         methods='\n'.join(extract_method(source, marker) for marker in [
             'function cancelBrowserConfirm(', 'function beginBrowserConfirm(',
-            'function updateBrowserConfirm(', 'function launchSelection(',
+            'function updateBrowserConfirm(', 'function launchSelection(', 'function openSelection(',
             'function availabilityAllowsLaunch('])
         harness=r"""class Harness {
  public var browserConfirm=new FreeplayConfirmAction();
@@ -92,6 +92,7 @@ class Animations {
  public var curSelected=0;public var curDifficulty=2;public var hxcSelectionGeneration=1;
  public var songs=[{songName:'first'},{songName:'second'}];
  public var previewTimer:Float=1;public var previewGen=0;public var soundTest=false;
+ public static var lobbyPick:Dynamic=null;
  public var ready=true;public var freshReady=true;public var chartPresent=true;
  public var controls={BACK:false,UP_MENU:false,DOWN_MENU:false,LEFT_MENU:false,RIGHT_MENU:false,ACCEPT:false};
  static inline var BACK=6;
@@ -128,9 +129,12 @@ class Icon {public var resets=0;public function new(){} public function confirm(
 class FlxG {public static var keys={firstJustPressed:function(){return -1;}};public static var gamepads={anyJustPressed:function(key:Int){return false;}};public static var sound={music:{stop:function(){}}};}
 class Song {public static var reads=0;public static var attached='';public static function loadFromJson(chart:String,song:String):Dynamic {reads++;return {song:song};}public static function attachFreeplayScoreSongId(song:Dynamic,name:String){attached=name;}}
 class DifficultyIcons {public static function getEndingFP(diff:Int):String return '-'+diff;}
+class FreeplaySongTitle {public static function display(name:String):String return name;}
+class DifficultyManager {public static function getDiffName(diff:Int):String return 'normal';}
 class RuntimeFreeplayDifficultyProbe {public static var rejections=0;public static function ordinaryRejectedSelection(song:String,diff:Int){rejections++;}}
 class PlayState {public static var SONG:Dynamic;public static var isStoryMode=false;public static var balls=0;public static var watchedCutscene=false;public static var storyDifficulty=0;public function new(){}}
 class ModifierState {public static var isStoryMode=false;public function new(){}}
+class ChooseCharState {public function new(character:String){}}
 class OptionsHandler {public static var options={skipModifierMenu:true};}
 class LoadingState {public static function prepareSongTransition(song:String,prepare:Void->Void):Bool {prepare();return true;}public static var launches=0;public static function loadAndSwitchState(state:Dynamic){launches++;}}
 """

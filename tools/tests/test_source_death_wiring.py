@@ -382,10 +382,12 @@ class SourceDeathWiringTest(unittest.TestCase):
             ),
         )
         self.assertIn("boyfriend.stunned=true;balls+=1;", compact_update)
-        self.assertIn(
-            "if(sourceScoreLedgerActive()&&doDeathCheck())return;resetDemoPlaybackRate();",
-            compact_end_song,
-        )
+        # The death check comes first; a lobby play is then reported ended before anything else runs.
+        death = compact_end_song.index("if(sourceScoreLedgerActive()&&doDeathCheck())return;")
+        lobby = compact_end_song.index("if(multiplayer.MpHooks.current!=null)multiplayer.MpHooks.current.finishPlay(false);")
+        reset = compact_end_song.index("resetDemoPlaybackRate();")
+        self.assertLess(death, lobby)
+        self.assertLess(lobby, reset)
         self.assertIn("if(force){", compact_end_song)
         self.assertIn("varcodenameSongEndEvent=newCodenameGameEvent();", compact_end_song)
         self.assertIn("if(sourceCallbacks().dispatch(SourceLifecycleEvent.EndSong,[]).stopped)",

@@ -139,6 +139,7 @@ class Main {
  static function maybeRunSeek():Void {}
  static function observePlayerOneGoodHit(_:Dynamic,_:Note):Void {}
  static function check(ok:Bool,message:String):Void if(!ok) throw message;
+ static function installStateReadback():Void {}
 ''' + methods + r'''
  static function main():Void {
   watchdogDeadline=Sys.time()+100;

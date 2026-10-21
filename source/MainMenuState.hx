@@ -53,7 +53,7 @@ class MainMenuState extends MusicBeatState {
 	var hxcCostumeState:Dynamic;
 	#if !switch
 	// "import" opens the song importer (ImportSettingsState).
-	var optionShit:Array<String> = ['story mode', 'freeplay', 'donate', 'options'#if sys, 'import'#end];
+	var optionShit:Array<String> = ['story mode', 'freeplay'#if sys, 'online'#end, 'donate', 'options'#if sys, 'import'#end];
 	#else
 	var optionShit:Array<String> = ['story mode', 'freeplay'];
 	#end
@@ -223,6 +223,8 @@ class MainMenuState extends MusicBeatState {
 				var snapshot = importAvailability == null ? ImportRefreshManager.availabilitySnapshot() : importAvailability;
 				MainMenuFacts.importer(snapshot.committedOwnerRoots.length, importWorkBusy, importStatusLabel,
 					ImportSettings.getSelectedType(), ImportSettings.getSourcePath(), snapshot.inspectionPending);
+			case 'online':
+				MainMenuFacts.plain('ONLINE', 'Play together', 'Score-race lobbies for 2 to 16 players, signed in with your uwucammie.com account.', MenuStyle.TEAL);
 			case 'donate':
 				MainMenuFacts.plain('DONATE', 'Support the project', 'Opens the donation page in your browser.', MenuStyle.GOLD);
 			case 'costumes':
@@ -273,6 +275,7 @@ class MainMenuState extends MusicBeatState {
 		return switch (row) {
 			case 'story mode': 'Story Mode';
 			case 'freeplay': 'Freeplay';
+			case 'online': 'Online';
 			case 'donate': 'Donate';
 			case 'options': 'Options';
 			case 'import': 'Import';
@@ -286,6 +289,7 @@ class MainMenuState extends MusicBeatState {
 		return switch (row) {
 			case 'story mode': 'Play the story weeks one after another';
 			case 'freeplay': 'Pick any song and play it';
+			case 'online': 'Race other players on the same song';
 			case 'donate': 'Open the donation page';
 			case 'options': 'Settings, controls and save slots';
 			case 'import': 'Add songs and mods from other engines';
@@ -402,6 +406,8 @@ class MainMenuState extends MusicBeatState {
 										SaveDataState.prevPath = 'title';
 										LoadingState.loadAndSwitchState(new SaveDataState());
 									#if sys
+									case 'online':
+										LoadingState.loadAndSwitchState(new multiplayer.MpLobbyState());
 									case 'import':
 										LoadingState.loadAndSwitchState(new ImportSettingsState());
 									#end

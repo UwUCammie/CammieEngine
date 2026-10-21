@@ -3,7 +3,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from haxe_test_support import HAXE_COMMAND, FixturePath
+from haxe_test_support import HAXE_COMMAND, FixturePath, write_multiplayer_stubs
 from test_nv_multifield_routes import method
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -73,6 +73,7 @@ class Main {
  var customTeardownCalls=0;
  // Teardown hands the instrumental back to its own group before anything else.
  var songVolumeBus:VolumeBusFixture=null;
+ function currentSongStorageFolder():String return '';
  function destroyPsychCustomSubstates():Void {if(psychVideoHostDestroyed)throw "substate teardown ran after video release";customTeardownCalls++;}
  function generatePlayfields():Void throw "Psych video countdown entered NV receptor generation";
  public function new(){FlxG.state=this;}
@@ -148,7 +149,7 @@ class Main {
         prefix=prefix[:prefix.index('psychSourceVideo = null;')+len('psychSourceVideo = null;')]
         fixture=fixture.replace('__GATE__',gate).replace('__LOOKUP__',video_lookup).replace('__HANDOFF__',method(source,'function psychVideoHandoff(')).replace('__START__',method(source,'public function psychStartVideo(')).replace('__TEARDOWN__',prefix)
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as directory:
-            work=FixturePath(directory);(work/'Main.hx').write_text(fixture,newline='\n')
+            work=FixturePath(directory);(work/'Main.hx').write_text(fixture,newline='\n');write_multiplayer_stubs(work)
             result=subprocess.run([*HAXE_COMMAND,'-cp',directory,'-main','Main','--interp'],capture_output=True,text=True,timeout=45)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 

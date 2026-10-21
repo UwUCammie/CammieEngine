@@ -483,8 +483,11 @@ class Main {
         setup = self.play_state.index("// Smoke practice must also work")
         self.assertIn("RuntimeSmokeHarness.config().practice", self.play_state[setup:setup + 250])
         self.assertIn("practiceMode = true;", self.play_state[setup:setup + 250])
-        guard = "if (!RuntimeSmokeHarness.enabled() && !demoMode && ModifierState.scoreMultiplier > 0)"
-        self.assertEqual(self.play_state.count(guard), 2)
+        # Practice (and every other unranked run) never saves: both save sites check the unranked flags.
+        self.assertEqual(self.play_state.count("if (!RuntimeSmokeHarness.enabled() && !runUnranked)"), 1)
+        self.assertEqual(self.play_state.count("if (!RuntimeSmokeHarness.enabled() && !campaignUnranked)"), 1)
+        unranked = self.play_state[self.play_state.index("function standardRunUnranked():Bool"):]
+        self.assertIn("practiceMode", unranked[:200])
 
     def test_targeted_freeplay_smoke_continues_through_default_play_modifier(self):
         self.assertIn("freeplay_modifier_start", self.harness)
@@ -658,7 +661,6 @@ class Main {
         self.assertIn(str(ROOT / "tmp/runtime-smoke/logs/fnia-ugh.log"), command)
         self.assertNotIn("--build", command)
         readme = (ROOT / "README.md").read_text()
-        update_log = (ROOT / "updateLog.txt").read_text()
         for token in (
             "tools/run_runtime_smoke_matrix.py",
             "--runtime-root",
@@ -667,7 +669,6 @@ class Main {
             "does not build anything automatically",
         ):
             self.assertIn(token, readme)
-        self.assertIn("native runtime smoke matrix", update_log)
 
     @unittest.skipIf(os.name == 'nt', 'requires Linux Xvfb/symlink offscreen runtime fixtures')
     def test_native_smoke_launches_only_on_isolated_display(self):

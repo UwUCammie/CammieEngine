@@ -109,6 +109,7 @@ class FreeplayPulse {
 		{key:'UP/DOWN', action:'Browse'},
 		{key:'LEFT/RIGHT', action:'Difficulty'},
 		{key:'ENTER', action:'Play'},
+		{key:'F2', action:'Modifiers'},
 		{key:'TAB', action:'Library'},
 		{key:'F1', action:'Manage'},
 		{key:'ESC', action:'Back'},

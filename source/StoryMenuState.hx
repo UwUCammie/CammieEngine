@@ -378,6 +378,10 @@ class StoryMenuState extends MusicBeatState {
 
 		if (!movedBack) {
 			if (!selectedWeek) {
+				if ((FlxG.keys.justPressed.F2 || FlxG.gamepads.anyJustPressed(Y)) && subState == null) {
+					openSubState(new ModifierMenuSubState(false));
+					return;
+				}
 				if (controls.UP_MENU)
 					changeWeek(-1);
 
@@ -492,17 +496,15 @@ class StoryMenuState extends MusicBeatState {
 		PlayState.storyWeekNum = sourceWeekIndex;
 		PlayState.campaignScore = 0;
 		PlayState.campaignAccuracy = 0;
+		PlayState.campaignUnranked = false;
 		// Psych scripts read the week's running miss total; a new week starts at zero.
 		PlayState.campaignMisses = 0;
 		if (!importedStoryTransition)
 			new FlxTimer().start(1, function(tmr:FlxTimer) {
-				if (!OptionsHandler.options.skipModifierMenu)
-					 LoadingState.loadAndSwitchState(new ModifierState());
-				else {
-					if (FlxG.sound.music != null)
-						FlxG.sound.music.stop();
-					LoadingState.loadAndSwitchState(new PlayState());
-				}
+				// Modifiers are chosen beforehand from the F2 panel.
+				if (FlxG.sound.music != null)
+					FlxG.sound.music.stop();
+				LoadingState.loadAndSwitchState(new PlayState());
 			});
 	}
 

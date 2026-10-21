@@ -36,7 +36,8 @@ class PlayState {
  public function setSourceVocalVolume(role:String,v:Float){vocals.volume=v;}
  public function doDeathCheck(v:Bool){events.push('death:'+health+':'+misses);return false;}
  public function refreshSourceAccuracy(){}
- public function RecalculateRating(){events.push('rating:'+misses+':'+songScore+':'+totalPlayed+':'+combo+':'+health);}
+ public function standardMiss(n:Dynamic){}
+ public function RecalculateRating(){events.push('rating:'+misses+':'+totalPlayed+':'+combo+':'+health);}
  public function callOnLuas(n:String,a:Array<Dynamic>):Dynamic {events.push('lua:'+n+':'+haxe.Json.stringify(a));return 2;}
  public function callOnHScripts(n:String,a:Array<Dynamic>):Dynamic {events.push('hscript:'+n+':'+cast(a[0],Note).ID);return 2;}
  public function callScript(s:Dynamic,n:String,a:Array<Dynamic>){}
@@ -85,7 +86,7 @@ class Main {
   var a=new PlayState(),b=new Reference();var an=setup(a,mask,negative),bn=setup(b,mask,negative);
   PlayState.misses=2;NightmareVisionLegacyMissFlow.miss(a,an);var gotMisses=PlayState.misses;PlayState.misses=2;b.sourceMiss(bn);
   if(a.events.join('|')!=b.events.join('|'))throw 'order '+mask+': '+a.events+' != '+b.events;
-  if(a.health!=b.health||a.combo!=b.combo||a.songScore!=b.songScore||gotMisses!=PlayState.misses||a.totalPlayed!=b.totalPlayed)throw 'accounting';
+  if(a.health!=b.health||a.combo!=b.combo||gotMisses!=PlayState.misses||a.totalPlayed!=b.totalPlayed)throw 'accounting';
   if(!an.alive||!an.exists)throw 'missed note retired early';
   for(i in 2...10)if(a.modchartObjects.exists('note'+i)!=b.modchartObjects.exists('note'+i))throw 'stale duplicate alias';
   if(a.notes.members.length!=b.notes.members.length)throw 'duplicate count';
@@ -102,7 +103,7 @@ class Main {
   PlayState.misses=2;NightmareVisionLegacyMissFlow.press(a,direction,anim);var gotMisses=PlayState.misses;
   PlayState.misses=2;b.sourcePress(direction,anim);
   if(a.events.join('|')!=b.events.join('|'))throw 'press order '+mask+': '+a.events+' != '+b.events;
-  if(a.health!=b.health||a.combo!=b.combo||a.songScore!=b.songScore||gotMisses!=PlayState.misses||a.totalPlayed!=b.totalPlayed)throw 'press accounting';
+  if(a.health!=b.health||a.combo!=b.combo||gotMisses!=PlayState.misses||a.totalPlayed!=b.totalPlayed)throw 'press accounting';
  }
  }
 }

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from haxe_test_support import HAXE_COMMAND, HAXE
+from haxe_test_support import HAXE_COMMAND, HAXE, write_multiplayer_stubs
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,6 +33,7 @@ def run_fixture(fixture: str) -> subprocess.CompletedProcess:
     with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
         folder = Path(temp)
         (folder / "Main.hx").write_text(fixture, encoding="utf-8", newline="\n")
+        write_multiplayer_stubs(folder)
         return subprocess.run(
             [*HAXE_COMMAND, "-cp", str(folder), "--run", "Main"],
             cwd=ROOT,

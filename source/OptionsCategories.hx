@@ -17,7 +17,7 @@ class OptionsCategories {
 				'showComboBreaks', 'useCharColor', 'lyricsEnabled', 'showDuplicateBaseCharts', 'allowStoryMode',
 				'allowFreeplay', 'titleToggle', 'credits', 'fastSceneTransitions': 'Interface';
 			case 'scrollSpeed', 'dynamicScrollSpeed', 'downscroll', 'midscroll', 'highwayDim',
-				'alwaysDoCutscenes', 'skipModifierMenu', 'skipVictoryScreen', 'useCustomInput',
+				'alwaysDoCutscenes', 'skipVictoryScreen', 'useCustomInput',
 				'singYourHeartOut', 'modernSustains', 'camNotes', 'zoomCamera', 'useMissStun': 'Gameplay';
 			default: 'Compatibility';
 		};

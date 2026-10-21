@@ -779,6 +779,19 @@ class Note extends DynamicSprite implements NightmareVisionModchartLiveSprite {
 	public var healCutoff:Null<String>;
 	var specialNoteInfo:NoteInfo;
 	public var dontCountNote = false;
+	/** Standardised scoring (StandardScore.hx), decided once when the chart is generated:
+	 * this head owes a judgement, its hold owes a hold end judgement, this piece is the
+	 * last of its hold, and whether each of them was already judged. */
+	public var standardCounted:Bool = false;
+	public var standardHasTail:Bool = false;
+	public var standardHoldEnd:Bool = false;
+	public var standardJudged:Bool = false;
+	public var standardHoldJudged:Bool = false;
+	/** Online play: this head's index in the match timeline (-1 when not sent), and its hold's length in ms. */
+	public var mpIndex:Int = -1;
+	public var mpHoldLength:Float = 0;
+	/** The authored head of the hold this piece belongs to, or the note itself. */
+	public function standardHoldHead():Note return isSustainNote ? sustainHead : this;
 	public var dontStrum = false;
 	public var noteHit:Null<String> = null;
 	public var noteMiss:Null<String> = null;

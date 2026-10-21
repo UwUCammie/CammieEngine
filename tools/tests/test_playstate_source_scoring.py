@@ -131,6 +131,9 @@ class ScoringHost {
  public function new(nightmare:Bool = false) sourceScoreNightmare = nightmare;
  public function notifyPsychRatingChange(?missed:Bool = false, ?scoreBop:Bool = true):Void
   ratingNotifications++;
+ function standardMiss(n:Dynamic):Void {}
+ function standardJudge(n:Dynamic,j:Int):Void {}
+ function standardHoldPiece(n:Dynamic,h:Bool):Void {}
  public function setAllHaxeVar(name:String, value:Dynamic):Void
   if (name == 'accuracy') accuracyWrites++;
  public function sourceScoreLedgerActive():Bool return sourceScoreOwner;
@@ -176,7 +179,7 @@ class PlayStateSourceScoringFixture {
   psych.playbackRate = 1;
   check(psych.applySourceScoredHit(psychHead, psychSick), 'Psych head recalculates in practice');
   eq(psych.totalNotesHit, 1, 'Psych sick hit adds source weight');
-  eq(psych.songScore, 350, 'Psych practice still awards source hit score');
+  eq(psych.songScore, 0, 'Psych hit leaves songScore to the standardised tracker');
   eq(psych.totalPlayed, 1, 'Psych head enters denominator');
   eq(psych.sourceAcceptedHits, 1, 'Psych accepted-hit tally advances');
   eq(psych.sicks, 1, 'Psych counter maps from descriptor name');
@@ -198,7 +201,7 @@ class PlayStateSourceScoringFixture {
   check(!disabled.applySourceScoredHit(disabledHead, disabledRating),
    'ratingDisabled hit skips tally/recalculation');
   eq(disabled.totalNotesHit, 1, 'ratingDisabled still contributes weighted numerator');
-  eq(disabled.songScore, 350, 'ratingDisabled may still award score');
+  eq(disabled.songScore, 0, 'ratingDisabled leaves songScore to the standardised tracker');
   eq(disabled.totalPlayed, 0, 'ratingDisabled skips denominator');
   eq(disabled.sourceAcceptedHits, 0, 'ratingDisabled skips accepted-hit count');
   eq(disabledRating.hits, 0, 'ratingDisabled skips Psych rating tally');
@@ -232,7 +235,7 @@ class PlayStateSourceScoringFixture {
   check(nv.ratingsData[0] == descriptorReference, 'ledger retains the descriptor used for scoring');
   eq(nvSick.hits, 1, 'NV descriptor increment is retained');
   eq(nv.sicks, 1, 'NV typed callback updates the owner counter');
-  eq(nv.songScore, 350, 'NV normal hit awards descriptor score');
+  eq(nv.songScore, 0, 'NV hit leaves songScore to the standardised tracker');
   eq(nv.totalNotesHit, 1, 'NV normal hit adds descriptor weight');
   eq(nv.totalPlayed, 1, 'NV normal hit enters denominator');
   eq(nv.sourceAcceptedHits, 1, 'NV normal hit increments accepted-hit count');
@@ -348,7 +351,7 @@ class PlayStateSourceScoringFixture {
   eq(psychMiss.misses, 0, 'Psych ending miss does not increment the miss counter');
   eq(psychMiss.totalPlayed, 2, 'Psych ending miss still enters denominator');
   eq(psychMiss.totalNotesHit, 0.5, 'Psych miss never subtracts source numerator');
-  eq(psychMiss.songScore, -10, 'Psych source miss keeps its score penalty');
+  eq(psychMiss.songScore, 0, 'Psych miss leaves songScore to the standardised tracker');
   eq(psychMiss.accuracy, 25, 'Psych miss refreshes accuracy after denominator change');
 
   var native = new ScoringHost(false);

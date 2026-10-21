@@ -2880,6 +2880,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		campaignScore = 0;
 		campaignScoreDef = 0;
 		campaignAccuracy = 0;
+		campaignUnranked = false;
 		campaignMisses = 0;
 		defaultPlaylistLength = 0;
 	}
@@ -3935,6 +3936,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var talking:Bool = true;
 	var songScore:Int = 0;
 	var trueScore:Int = 0;
+	/** Standardised scoring (StandardScore.hx): the tracker, the modifier multiplier it
+	 * is scaled by, and whether botplay ever touched the run. songScore follows it. */
+	var standardScore:StandardScore.StandardTracker = new StandardScore.StandardTracker(0);
+	/** Signed offsets (ms, positive late) of the counted note heads hit this play, for the results screen. */
+	var standardHitOffsets:Array<Float> = [];
+	var standardMultiplier:Float = 1;
+	var standardAssisted:Bool = false;
 	/** Donor accuracy bookkeeping for selected Codename note lines. */
 	public var accuracyPressedNotes:Float = 0;
 	public var totalAccuracyAmount:Float = 0;
@@ -3989,6 +3997,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	public static var campaignScore:Int = 0;
 	public static var campaignAccuracy:Float = 0;
+	/** A song of the running week was unranked, so the week is not saved. */
+	public static var campaignUnranked:Bool = false;
 
 	public var defaultCamZoom:Float = 1.05;
 	/** Codename has a separate resting zoom for the HUD camera. */
@@ -6996,9 +7006,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				+ " ("
 				+ storyDifficultyText
 				+ ") "
-				+ Ratings.GenerateLetterRank(accuracy),
+				+ Ratings.GenerateLetterRank(standardAccuracyPercent()),
 				"\nAcc: "
-				+ HelperFunctions.truncateFloat(accuracy, 2)
+				+ HelperFunctions.truncateFloat(standardAccuracyPercent(), 2)
 				+ "% | Score: "
 				+ songScore
 				+ " | Misses: "
@@ -9398,6 +9408,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	 * all come through here, so every retry tells the song's scripts first
 	 * and leaves no video, flash or shader behind for the next attempt. */
 	@:keep public function restartSong(?skipTransition:Bool = false):Void {
+		// A lobby song is played once.
+		if (multiplayer.MpHooks.current != null) {
+			exitToMenu();
+			return;
+		}
 		// A songRetry callback that restarts or resets the song itself (script
 		// FlxG.resetState comes here too) would dispatch songRetry again without
 		// end. The retry already under way covers it.
@@ -9467,6 +9482,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	/** Leave the song for the menu it was started from. Shared by the pause
 	 * menu, game over and scripts so story mode never lands in Freeplay. */
 	@:keep public static function exitToMenu(?skipTransition:Bool = false, ?menuMusic:Bool = false):Void {
+		if (multiplayer.MpHooks.current != null) {
+			multiplayer.MpHooks.current.leaveSong(true);
+			return;
+		}
 		// State creation can select another chart owner. Capture this owner before
 		// switching, then clear its flag in the donor's post-switch order.
 		var chartingOwner = psychChartingOwnerRoot();
@@ -16407,6 +16426,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		#end
 		if (instance != null) trace('already has playstate idfk');
 		instance = this;
+		mpBeginCreate();
 		// Before the loading handoff collection, so that collection already
 		// sets the song's next trigger point from the larger free space.
 		EngineMemory.enterSong(this, OptionsHandler.options.lowMemoryMode);
@@ -16500,9 +16520,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			+ " ("
 			+ storyDifficultyText
 			+ ") "
-			+ Ratings.GenerateLetterRank(accuracy),
+			+ Ratings.GenerateLetterRank(standardAccuracyPercent()),
 			"\nAcc: "
-			+ HelperFunctions.truncateFloat(accuracy, 2)
+			+ HelperFunctions.truncateFloat(standardAccuracyPercent(), 2)
 			+ "% | Score: "
 			+ songScore
 			+ " | Misses: "
@@ -16536,49 +16556,41 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		camNotes = OptionsHandler.options.camNotes;
 		modernSustain = OptionsHandler.options.modernSustains;
 		Judge.setJudge(cast OptionsHandler.options.judge);
+		// Everyone in a lobby is judged with the same windows.
+		if (multiplayer.MpHooks.current != null) Judge.setJudge(Classic);
 		pixelUI = uiSmelly.isPixel;
-		if (!OptionsHandler.options.skipModifierMenu) {
-			fullComboMode = ModifierState.namedModifiers.fc.value;
-			goodCombo = ModifierState.namedModifiers.gfc.value;
-			perfectMode = ModifierState.namedModifiers.mfc.value;
-			practiceMode = ModifierState.namedModifiers.practice.value;
-			flippedNotes = ModifierState.namedModifiers.flipped.value;
-			accelNotes = ModifierState.namedModifiers.accel.value;
-			vnshNotes = ModifierState.namedModifiers.vanish.value;
-			invsNotes = ModifierState.namedModifiers.invis.value;
-			snakeNotes = ModifierState.namedModifiers.snake.value;
-			drunkNotes = ModifierState.namedModifiers.drunk.value;
-			inALoop = ModifierState.namedModifiers.loop.value;
-			duoMode = ModifierState.namedModifiers.duo.value;
-			soloMode = ModifierState.namedModifiers.nos.value;
-			opponentPlayer = ModifierState.namedModifiers.oppnt.value;
-			demoMode = ModifierState.namedModifiers.demo.value;
-			if (demoMode) maxStepCatchUp = 0;
-			if (ModifierState.namedModifiers.healthloss.value)
-				healthLossMultiplier = ModifierState.namedModifiers.healthloss.amount;
-			if (ModifierState.namedModifiers.healthgain.value)
-				healthGainMultiplier = ModifierState.namedModifiers.healthgain.amount;
-			if (ModifierState.namedModifiers.slow.value)
-				noteSpeed = 0.3;
-			if (accelNotes) {
-				noteSpeed = 0.45;
-				trace("accel arrows");
-			}
-
-			if (ModifierState.namedModifiers.fast.value)
-				noteSpeed = 0.9;
-			if (ModifierState.namedModifiers.regen.value) {
-				loveMultiplier = ModifierState.namedModifiers.regen.amount;
-				supLove = true;
-			}
-			if (ModifierState.namedModifiers.degen.value) {
-				poisonMultiplier = ModifierState.namedModifiers.degen.amount;
-				poisonExr = true;
-			}
-			poisonPlus = ModifierState.namedModifiers.poison.value;
-		} else {
-			ModifierState.scoreMultiplier = 1;
+		// Modifiers are chosen in the modifiers panel before the song; speed changes
+		// are the scroll speed option's job, so no modifier touches note speed.
+		fullComboMode = ModifierState.namedModifiers.fc.value;
+		goodCombo = ModifierState.namedModifiers.gfc.value;
+		perfectMode = ModifierState.namedModifiers.mfc.value;
+		practiceMode = ModifierState.namedModifiers.practice.value;
+		flippedNotes = ModifierState.namedModifiers.flipped.value;
+		vnshNotes = ModifierState.namedModifiers.vanish.value;
+		invsNotes = ModifierState.namedModifiers.invis.value;
+		snakeNotes = ModifierState.namedModifiers.snake.value;
+		drunkNotes = ModifierState.namedModifiers.drunk.value;
+		inALoop = ModifierState.namedModifiers.loop.value;
+		duoMode = ModifierState.namedModifiers.duo.value;
+		soloMode = ModifierState.namedModifiers.nos.value;
+		opponentPlayer = ModifierState.namedModifiers.oppnt.value;
+		demoMode = ModifierState.namedModifiers.demo.value;
+		if (demoMode) maxStepCatchUp = 0;
+		if (ModifierState.namedModifiers.healthloss.value)
+			healthLossMultiplier = ModifierState.namedModifiers.healthloss.amount;
+		if (ModifierState.namedModifiers.healthgain.value)
+			healthGainMultiplier = ModifierState.namedModifiers.healthgain.amount;
+		if (ModifierState.namedModifiers.regen.value) {
+			loveMultiplier = ModifierState.namedModifiers.regen.amount;
+			supLove = true;
 		}
+		if (ModifierState.namedModifiers.degen.value) {
+			poisonMultiplier = ModifierState.namedModifiers.degen.amount;
+			poisonExr = true;
+		}
+		poisonPlus = ModifierState.namedModifiers.poison.value;
+		// The standardised multiplier is the product over the modifiers this play applies.
+		standardMultiplier = ModifierState.refreshScoreMultiplier();
 		// Smoke practice must also work when the user's modifier menu is skipped.
 		if (RuntimeSmokeHarness.enabled() && RuntimeSmokeHarness.config().practice)
 			practiceMode = true;
@@ -18894,8 +18906,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				}
 			}, 0);
 		};
-		if (countdownDelay > 0) {
-			countdownDelayTimer = new FlxTimer().start(countdownDelay, function(_:FlxTimer) {
+		var startDelay = countdownDelay;
+		if (multiplayer.MpHooks.current != null)
+			startDelay = Math.max(startDelay, multiplayer.MpHooks.current.countdownWait(skipCountdown ? 0 : Conductor.crochet * 5));
+		if (startDelay > 0) {
+			countdownDelayTimer = new FlxTimer().start(startDelay, function(_:FlxTimer) {
 				if (!startedCountdown) beginCountdownClock();
 			});
 			return;
@@ -19048,6 +19063,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		songLength = FlxG.sound.music.length;
 		updateUV('songLength', songLength);
 		setAllHaxeVar('songLength', songLength);
+		mpPlayBegin();
 
 		FlxG.sound.music.onComplete = function() handleSongAudioComplete();
 		playVocals();
@@ -22892,6 +22908,8 @@ void main(void) {
 							}
 							sustainNote.codenameGeneratedX = sustainNote.x;
 						}
+						var lastPiece = unspawnNotes[unspawnNotes.length - 1];
+						if (lastPiece != swagNote && lastPiece.isSustainNote) lastPiece.standardHoldEnd = true;
 					}
 
 					if (OptionsHandler.options.emuOsuLifts && !swagNote.dontCountNote && !swagNote.isLiftNote) {
@@ -22955,6 +22973,7 @@ void main(void) {
 			&& (note.sourcePlayfieldPlayerControlled == null ? note.mustPress : note.sourcePlayfieldPlayerControlled)
 			&& !note.sourcePlayfieldAutoPlay && !note.hitCausesMiss && !note.mineNote && !note.nukeNote
 			&& !note.dontCountNote && !note.avoidAutoHit) performancePlayerNotes++;
+		standardPrepareChart();
 		RuntimeSmokeHarness.markChartNoteSides(SONG.format, unspawnNotes);
 		defaultNoteWidth = initialNoteAlignmentWidth();
 		generatedMusic = true;
@@ -24331,9 +24350,9 @@ void main(void) {
 				+ " ("
 				+ storyDifficultyText
 				+ ") "
-				+ Ratings.GenerateLetterRank(accuracy),
+				+ Ratings.GenerateLetterRank(standardAccuracyPercent()),
 				"Acc: "
-				+ HelperFunctions.truncateFloat(accuracy, 2)
+				+ HelperFunctions.truncateFloat(standardAccuracyPercent(), 2)
 				+ "% | Score: "
 				+ songScore
 				+ " | Misses: "
@@ -24432,9 +24451,9 @@ void main(void) {
 					+ " ("
 					+ storyDifficultyText
 					+ ") "
-					+ Ratings.GenerateLetterRank(accuracy),
+					+ Ratings.GenerateLetterRank(standardAccuracyPercent()),
 					"\nAcc: "
-					+ HelperFunctions.truncateFloat(accuracy, 2)
+					+ HelperFunctions.truncateFloat(standardAccuracyPercent(), 2)
 					+ "% | Score: "
 					+ songScore
 					+ " | Misses: "
@@ -24446,7 +24465,7 @@ void main(void) {
 					+ " ("
 					+ storyDifficultyText
 					+ ") "
-					+ Ratings.GenerateLetterRank(accuracy), iconRPC,
+					+ Ratings.GenerateLetterRank(standardAccuracyPercent()), iconRPC,
 					playingAsRpc);
 			}
 			#end
@@ -24485,9 +24504,9 @@ void main(void) {
 			+ " ("
 			+ storyDifficultyText
 			+ ") "
-			+ Ratings.GenerateLetterRank(accuracy),
+			+ Ratings.GenerateLetterRank(standardAccuracyPercent()),
 			"\nAcc: "
-			+ HelperFunctions.truncateFloat(accuracy, 2)
+			+ HelperFunctions.truncateFloat(standardAccuracyPercent(), 2)
 			+ "% | Score: "
 			+ songScore
 			+ " | Misses: "
@@ -24754,6 +24773,7 @@ void main(void) {
 		// can finish here without advancing song callbacks or note processing.
 		if (psychGameOverTransitionPending)
 			return;
+		mpFrame();
 		var smokeProfileAt = RuntimeSmokeHarness.profileEnabled() ? haxe.Timer.stamp() : 0.0;
 		CodenameModRuntime.updateGlobal(elapsed);
 		if (RuntimeSmokeHarness.tick(elapsed)) return;
@@ -25024,7 +25044,7 @@ void main(void) {
 		}*/
 		if (codenameRatingEnabled) syncCodenameAccuracyHud();
 		if (disableScoreChange == false && !sourceScoreDisplayOwned())
-			scoreTxt.text = Ratings.CalculateRankingCached(songScore, songScoreDef, nps, accuracy);
+			scoreTxt.text = Ratings.CalculateRankingCached(songScore, songScoreDef, nps, standardAccuracyPercent());
 
 		if ((perfectMode && !Ratings.CalculateFullCombo(Sick)) ||
 			(goodCombo && !Ratings.CalculateFullCombo(Good)) ||
@@ -25036,9 +25056,10 @@ void main(void) {
 		}
 		if (codenameRatingEnabled) updateCodenameRatingHud();
 		else {
-			if (accuracyLabel == null || accuracyLabelValue != accuracy) {
-				accuracyLabelValue = accuracy;
-				accuracyLabel = "Accuracy:" + accuracy + "%";
+			var standardShown = standardAccuracyPercent();
+			if (accuracyLabel == null || accuracyLabelValue != standardShown) {
+				accuracyLabelValue = standardShown;
+				accuracyLabel = "Accuracy:" + HelperFunctions.truncateFloat(standardShown, 2) + "%";
 			}
 			if (accuracyTxt.text != accuracyLabel)
 				accuracyTxt.text = accuracyLabel;
@@ -26343,6 +26364,8 @@ void main(void) {
 
 	function endSong(?force:Bool = false):Void {
 		if (sourceScoreLedgerActive() && doDeathCheck()) return;
+		// The play is over for the server now, whatever end screens scripts show before the song is left.
+		if (multiplayer.MpHooks.current != null) multiplayer.MpHooks.current.finishPlay(false);
 		resetDemoPlaybackRate();
 		if (force) {
 			#if cpp
@@ -26549,18 +26572,32 @@ void main(void) {
 		clearHxcVignette();
 		hxcClearRuntimeShaderBindings();
 		hxcClearSongCredits();
+		// What is saved and shown is the tracker's final value, whatever a script did to songScore.
+		songScore = standardScore.score(standardMultiplier);
+		var runUnranked = standardRunUnranked();
+		var runRank = standardRankName();
+		var runAccuracy = standardAccuracyPercent();
+		var bestKey = Highscore.formatSong(Highscore.scoreSongIdForChart(SONG), storyDifficulty, 'best-score');
+		var previousBest = Highscore.songScores.exists(bestKey) ? Highscore.songScores.get(bestKey) : -1;
+		var previousRank = Highscore.getRank(Highscore.scoreSongIdForChart(SONG), storyDifficulty, 'best-score');
 		#if !switch
 		RuntimeSmokeHarness.markScoreSaveDecision(SONG, songScore, storyDifficulty,
-			ModifierState.scoreMultiplier, demoMode);
-		if (!RuntimeSmokeHarness.enabled() && !demoMode && ModifierState.scoreMultiplier > 0) {
-			Highscore.saveScore(Highscore.scoreSongIdForChart(SONG), songScore, storyDifficulty, accuracy / 100, Ratings.CalculateFCRating(), OptionsHandler.options.judge,
-				{misses:misses, maxCombo:performanceMaxCombo, totalPlayerNotes:performancePlayerNotes});
+			ModifierState.scoreMultiplier, runUnranked);
+		if (!RuntimeSmokeHarness.enabled() && !runUnranked) {
+			Highscore.saveScore(Highscore.scoreSongIdForChart(SONG), songScore, storyDifficulty, runAccuracy / 100, Ratings.CalculateFCRating(), OptionsHandler.options.judge,
+				{misses:misses, maxCombo:performanceMaxCombo, totalPlayerNotes:performancePlayerNotes}, standardDetail());
 			var sourceSession = NightmareVisionStateSession.active;
 			if (nightmareVisionScripts != null && sourceSession != null && sourceSession.mods == nightmareVisionActiveMods)
 				sourceSession.highscores.saveScore(SONG.song, songScore,
 					nightmareVisionActiveDifficulty.currentDifficultyIndex, accuracy / 100);
 		}
 		#end
+		if (multiplayer.MpHooks.current != null) {
+			controls.setKeyboardScheme(Solo(Note.NOTE_AMOUNT));
+			multiplayer.MpHooks.current.finishPlay(false, soloResults(previousBest, previousRank));
+			multiplayer.MpHooks.current.leaveSong(false);
+			return;
+		}
 		if (shouldReturnToPsychChartEditor()) {
 			openChartEditor();
 			return;
@@ -26572,16 +26609,20 @@ void main(void) {
 			var storySession = NightmareVisionStateSession.active;
 			if (storySession != null && storySession.advanceStoryWeek(songScore, songMisses)) return;
 			campaignScore += songScore;
+			campaignUnranked = campaignUnranked || runUnranked;
 			// Psych scripts read the week's running miss total from here.
 			campaignMisses += songMisses;
 			campaignScoreDef += songScoreDef;
-			campaignAccuracy += accuracy;
+			campaignAccuracy += runAccuracy;
 			storyPlaylist.remove(storyPlaylist[0]);
 
 			if (storyPlaylist.length <= 0) {
-				if (!RuntimeSmokeHarness.enabled() && !demoMode && ModifierState.scoreMultiplier > 0)
-					Highscore.saveWeekScore(storyWeek, campaignScore, storyDifficulty, campaignAccuracy / defaultPlaylistLength);
-				campaignAccuracy = campaignAccuracy / defaultPlaylistLength;
+				// A week is scored as the mean of its songs, so it stays on the same 1,000,000 scale.
+				var weekSongs = defaultPlaylistLength > 0 ? defaultPlaylistLength : 1;
+				var weekScore = Math.round(campaignScore / weekSongs);
+				if (!RuntimeSmokeHarness.enabled() && !campaignUnranked)
+					Highscore.saveWeekScore(storyWeek, weekScore, storyDifficulty, campaignAccuracy / weekSongs);
+				campaignAccuracy = campaignAccuracy / weekSongs;
 				if (useVictoryScreen) {
 					#if windows
 					DiscordClient.changePresence("Reviewing Score -- "
@@ -26589,17 +26630,26 @@ void main(void) {
 						+ " ("
 						+ storyDifficultyText
 						+ ") "
-						+ Ratings.GenerateLetterRank(accuracy),
+						+ Ratings.GenerateLetterRank(standardAccuracyPercent()),
 						"\nAcc: "
-						+ HelperFunctions.truncateFloat(accuracy, 2)
+						+ HelperFunctions.truncateFloat(standardAccuracyPercent(), 2)
 						+ "% | Score: "
 						+ songScore
 						+ " | Misses: "
 						+ misses, iconRPC, playingAsRpc);
 					#end
-					LoadingState.loadAndSwitchState(new VictoryLoopState(boyfriend.getScreenPosition().x, boyfriend.getScreenPosition().y,
-						gf.getScreenPosition().x, gf.getScreenPosition().y, campaignAccuracy, campaignScore, dad.getScreenPosition().x,
-						dad.getScreenPosition().y));
+					var week = soloResults(-1, '');
+					week.title = storyWeek;
+					week.storyMode = true;
+					week.unranked = campaignUnranked;
+					week.hitOffsets = [];
+					week.judgeable = -1;
+					// A week shows its mean score and accuracy; per-song counts are not kept across songs.
+					week.player = {id: 'local', name: 'You', score: weekScore, accuracy: campaignAccuracy / 100, maxCombo: -1,
+						rank: StandardScore.rankFromPercent(campaignAccuracy, StandardScore.hasHiddenModifier(ModifierState.modifierIds(true))),
+						sicks: -1, goods: -1, bads: -1, shits: -1, misses: campaignMisses, modifiers: ModifierState.modifierIds(true),
+						failed: false, quit: false};
+					LoadingState.loadAndSwitchState(new ResultsState(week));
 				} else {
 					transIn = FlxTransitionableState.defaultTransIn;
 					transOut = FlxTransitionableState.defaultTransOut;
@@ -26648,24 +26698,16 @@ void main(void) {
 					+ " ("
 					+ storyDifficultyText
 					+ ") "
-					+ Ratings.GenerateLetterRank(accuracy),
+					+ Ratings.GenerateLetterRank(standardAccuracyPercent()),
 					"\nAcc: "
-					+ HelperFunctions.truncateFloat(accuracy, 2)
+					+ HelperFunctions.truncateFloat(standardAccuracyPercent(), 2)
 					+ "% | Score: "
 					+ songScore
 					+ " | Misses: "
 					+ misses, iconRPC, playingAsRpc);
 				#end
-				var victoryBfX = boyfriend.getScreenPosition().x;
-				var victoryBfY = boyfriend.getScreenPosition().y;
-				var victoryGfX = gf.getScreenPosition().x;
-				var victoryGfY = gf.getScreenPosition().y;
-				var victoryDadX = dad.getScreenPosition().x;
-				var victoryDadY = dad.getScreenPosition().y;
-				var victoryAccuracy = accuracy;
-				var victoryScore = songScore;
-				LoadingState.loadAndSwitchStateFactory(() -> new VictoryLoopState(victoryBfX, victoryBfY,
-					victoryGfX, victoryGfY, victoryAccuracy, victoryScore, victoryDadX, victoryDadY));
+				var results = soloResults(previousBest, previousRank);
+				LoadingState.loadAndSwitchStateFactory(() -> new ResultsState(results));
 			} else
 				ImportedMenuEntry.returnToFreeplay();
 		}
@@ -26684,6 +26726,8 @@ void main(void) {
 		var sourceRating = sourceLedger ? judgeSourceNote(daNote, !sourceScoreNightmare || nightmareVisionLegacyFieldCameras) : null;
 		var noteDiff:Float = adjustedNoteDiff(daNote);
 		var noteDiffSigned:Float = Conductor.songPosition - daNote.strumTime;
+		if (!forceMiss && !daNote.isSustainNote && daNote.standardCounted && !daNote.standardJudged)
+			standardHitOffsets.push(noteDiffSigned);
 		var wife:Float = HelperFunctions.wife3(noteDiffSigned, Conductor.timeScale);
 		if (!sourceScoreNightmare) camZooming = true;
 		var placement:String = Std.string(combo);
@@ -26715,6 +26759,7 @@ void main(void) {
 			var fieldAuto = sourceScoreNightmare
 				&& (sourceField == null ? nightmareVisionFieldForNote(daNote).autoPlayed : sourceField.autoPlayed);
 			applySourceScoredHit(daNote, sourceRating, fieldAuto);
+			standardJudge(daNote, forceMiss ? StandardScore.MISS : StandardScore.judgementFromName(sourceRating.name, sourceRating.ratingMod));
 			if (sourceScoreNightmare && nightmareVisionLegacyFieldCameras && sourceRating.noteSplash && !daNote.noteSplashDisabled)
 				spawnNoteSplashOnNote(daNote);
 			if (!sourceScoreNightmare && sourceRating.noteSplash && shouldShowNoteSplash(daNote)) {
@@ -26825,9 +26870,9 @@ void main(void) {
 		if (notesHit > notesPassing)
 			notesHit = notesPassing;
 		if (!dontCountNote) {
-			songScore += Math.round(ConvertScore.convertScore(noteDiff) * ModifierState.scoreMultiplier);
 			songScoreDef += Math.round(ConvertScore.convertScore(noteDiff));
 			trueScore += Math.round(ConvertScore.convertScore(noteDiff));
+			standardJudge(daNote, StandardScore.judgementFromName(daRating));
 		}
 		comboBreak(daNote.noteData % 4, playerOne, daRating);
 		}
@@ -27161,7 +27206,6 @@ void main(void) {
 				changeSourceRatingCounter(rating.name + 's', delta.ratedCounter);
 			}
 		}
-		songScore += delta.score;
 		sourceAcceptedHits += delta.hits;
 		totalPlayed += delta.played;
 		if (delta.recalculate) {
@@ -27183,18 +27227,19 @@ void main(void) {
 	}
 
 	/** An empty key press counts differently from a missed note only in Nightmare Vision. */
-	function applySourceMiss(emptyPress:Bool = false):Void {
+	function applySourceMiss(emptyPress:Bool = false, ?note:Note):Void {
 		var delta = SourceScoreLedger.miss(sourceScoreNightmare, practiceMode, endingSong, emptyPress);
-		songScore += delta.score;
 		misses += delta.missDelta;
+		// An empty press (no note) is not a judgement, so only a note feeds the standard score.
+		if (!emptyPress) standardMiss(note);
 		totalPlayed += delta.played;
 		refreshSourceAccuracy();
 	}
 
 	/** The counted miss Psych and modern Nightmare Vision share: score it, then
 	 * tell rating listeners. The two families differ only in when they call it. */
-	function countSourceMiss():Void {
-		applySourceMiss();
+	function countSourceMiss(?note:Note):Void {
+		applySourceMiss(false, note);
 		notifyPsychRatingChange(true);
 	}
 
@@ -27460,6 +27505,232 @@ void main(void) {
 		}
 		if (nightmareVisionScripts != null) updateScoreBar(missed);
 		else if (selectedPsychSkinRoot() != null) updateScore(missed, scoreBop);
+	}
+
+	// ------------------------------------------------------------------ standardised scoring
+
+	/** One chart object, as the judgeable rules of StandardScore.hx see it. */
+	function standardObjectOf(owner:Note, holdEnd:Bool):StandardScore.JudgeableObject {
+		return {
+			isHead: !holdEnd,
+			isHoldEnd: holdEnd,
+			played: !owner.isAutoPlayed() && owner.sourcePlayfieldPlayerControlled != false,
+			dontCount: owner.dontCountNote,
+			ignored: owner.ignoreNote,
+			hitCausesMiss: owner.hitCausesMiss,
+			canMiss: owner.canMiss,
+			mine: owner.mineNote,
+			nuke: owner.nukeNote
+		};
+	}
+
+	/** Decide, once every note exists, which of them owe a judgement, and size the tracker. */
+	function standardPrepareChart():Void {
+		var objects:Array<StandardScore.JudgeableObject> = [];
+		for (note in unspawnNotes) {
+			if (note == null || note.isSustainNote) continue;
+			var head = standardObjectOf(note, false);
+			note.standardCounted = StandardScore.isJudgeable(head);
+			objects.push(head);
+		}
+		for (note in unspawnNotes) {
+			if (note == null || !note.isSustainNote || !note.standardHoldEnd) continue;
+			var owner = note.standardHoldHead();
+			if (owner == null || owner.isSustainNote || !owner.standardCounted) continue;
+			var tail = standardObjectOf(owner, true);
+			owner.standardHasTail = StandardScore.isJudgeable(tail);
+			owner.mpHoldLength = Math.max(1, note.strumTime - owner.strumTime);
+			objects.push(tail);
+		}
+		standardScore = new StandardScore.StandardTracker(StandardScore.countJudgeables(objects));
+		standardHitOffsets = [];
+		standardAssisted = false;
+		applyStandardScore();
+		mpBuildTimeline();
+	}
+
+	/** songScore always is the standardised score; scripts and donor ledgers do not add to it. */
+	function applyStandardScore():Void {
+		songScore = standardScore.score(standardMultiplier);
+		setAllHaxeVar('songScore', songScore);
+	}
+
+	function standardFeed(judgement:Int):Void {
+		if (sourceBotPlay()) standardAssisted = true;
+		standardScore.judge(judgement);
+		applyStandardScore();
+	}
+
+	/** A note head was judged. Anything that owes no judgement, or already got one, is ignored. */
+	function standardJudge(note:Note, judgement:Int):Void {
+		if (note == null || note.isSustainNote || !note.standardCounted || note.standardJudged) return;
+		note.standardJudged = true;
+		standardFeed(judgement);
+		mpJudged(note, 0, judgement);
+	}
+
+	/** A counted miss. An empty press (no note) is not a judgement; a missed hold also fails its hold end. */
+	function standardMiss(note:Note):Void {
+		if (note == null) return;
+		if (note.isSustainNote) {
+			standardHoldPiece(note, false);
+			return;
+		}
+		standardJudge(note, StandardScore.MISS);
+		if (note.standardCounted && note.standardHasTail && !note.standardHoldJudged) {
+			note.standardHoldJudged = true;
+			standardFeed(StandardScore.MISS);
+			mpJudged(note, 1, StandardScore.MISS);
+		}
+	}
+
+	/** A piece of a hold was hit or missed. Only the first miss, or the last piece being hit, settles the hold end. */
+	function standardHoldPiece(piece:Note, hit:Bool):Void {
+		if (piece == null || !piece.isSustainNote) return;
+		var owner = piece.standardHoldHead();
+		if (owner == null || !owner.standardHasTail || owner.standardHoldJudged) return;
+		if (hit && !piece.standardHoldEnd) return;
+		owner.standardHoldJudged = true;
+		standardFeed(hit ? StandardScore.SICK : StandardScore.MISS);
+		mpJudged(owner, 1, hit ? StandardScore.SICK : StandardScore.MISS);
+	}
+
+	// ------------------------------------------------------------------ online play
+
+	var mpBoard:FlxText = null;
+	var mpBoardAt:Float = 0;
+
+	/** At the start of create: the match seed, and on the host's own songs, which files the song reads. */
+	function mpBeginCreate():Void {
+		var match = multiplayer.MpHooks.current;
+		if (match != null) FlxG.random.initialSeed = match.seed;
+		#if sys
+		// The files a song reads are what a host sends with it later; never record another player's song.
+		if (!multiplayer.MpOverlay.active) multiplayer.MpOverlay.startRecording(Sys.getCwd());
+		#end
+	}
+
+	/** Number every judgeable head in time order; the server judges the play against this timeline. */
+	function mpBuildTimeline():Void {
+		var match = multiplayer.MpHooks.current;
+		if (match == null) return;
+		var heads = [for (note in unspawnNotes) if (note != null && !note.isSustainNote && note.standardCounted) note];
+		heads.sort(function(a, b) return a.strumTime < b.strumTime ? -1 : (a.strumTime > b.strumTime ? 1 : a.noteData - b.noteData));
+		for (note in heads)
+			note.mpIndex = match.stream.addNote(note.strumTime, note.noteData, note.standardHasTail ? note.mpHoldLength : 0);
+	}
+
+	/** A judgement for the match stream. A hit also records the press it was judged on. */
+	function mpJudged(note:Note, part:Int, judgement:Int):Void {
+		var match = multiplayer.MpHooks.current;
+		if (match == null || note == null || note.mpIndex < 0) return;
+		if (part == 0 && judgement != StandardScore.MISS) {
+			match.stream.hit(note.noteData, Conductor.songPosition);
+			match.stream.judge(note.mpIndex, 0, judgement, Conductor.songPosition - note.strumTime);
+		} else match.stream.judge(note.mpIndex, part, judgement, null);
+	}
+
+	function mpPlayBegin():Void {
+		var match = multiplayer.MpHooks.current;
+		if (match == null) return;
+		match.playBegin(songLength, {sick: Judge.sickJudge, good: Judge.goodJudge, bad: Judge.badJudge,
+			shit: OptionsHandler.options.ignoreVile ? Judge.shitJudge : Judge.wayoffJudge}, OptionsHandler.options.offset);
+		mpBoard = new FlxText(12, FlxG.height * 0.3, 300, '', 16);
+		mpBoard.setFormat(MenuStyle.FONT, 16, FlxColor.WHITE, LEFT, OUTLINE, FlxColor.BLACK);
+		mpBoard.scrollFactor.set();
+		mpBoard.cameras = [camHUD];
+		add(mpBoard);
+	}
+
+	/** The lanes held this frame, as the player's controls see them. */
+	function mpHeldLanes():Array<Bool> {
+		if (usesPsychOwnerControls(true))
+			return [for (key in 0...4) psychControls.pressed(psychNoteAction(key))];
+		var c = controls;
+		return [c.CTRLA, c.CTRLB, c.CTRLC, c.CTRLD, c.CTRLE, c.CTRLF, c.CTRLG, c.CTRLH, c.CTRLI];
+	}
+
+	/** Each frame of an online play: key state, what was recorded, the live score and the scoreboard. */
+	function mpFrame():Void {
+		var match = multiplayer.MpHooks.current;
+		if (match == null || !match.begun || match.ended) return;
+		var held = mpHeldLanes();
+		for (lane in 0...held.length)
+			match.stream.sample(lane, held[lane], Conductor.songPosition);
+		match.stream.endFrame();
+		match.frame(songScore, standardScore.judged == 0 ? 1 : standardScore.accuracy(), standardScore.combo, standardScore.misses);
+		var now = haxe.Timer.stamp();
+		if (mpBoard == null || now - mpBoardAt < 0.25) return;
+		mpBoardAt = now;
+		var live = match.live.copy();
+		live.sort(function(a, b) return Std.int(b.score) - Std.int(a.score));
+		var lines = [];
+		for (index in 0...Std.int(Math.min(live.length, 8))) {
+			var row:Dynamic = live[index];
+			var name = match.names.get(row.account_id);
+			lines.push((index + 1) + '. ' + (name == null ? 'Player' : name) + '  ' + ResultsModel.formatScore(Std.int(row.score)));
+		}
+		mpBoard.text = lines.join('\n');
+	}
+
+	/** Accuracy as a percentage, 0 until something is judged. */
+	public function standardAccuracyPercent():Float
+		return standardScore.judged == 0 ? 0 : standardScore.accuracy() * 100;
+
+	public function standardRankName():String
+		return standardScore.rank(StandardScore.hasHiddenModifier(ModifierState.modifierIds(true)));
+
+	/** Nothing is saved for an unranked run: practice, demo or botplay, Solo, Duo, Oppnt. Play. */
+	function standardRunUnranked():Bool
+		return demoMode || practiceMode || duoMode || soloMode || opponentPlayer || standardAssisted
+			|| sourceBotPlay() || ModifierState.unrankedActive();
+
+	/** The results screen's view of this play. Built before leaving, while every value is still live. */
+	function soloResults(previousBest:Int, previousRank:String):ResultsModel.ResultsData {
+		return {
+			title: SONG.song,
+			difficulty: storyDifficultyText,
+			player: {
+				id: 'local',
+				name: 'You',
+				score: songScore,
+				accuracy: standardScore.judged == 0 ? 0 : standardScore.accuracy(),
+				maxCombo: standardScore.maxCombo,
+				rank: standardRankName(),
+				sicks: standardScore.sicks,
+				goods: standardScore.goods,
+				bads: standardScore.bads,
+				shits: standardScore.shits,
+				misses: standardScore.misses,
+				modifiers: ModifierState.modifierIds(true),
+				failed: false,
+				quit: false
+			},
+			judgeable: standardScore.total,
+			multiplier: standardMultiplier,
+			unranked: standardRunUnranked(),
+			previousBest: previousBest,
+			previousRank: previousRank,
+			hitOffsets: standardHitOffsets.copy(),
+			storyMode: isStoryMode
+		};
+	}
+
+	function standardDetail():StandardScore.ScoreDetail {
+		return {
+			version: StandardScore.SCORING_VERSION,
+			migrated: false,
+			rank: standardRankName(),
+			sicks: standardScore.sicks,
+			goods: standardScore.goods,
+			bads: standardScore.bads,
+			shits: standardScore.shits,
+			misses: standardScore.misses,
+			maxCombo: standardScore.maxCombo,
+			judgeable: standardScore.total,
+			multiplier: standardMultiplier,
+			modifiers: ModifierState.modifierIds(true)
+		};
 	}
 
 	function updateAccuracy() {
@@ -28468,12 +28739,11 @@ void main(void) {
 		if (!event.cancelled) {
 			if (!note.isSustainNote) {
 				if (event.countScore) {
-					songScore += event.score;
 					songScoreDef += event.score;
 					trueScore += event.score;
-					setAllHaxeVar('songScore', songScore);
 					setAllHaxeVar('songScoreDef', songScoreDef);
 				}
+				if (player) standardJudge(note, StandardScore.judgementFromName(event.rating, event.accuracy == null ? -1 : event.accuracy));
 				if (event.accuracy != null) updateCodenameNoteAccuracy(event.accuracy);
 				if (event.misses) {
 					combo = 0;
@@ -28489,6 +28759,7 @@ void main(void) {
 					ratingNum++;
 				}
 			}
+			if (note.isSustainNote && player) standardHoldPiece(note, true);
 			applyCodenameNoteHealth(line, event.healthGain);
 			if (!event.animCancelled && event.characters != null) {
 				for (actor in event.characters) if (actor != null) {
@@ -28572,9 +28843,8 @@ void main(void) {
 			else gf.playAnim(event.gfSadAnim, event.forceGfAnim);
 		}
 		if (event.resetCombo) {combo = 0; setAllHaxeVar('combo', combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));}
-		songScore += event.score;
 		misses += event.misses;
-		setAllHaxeVar('songScore', songScore);
+		standardMiss(note);
 		setAllHaxeVar('misses', misses);
 		if (event.playMissSound) {
 			var soundAsset:Dynamic = event.missSound;
@@ -28619,7 +28889,7 @@ void main(void) {
 				var previousCombo = combo;
 				combo = 0;
 				applySourceMissHealth(note, playerOne, true);
-				countSourceMiss();
+				countSourceMiss(note);
 				sourceMissAnimation(direction, note, actingOn);
 				reactGirlfriendToComboBreak(previousCombo, sourceMissPerformer(note, actingOn), false);
 				setSourceVocalVolume('player', 0);
@@ -28649,7 +28919,7 @@ void main(void) {
 				// The kill mutes the player's track itself before the death check.
 				if (instakillOnMiss) killOnSourceMiss(false);
 				else setSourceVocalVolume('player', 0);
-				countSourceMiss();
+				countSourceMiss(note);
 			}
 			// NV's noteMissPress broadcast is owned by the key-input router once
 			// all affected fields have delivered their local handlers.
@@ -28873,10 +29143,7 @@ void main(void) {
 			updateAccuracy();
 			if (missOutcome == null || missOutcome.isComboBreak) combo = 0;
 			setAllHaxeVar("combo", combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
-			if (!practiceMode && !demoMode)
-				songScore += missOutcome != null && missOutcome.scoreChanged()
-					? missOutcome.score : -GameplayConstants.SCORE_MISS_PENALTY;
-			setAllHaxeVar('songScore', songScore);
+			standardMiss(note);
 			trueScore -= 5;
 			if (instakillOnMiss) health = 0;
 			notifyPsychRatingChange(true);
@@ -29154,6 +29421,7 @@ void main(void) {
 			activeHitOutcome = hitOutcome;
 			activeHitOutcomeNote = note;
 			if (!sourceLedger || sourcePopup) popUpScore(note.strumTime, note, playerOne);
+			if (note.isSustainNote) standardHoldPiece(note, true);
 			activeHitOutcome = null;
 			activeHitOutcomeNote = null;
 			applyHitOutcomeChanges(note, playerOne, hitOutcome);
@@ -29343,10 +29611,8 @@ void main(void) {
 		}
 		if (outcome.scoreChanged()) {
 			var extra = outcome.scoreDelta();
-			songScore += extra;
 			songScoreDef += extra;
 			trueScore += extra;
-			setAllHaxeVar('songScore', songScore);
 			setAllHaxeVar('songScoreDef', songScoreDef);
 		}
 		// A hit re-rated to the top rating already got its splash from the popup.
@@ -29650,6 +29916,7 @@ void main(void) {
 			popUpScore(note.strumTime, note, playerOne, false, field);
 		}
 		if (!accepted) return;
+		if (note.isSustainNote) standardHoldPiece(note, true);
 
 		if (hxcStrumlineNoteSurface != null) hxcStrumlineNoteSurface.hit(note);
 		var observerPlayer = nightmareVisionLegacyFieldCameras ? playerOne : field.playerControls;
@@ -30090,9 +30357,9 @@ void main(void) {
 			+ " ("
 			+ storyDifficultyText
 			+ ") "
-			+ Ratings.GenerateLetterRank(accuracy),
+			+ Ratings.GenerateLetterRank(standardAccuracyPercent()),
 			"\nAcc: "
-			+ HelperFunctions.truncateFloat(accuracy, 2)
+			+ HelperFunctions.truncateFloat(standardAccuracyPercent(), 2)
 			+ "% | Score: "
 			+ songScore
 			+ " | Misses: "
@@ -30155,6 +30422,12 @@ void main(void) {
 
 	override public function destroy() {
 		RuntimeSongExitProbe.mark("destroy-begin");
+		#if sys
+		var songReads = multiplayer.MpOverlay.stopRecording();
+		if (songReads.length > 0 && currentSongStorageFolder() != '')
+			multiplayer.MpCache.rememberSongFiles(currentSongStorageFolder(), songReads);
+		#end
+		if (multiplayer.MpHooks.current != null) multiplayer.MpHooks.current.release();
 		SongLoadingScreen.beginWork('cleanup', 7, 0.05, 0.5);
 		// The instrumental outlives the song. Hand it back to its own sound
 		// group so a song that turned itself down cannot quieten the menus.

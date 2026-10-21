@@ -93,7 +93,9 @@ class SongInfoPanel extends FlxTypedSpriteGroup<FlxSprite> {
         curDiff = diff;
         scoreTxt.text = "Score: " + Highscore.getScore(song, diff, displaying);
         //accuracyTxt.text = "Accuracy: " + CoolUtil.truncateFloat(Highscore.getAccuracy(song, diff, displaying) * 100, 2);
-		scoreTxt.text += '\n' + "Accuracy: " + CoolUtil.truncateFloat(Highscore.getAccuracy(song, diff, displaying) * 100, 2);
+		var savedRank = Highscore.getRank(song, diff, displaying);
+		scoreTxt.text += '\n' + "Accuracy: " + CoolUtil.truncateFloat(Highscore.getAccuracy(song, diff, displaying) * 100, 2)
+			+ (savedRank == '' ? '' : ' (' + savedRank + ')');
         var fcUse:String = "FC Level:";
         switch (cast (Highscore.getFCLevel(song, diff, displaying) : FCLevel)) {
             case Sick:

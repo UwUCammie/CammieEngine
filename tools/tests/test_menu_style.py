@@ -300,7 +300,7 @@ class ScreensUseTheSharedStyleTest(unittest.TestCase):
         for route in ('new StoryMenuState()', 'FreeplayState.openHostLibrary()', 'new FreeplayState()', 'new SaveDataState()',
                       'new ImportSettingsState()', 'new TitleState()', 'new CodenameImportedModsState()'):
             self.assertIn(route, menu)
-        self.assertIn("'story mode', 'freeplay', 'donate', 'options'#if sys, 'import'#end", menu)
+        self.assertIn("'story mode', 'freeplay'#if sys, 'online'#end, 'donate', 'options'#if sys, 'import'#end", menu)
         for hxc in ('hxcMountMenuOverlay', 'hxcClearMenuOverlay', 'hxcAddCostumeMenuItem', 'updateHxcMenuOverlay'):
             self.assertIn(hxc, menu)
         self.assertNotIn('FNF_main_menu_assets', menu)

@@ -338,6 +338,7 @@ class ScriptCallbackResult { public static inline var STOP:String='PSY_STOP'; }
 
 class PlayState {
  public static var instance:PlayState;
+ public static function exitToMenu(?skipTransition:Bool, ?menuMusic:Bool):Void {}
  public static var isStoryMode:Bool=false;
  public static var SONG:Dynamic=null;
  public var sourceGameOverSettings:SourceGameOverSettings;

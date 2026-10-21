@@ -115,6 +115,10 @@ class FNFAssets {
 		var normalized = Path.normalize(id);
 		if (normalized == null || normalized == '')
 			return null;
+		// A multiplayer song's files resolve to the cached copies; lime opens the path it is given.
+		var mounted = multiplayer.MpOverlay.read(normalized);
+		if (mounted != normalized)
+			return mounted;
 		var absolute = Path.normalize(FileSystem.absolutePath(normalized));
 		var root = Path.normalize(FileSystem.absolutePath(Main.cwd == null ? Sys.getCwd() : Main.cwd));
 		if (absolute != root && !absolute.startsWith(root + '/'))

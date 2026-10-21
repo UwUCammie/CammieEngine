@@ -74,12 +74,15 @@ class SourceCountdownControlsTest(unittest.TestCase):
         countdown = method(self.play, 'public function startCountdown():Void')
         # The wait sits between the scripts allowing the countdown and it starting.
         clock = countdown.index('var beginCountdownClock = function():Void {')
-        delay = countdown.index('if (countdownDelay > 0) {')
+        delay = countdown.index('var startDelay = countdownDelay;')
         self.assertLess(countdown.index('if (sourceCountdownStopped)'), clock)
         self.assertLess(clock, countdown.index('startedCountdown = true;'))
         self.assertLess(countdown.index('startedCountdown = true;'), delay)
         waiting = countdown[delay:]
-        self.assertIn('new FlxTimer().start(countdownDelay,', waiting)
+        # A lobby song may wait longer, so its song position 0 lands on the server's start time.
+        self.assertIn('startDelay = Math.max(startDelay, multiplayer.MpHooks.current.countdownWait(', waiting)
+        self.assertIn('if (startDelay > 0) {', waiting)
+        self.assertIn('new FlxTimer().start(startDelay,', waiting)
         self.assertIn('if (!startedCountdown) beginCountdownClock();', waiting)
         # Asking again during the wait stops before anything is set up twice.
         waiting_guard = countdown.index('if (countdownDelayTimer != null && !countdownDelayTimer.finished) return;')

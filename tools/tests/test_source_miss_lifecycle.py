@@ -123,7 +123,7 @@ class SourceMissLifecycleTest(unittest.TestCase):
   host.sourceNoteMiss(2, true, note, host.boyfriend, hxcEvent);
 
   check(host.health == 0.9, 'Psych miss applies source note health');
-  check(host.misses == 1 && host.songScore == -10 && host.totalPlayed == 1,
+  check(host.misses == 1 && host.songScore == 0 && host.totalPlayed == 1,
    'Psych miss updates score and denominator once');
   check(host.combo == 0 && host.accuracy == 0, 'Psych miss clears combo and refreshes accuracy');
   check(host.boyfriend.played.join('|') == 'singUPmiss-alt',
@@ -137,7 +137,7 @@ class SourceMissLifecycleTest(unittest.TestCase):
    'the shared HXC event reaches the final source callback while native Psych callbacks are skipped');
 
   before(host.events, 'death', 'health:0.9', 'instakill check precedes health application');
-  before(host.events, 'health:0.9', 'songScore:-10', 'health precedes miss bookkeeping');
+  before(host.events, 'health:0.9', 'standardMiss', 'health precedes miss bookkeeping');
   before(host.events, 'totalPlayed:1', 'rating:true', 'ledger bookkeeping precedes rating notification');
   before(host.events, 'rating:true', 'anim:boyfriend:singUPmiss-alt', 'rating precedes miss animation');
   before(host.events, 'anim:boyfriend:singUPmiss-alt', 'vocal:player:0#2', 'ordinary player mute follows animation');
@@ -180,7 +180,7 @@ class SourceMissLifecycleTest(unittest.TestCase):
    'eligible missed head marks its live tail state and pieces late');
   check(Math.abs(note.alphaMod - 0.3) < 0.0001, 'NV miss fades the live note');
   check(host.gf.played.join('|') == 'sad', 'counted high-combo miss triggers timed GF sadness');
-  check(host.combo == 0 && host.misses == 1 && host.songScore == -10 && host.totalPlayed == 1,
+  check(host.combo == 0 && host.misses == 1 && host.songScore == 0 && host.totalPlayed == 1,
    'NV counted miss resets combo and updates score ledger once');
   check(host.vocalTracks.playerWrites == 1 && host.deathChecks == 1 && host.ratingChanges == 1,
    'NV counted miss mutes, checks death, and refreshes rating once');
@@ -193,7 +193,7 @@ class SourceMissLifecycleTest(unittest.TestCase):
   before(host.events, 'anim:gf:sad-duration', 'combo:0', 'GF sadness precedes combo reset');
   before(host.events, 'combo:0', 'vocal:player:0#1', 'combo reset precedes player vocal mute');
   before(host.events, 'vocal:player:0#1', 'death', 'vocal mute precedes instakill check');
-  before(host.events, 'death', 'songScore:-10', 'instakill check precedes counted ledger miss');
+  before(host.events, 'death', 'standardMiss', 'instakill check precedes counted ledger miss');
   before(host.events, 'totalPlayed:1', 'rating:true', 'ledger update precedes rating notification');
  }
 '''
@@ -247,7 +247,7 @@ class SourceMissLifecycleTest(unittest.TestCase):
   check(host.boyfriend.played.length == 0 && host.enemy.played.length == 0,
    'stunned NV empty press skips miss animation');
   check(host.events.indexOf('sound:miss') < 0, 'stunned NV empty press skips miss sound');
-  check(host.misses == 1 && host.totalPlayed == 1 && host.songScore == -10,
+  check(host.misses == 1 && host.totalPlayed == 1 && host.songScore == 0,
    'stunned press still follows the state-level counted-miss route');
   check(host.deathChecks == 1 && host.ratingChanges == 1,
    'counted stunned press still runs instakill check and rating update');
@@ -516,6 +516,9 @@ class PlayState {
  public function invalidateSourceInputNote(note:Note):Void events.push('invalidate');
  public function doDeathCheck(?force:Bool=false):Void {deathChecks++; events.push('death');}
  public function notifyPsychRatingChange(?missed:Bool=false,?scoreBop:Bool=true):Void {ratingChanges++; events.push('rating:' + missed);}
+ function standardMiss(n:Dynamic):Void events.push('standardMiss');
+ function standardJudge(n:Dynamic,j:Int):Void {}
+ function standardHoldPiece(n:Dynamic,h:Bool):Void {}
  public function dispatchPsychCompiledStage(name:String,args:Array<Dynamic>):Void events.push('stage:' + name);
  public function setAllHaxeVar(name:String,value:Dynamic):Void events.push('global:' + name);
  public function callHscript(name:String,args:Array<Dynamic>,family:String='Scripts'):Dynamic {events.push('one:' + name); return null;}

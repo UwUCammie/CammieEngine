@@ -104,6 +104,8 @@ class DemoTest {
  var missesLabel:String=null; var missesLabelCount:Int=0; var missesLabelBreaks:Bool=true;
  var paused=false; var startingSong=false; var endingSong=false;
  var psychGameOverTransitionPending=false;
+ // Online play reports nothing outside a lobby song.
+ function mpFrame():Void {}
  var startedCountdown=true; var inCutscene=false;
  var demoSongFinished=false; var songLength:Float=12000;
  var unspawnNotes:Array<Note>=[]; var notes=new Group(); var loaded=0;

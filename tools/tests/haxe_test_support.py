@@ -37,3 +37,23 @@ class FixturePath(type(Path())):
         # Python 3.12 compares paths through this property. Preserve native
         # equality/hashing with ordinary pathlib paths despite slash strings.
         return self._flavour.normcase(super().__str__())
+
+
+MULTIPLAYER_STUBS = {
+    'MpHooks.hx': 'package multiplayer;\nclass MpHooks { public static var current:Dynamic = null; }\n',
+    'MpOverlay.hx': ('package multiplayer;\nclass MpOverlay {\n public static var active:Bool = false;\n'
+                     ' public static function startRecording(root:String):Void {}\n'
+                     ' public static function stopRecording():Array<String> return [];\n'
+                     ' public static function read(path:String):String return path;\n}\n'),
+    'MpCache.hx': ('package multiplayer;\nclass MpCache {\n'
+                   ' public static function rememberSongFiles(folder:String, paths:Array<String>):Void {}\n}\n'),
+}
+
+
+def write_multiplayer_stubs(folder):
+    """Inert multiplayer seams for fixtures that compile lifted game code without source/:
+    no lobby song is active and nothing is mounted, as in every single-player run."""
+    target = Path(folder) / 'multiplayer'
+    target.mkdir(parents=True, exist_ok=True)
+    for name, text in MULTIPLAYER_STUBS.items():
+        (target / name).write_text(text, encoding='utf-8', newline='\n')

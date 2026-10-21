@@ -38,7 +38,7 @@ class MainMenuImportEntryTest(unittest.TestCase):
 
     def test_main_menu_lists_import_under_options_and_opens_the_importer(self):
         menu = (ROOT / 'source/MainMenuState.hx').read_text(encoding='utf-8')
-        declaration = re.search(r"var optionShit:Array<String> = \['story mode', 'freeplay', 'donate', 'options'#if sys, 'import'#end\];", menu)
+        declaration = re.search(r"var optionShit:Array<String> = \['story mode', 'freeplay'#if sys, 'online'#end, 'donate', 'options'#if sys, 'import'#end\];", menu)
         self.assertIsNotNone(declaration, 'import must directly follow options')
         self.assertIn("case 'import':", menu)
         self.assertIn('LoadingState.loadAndSwitchState(new ImportSettingsState());', menu)

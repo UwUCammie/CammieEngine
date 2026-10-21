@@ -60,6 +60,11 @@ class RuntimeSmokeState extends FlxState {
 			}
 			RuntimeSmokeHarness.markVisitSelection(selection);
 			PlayState.SONG = Song.loadFromJson(selection.chart, selection.songFolder);
+			if (request.openScreen != null && request.openScreen != '') {
+				RuntimeSmokeHarness.installStateReadback();
+				FlxG.switchState(RuntimeSmokeScreens.open(request.openScreen));
+				return;
+			}
 			if (request.ownerRoot != '') {
 				var manifestPath = 'assets/data/' + selection.songFolder + '/' + CompatScriptManifest.FILE_NAME;
 				if (!FNFAssets.exists(manifestPath))

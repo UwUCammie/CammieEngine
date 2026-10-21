@@ -7,15 +7,17 @@ ROOT=Path(__file__).resolve().parents[2]
 class PlayPerformanceTest(unittest.TestCase):
  def test_score_categories_keep_their_own_play(self):
   source=(ROOT/'source/Highscore.hx').read_text()
-  methods='\n'.join(extract_method(source,x) for x in ['public static function saveScore(', 'static function setPerformance(', 'public static function formatSong('])
+  methods='\n'.join(extract_method(source,x) for x in ['public static function saveScore(', 'static function setPerformance(', 'static function setDetail(', 'public static function formatSong('])
   methods += '\n' + source[source.index('public static function peekPerformance('):source.index('\n\tstatic function songFlush', source.index('public static function peekPerformance('))]
   stub='''import PlayPerformance.PlayPerformanceRecord;
+   import StandardScore.ScoreDetail;
    typedef Jury=Int; typedef FCLevel=Int;
    class Highscore {
     public static var songScores:Map<String,Int>=[];
     public static var songAccuracy:Map<String,Float>=[];
     public static var songFCLevels:Map<String,Int>=[];
     public static var songPerformance:Map<String,PlayPerformanceRecord>=[];
+    public static var songDetails:Map<String,ScoreDetail>=[];
     static function setScore(k:String,v:Int) songScores.set(k,v);
     static function setAccuracy(k:String,v:Float) songAccuracy.set(k,v);
     static function setFCLevel(k:String,v:Int) songFCLevels.set(k,v);
@@ -40,7 +42,7 @@ class PlayPerformanceTest(unittest.TestCase):
    }}'''
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as temp:
    files={'Highscore.hx':stub,'Main.hx':main,'OptionsHandler.hx':'class OptionsHandler {public static var options:Dynamic={};}',
-    'ModifierState.hx':'class ModifierState {public static var namedModifiers:Dynamic={};}',
+    'ModifierState.hx':'class ModifierState {public static var namedModifiers:Dynamic={}; public static function snapshot():Dynamic return {};}',
     'DifficultyIcons.hx':'class DifficultyIcons {public static function getEndingFP(i:Int):String return i==0?"":"-hard";}'}
    for name,text in files.items():Path(temp,name).write_text(text)
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',temp,'--run','Main'],cwd=ROOT,capture_output=True,text=True,timeout=60)

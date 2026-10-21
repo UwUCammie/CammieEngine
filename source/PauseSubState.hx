@@ -90,6 +90,8 @@ class PauseSubState extends MusicBeatSubstate {
 		if (PlayState.SONG.cutsceneType != 'none')
 			menuItems.insert(2, "Replay Cutscene");
 
+		// A lobby song cannot be restarted or changed; leaving ends the play.
+		if (multiplayer.MpHooks.current != null) menuItems = ['Resume', 'Exit to menu'];
 		makeMenuItems(menuItems);
 
 		songNameTxt = new FlxText(0, 20, FlxG.width - 10, FreeplaySongTitle.display(PlayState.SONG.song), 32);

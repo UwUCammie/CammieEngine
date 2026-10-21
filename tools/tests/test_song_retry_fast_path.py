@@ -304,6 +304,7 @@ class PlayState {
  function clearHxcVignette():Void {}
  function hxcClearRuntimeShaderBindings():Void {}
  static function skipNextSongTransition(skip:Bool):Void if (skip) Log.events.push('skip');
+ static function exitToMenu():Void Log.events.push('exit');
  @@METHODS@@
 }
 '''.replace('@@METHODS@@', '\n'.join(method(play, marker) for marker in (

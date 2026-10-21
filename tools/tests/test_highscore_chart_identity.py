@@ -36,7 +36,8 @@ class HighscoreChartIdentityTest(unittest.TestCase):
         end_for_real = method(playstate_source, "function endForReal()")
         self.assertIn("Highscore.saveScore(Highscore.scoreSongIdForChart(SONG)", end_for_real)
         self.assertIn("Song.attachFreeplayScoreSongId(PlayState.SONG, songName);", freeplay_source)
-        shared_launch = method(freeplay_source, "function launchSelection(")
+        self.assertIn("return openSelection(index, difficulty, false);", method(freeplay_source, "function launchSelection("))
+        shared_launch = method(freeplay_source, "function openSelection(")
         self.assertIn("var songName = songs[index].songName;", shared_launch)
         self.assertIn("Song.attachFreeplayScoreSongId(PlayState.SONG, songName);", shared_launch)
         self.assertIn("return launchSelection(curSelected, curDifficulty);", method(freeplay_source, "function hxcLaunchCurrentSelection("))
@@ -51,6 +52,8 @@ class HighscoreChartIdentityTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             work = Path(folder)
             (work / "PlayPerformance.hx").write_text((ROOT / "source/PlayPerformance.hx").read_text())
+            (work / "StandardScore.hx").write_text((ROOT / "source/StandardScore.hx").read_text())
+            (work / "ScoreMigration.hx").write_text((ROOT / "source/ScoreMigration.hx").read_text())
             highscore_methods = [
                 method(highscore_source, marker)
                 for marker in (
@@ -63,6 +66,8 @@ class HighscoreChartIdentityTest(unittest.TestCase):
                     "static function setJudge(",
                     "static function setOptionsUsed(",
                     "static function setModifiersUsed(",
+                    "static function setDetail(",
+                    "static function migrateScoring(",
                     "static function songFlush(",
                     "public static function formatSong(",
                     "public static function getScore(",
@@ -77,7 +82,10 @@ class HighscoreChartIdentityTest(unittest.TestCase):
                 for snippet in highscore_methods
             ]
             highscore_fixture = "\n".join([
+                "import StandardScore.ScoreDetail;",
                 "class Highscore {",
+                " public static var songDetails:Map<String,ScoreDetail> = new Map();",
+                " public static var songLegacyScores:Map<String,Int> = new Map();",
                 " public static var songPerformance:Map<String,PlayPerformance.PlayPerformanceRecord>=[];",
                 " public static var songScores:Map<String,Int> = new Map();",
                 " public static var songAccuracy:Map<String,Float> = new Map();",
@@ -112,11 +120,12 @@ class OptionsHandler {
             (work / "ModifierState.hx").write_text("""
 class ModifierState {
  public static var namedModifiers:Dynamic = {fixture:true};
+ public static function snapshot():Dynamic return {fixture:true};
 }
 """, newline="\n")
             (work / "Save.hx").write_text("""
 class Save {
- public var data:Dynamic = {};
+ public var data:Dynamic = {scoringVersion: StandardScore.SCORING_VERSION}; // a save TitleState already stamped
  public var flushCount:Int = 0;
  public function new() {}
  static function copyMap(source:Dynamic):Dynamic {

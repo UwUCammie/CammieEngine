@@ -207,7 +207,7 @@ class Main {
         stubs = {
             "OptionsHandler.hx": "package; typedef TOptions = Dynamic; class OptionsHandler { public static var options:TOptions = {}; }\n",
             "Judge.hx": "package; enum abstract Jury(Int) from Int to Int { var Judge1; var Judge2; var Judge3; var Judge4; var Judge5; var Judge6; var Judge7; var Judge8; var Judge9; var Classic; var Hard; } class Judge {}\n",
-            "ModifierState.hx": "package; class ModifierState { public static var namedModifiers:Dynamic = {}; }\n",
+            "ModifierState.hx": "package; class ModifierState { public static var namedModifiers:Dynamic = {}; public static function snapshot():Dynamic return {}; }\n",
             "DifficultyIcons.hx": "package; class DifficultyIcons { public static function getEndingFP(diff:Int):String return switch (diff) { case 0: '-easy'; case 1: ''; case 2: '-hard'; default: ''; }; }\n",
             "DifficultyManager.hx": "package; class DifficultyManager { public static function getDiffEnding(diff:Int):String return switch (diff) { case 0: '-Easy'; case 1: ''; case 2: '-Hard'; default: throw 'bad difficulty'; }; public static function getDifficultyNames():Array<String> return ['Easy', 'Normal', 'Hard']; }\n",
             "Song.hx": "package; class Song { public static function storageFolder(chart:Dynamic):String { var value = Reflect.field(chart, 'compatStorageFolder'); return value == null ? '' : Std.string(value).toLowerCase(); } }\n",

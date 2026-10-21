@@ -1,7 +1,7 @@
 """Read-only asset lookup batches preserve resolution without repeated directory scans."""
 from pathlib import Path
 import subprocess,tempfile,unittest
-from haxe_test_support import HAXE_COMMAND,FixturePath
+from haxe_test_support import HAXE_COMMAND,FixturePath,write_multiplayer_stubs
 from test_native_asset_resolution import extract_method
 ROOT=Path(__file__).resolve().parents[2]
 class AssetDirectoryBatchTest(unittest.TestCase):
@@ -60,5 +60,6 @@ class BatchFixture {
 '''.replace("RESOLVER",resolver)
         with tempfile.TemporaryDirectory() as folder:
             (FixturePath(folder)/"BatchFixture.hx").write_text(fixture,newline="\n")
+            write_multiplayer_stubs(folder)
             result=subprocess.run([*HAXE_COMMAND,"-cp",folder,"--run","BatchFixture"],cwd=ROOT,capture_output=True,text=True)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)

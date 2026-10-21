@@ -112,6 +112,8 @@ class GameOverSubstate extends MusicBeatSubstate {
 	var codenameGameOverCancelled:Bool = false;
 
 	public function new(player:Character) {
+		// Dying ends a lobby play at once, so the others are not kept waiting.
+		if (multiplayer.MpHooks.current != null) multiplayer.MpHooks.current.finishPlay(true);
 		var activePlayState = PlayState.instance;
 		var activeSourceMode = activePlayState == null ? 0 : activePlayState.sourceGameOverMode();
 		if (activeSourceMode == 0) instance = this;
@@ -876,6 +878,12 @@ class GameOverSubstate extends MusicBeatSubstate {
 	}
 
 	function endBullshit():Void {
+		// A lobby song is played once: retrying goes back to the lobby.
+		if (multiplayer.MpHooks.current != null && !isEnding) {
+			isEnding = true;
+			PlayState.exitToMenu();
+			return;
+		}
 		if (!isEnding) {
 			isEnding = true;
 			cancelDeathQuote();

@@ -45,7 +45,8 @@ class VictoryLoopState extends MusicBeatSubstate {
 	var accuracy:Float;
 	var accuracyTxt:FlxText;
 	var camHUD:FlxCamera;
-	public function new(x:Float, y:Float, gfX:Float, gfY:Float, accuracy:Float, score:Int, dadX:Float, dadY:Float) {
+	/** `rank` is the standardised rank of the run; `unranked` runs show Unranked and were not saved. */
+	public function new(x:Float, y:Float, gfX:Float, gfY:Float, accuracy:Float, score:Int, dadX:Float, dadY:Float, ?rank:String, unranked:Bool = false) {
 		//var background:FlxSprite = new FlxSprite(0,0).makeGraphic(FlxG.width, FlxG.height, FlxColor.PINK);
 		//add(background);
 		this.accuracy = accuracy;
@@ -69,9 +70,9 @@ class VictoryLoopState extends MusicBeatSubstate {
 		rating.updateHitbox();
 		retryTxt.alpha = 0.6;
 		// if you do this you are epic gamer
-		rating.text = Ratings.GenerateLetterRank(accuracy);
+		rating.text = unranked ? "Unranked" : (rank != null ? rank : Ratings.GenerateLetterRank(accuracy));
 		rating.addText();
-		accuracyTxt = new FlxText(10, rating.y + rating.height,0 , "ACCURACY: "+accuracy + "%");
+		accuracyTxt = new FlxText(10, rating.y + rating.height,0 , "ACCURACY: " + HelperFunctions.truncateFloat(accuracy, 2) + "%");
 		accuracyTxt.setFormat("assets/fonts/vcr.ttf", 26, FlxColor.WHITE, RIGHT);
 		super();
 
@@ -251,6 +252,7 @@ class VictoryLoopState extends MusicBeatSubstate {
 				PlayState.SONG = Song.loadFromJson(StoryMenuState.storySongPlaylist[0].toLowerCase() + diffic, StoryMenuState.storySongPlaylist[0].toLowerCase());
 				PlayState.campaignScore = 0;
 				PlayState.campaignAccuracy = 0;
+				PlayState.campaignUnranked = false;
 			}
 			new FlxTimer().start(0.7, function(tmr:FlxTimer) {
 				FlxG.camera.fade(FlxColor.BLACK, 2, false, function() {

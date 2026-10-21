@@ -121,6 +121,9 @@ class Main {
  }
  function displayCodenameNoteRating(event:CodenameNoteHitEvent):Void events.push('rating');
  function setAllHaxeVar(name:String,value:Dynamic):Void {}
+ function standardMiss(n:Dynamic):Void {}
+ function standardJudge(n:Dynamic,j:Int):Void {}
+ function standardHoldPiece(n:Dynamic,h:Bool):Void {}
  function setVocalsVolume(value:Float):Void vocalsVolume=value;
  function spawnCrossFade(actor:Character,note:Note):Void {}
  function codenameSelectedRoot():String return 'selected';
@@ -166,9 +169,10 @@ class Main {
    'hit mark/delete');
   check(events.join(',')=='scene:onPlayerHit,line:hit,all:onNoteHit,all:onPostNoteHit',
    'hit callback order');
-  check(songScore==123&&combo==1&&accuracyPressedNotes==1,'mutated scoring');
+  // A script's event.score no longer moves songScore: the standardised tracker owns it.
+  check(songScore==0&&combo==1&&accuracyPressedNotes==1,'mutated scoring');
   check(observed.length==1&&observed[0].name=='goodNoteHit'&&observed[0].rating=='bad'
-   &&observed[0].combo==1&&observed[0].score==123,'post-judgement observer data');
+   &&observed[0].combo==1&&observed[0].score==0,'post-judgement observer data');
   near(health,1.07,'mutated health');near(accuracy,50,'mutated accuracy');
   check(b.sings==1&&a.sings==0&&b.lastDirection==3&&b.lastForce==false,
    'mutated actor/direction/force');
@@ -177,7 +181,7 @@ class Main {
    'prevent visuals and receptor reset');
   events=[];var cancelled=new Note(line);
   callback=function(e,name) if(name=='onNoteHit') { e.cancel(); (cast e:CodenameNoteHitEvent).preventSustainClip(); }
-  check(hitCodenameNote(cancelled)&&songScore==123&&combo==1&&cancelled.destroyed,
+  check(hitCodenameNote(cancelled)&&songScore==0&&combo==1&&cancelled.destroyed,
    'cancelled hit default effects or deletion');
   check(events[events.length-1]=='all:onPostNoteHit','cancelled hit lost post callback');
   check(cancelled.noSustainClip,'cancelled event lost sustain-clip mutation');
@@ -192,17 +196,17 @@ class Main {
   };
   check(missCodenameNote(2,missed,true,line),'bound miss fell through');
   check(events.join(',')=='all:onPlayerMiss,line:miss','miss callback order');
-  check(songScore==106&&misses==2&&combo==0&&missed.alive,
+  check(songScore==0&&misses==2&&combo==0&&missed.alive,
    'mutated miss bookkeeping/deletion');
   check(observed[1].name=='noteMiss'&&observed[1].combo==0
-   &&observed[1].score==106,'miss observer saw stale score');
+   &&observed[1].score==0,'miss observer saw stale score');
   near(health,.98,'mutated miss health');near(vocalsVolume,1,'prevent mute');
   check(b.sings==1&&a.sings==0,'prevent miss animation');
   events=[];var cpu=new CodenameInputLine<Character>(0,0,false,false,false,{},null,null,
    function(_)return [a]);
   var cpuNote=new Note(cpu);cpuNote.mustPress=false;
   callback=null;check(hitCodenameNote(cpuNote),'CPU hit');
-  check(songScore==106&&combo==0&&events[0]=='scene:onDadHit','CPU score or hook');
+  check(songScore==0&&combo==0&&events[0]=='scene:onDadHit','CPU score or hook');
   check(observed[2].name=='opponentNoteHit','CPU hit reported to player observer');
   events=[];var canceledMiss=new Note(line);
   callback=function(e,name) if(name=='onPlayerMiss') e.cancel();
@@ -306,6 +310,8 @@ class StrumNote {public var psychSourceTiming:Bool=false;public var ID:Int;publi
   if(name=='static')staticRestores++;
  }
 }''', newline='\n')
+            # Standardised scoring is pure, so the judgement path uses the real module.
+            (Path(folder) / 'StandardScore.hx').write_text((ROOT / 'source/StandardScore.hx').read_text(encoding='utf-8'), encoding='utf-8')
             result = subprocess.run([
                 *HAXE_COMMAND, '-cp', str(ROOT / 'tools/tests/haxe_stubs'),
                 '-cp', folder, '-main', 'Main', '--interp',

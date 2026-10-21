@@ -1,5 +1,5 @@
 """Case-folded native asset lookup used by Windows-authored donor packs."""
-from haxe_test_support import HAXE_COMMAND
+from haxe_test_support import HAXE_COMMAND, write_multiplayer_stubs
 
 from pathlib import Path
 from haxe_test_support import FixturePath as Path
@@ -94,6 +94,7 @@ class FNFAssets {{
             install_import_io_dependencies(Path(folder))
             path = Path(folder) / "FNFAssets.hx"
             path.write_text(fixture, newline='\n')
+            write_multiplayer_stubs(folder)
             env = os.environ.copy()
             env["TMPDIR"] = str(ROOT / "tmp")
             result = subprocess.run(
@@ -164,6 +165,7 @@ class FNFAssets {{
             install_import_io_dependencies(Path(folder))
             path = Path(folder) / "FNFAssets.hx"
             path.write_text(fixture, newline='\n')
+            write_multiplayer_stubs(folder)
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder,
                  "-main", "FNFAssets", "--interp"],
@@ -222,6 +224,7 @@ class FNFAssets {{
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             install_import_io_dependencies(Path(folder))
             (Path(folder) / "FNFAssets.hx").write_text(fixture, newline='\n')
+            write_multiplayer_stubs(folder)
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder,
                  "-main", "FNFAssets", "--interp"],

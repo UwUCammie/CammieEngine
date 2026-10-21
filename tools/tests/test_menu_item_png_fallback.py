@@ -103,11 +103,12 @@ class Main {{
   public static var campaignScore:Int = 120;
   public static var campaignAccuracy:Float = 0.5;
   public static var campaignMisses:Int = 9;
+  public static var campaignUnranked:Bool = true;
 }
 class Main {
   static function main() {
 ''' + block + '''
-    if (PlayState.campaignScore != 0 || PlayState.campaignAccuracy != 0 || PlayState.campaignMisses != 0)
+    if (PlayState.campaignScore != 0 || PlayState.campaignAccuracy != 0 || PlayState.campaignMisses != 0 || PlayState.campaignUnranked)
       throw "a new week kept the last week's totals";
   }
 }''')

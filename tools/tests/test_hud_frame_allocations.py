@@ -77,6 +77,19 @@ OLD_WIFE = [
 ]
 
 
+def standard_letter_rank(accuracy: float, botplay: bool) -> str:
+    """The standardised rank GenerateLetterRank shows (StandardScore.rankFromPercent)."""
+    if accuracy == 0 or math.isnan(accuracy):
+        return "N/A"
+    if botplay:
+        return "BotPlay"
+    scaled = round(accuracy * 1000000)
+    for floor, letter in ((100000000, "SS"), (95000000, "S"), (90000000, "A"), (80000000, "B"), (70000000, "C")):
+        if scaled >= floor:
+            return letter
+    return "D"
+
+
 def old_letter_rank(accuracy: float, botplay: bool, fc_label: str) -> str:
     ranking = fc_label
     for test, letter in OLD_WIFE:
@@ -112,7 +125,7 @@ class HudFrameAllocationTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             return result.stdout
 
-    def test_letter_rank_matches_the_old_table_and_cached_score_line_tracks_inputs(self):
+    def test_letter_rank_is_standardised_and_cached_score_line_tracks_inputs(self):
         accuracies = [0, 100, 99.9935, 99.9934, 99.98, 99.975, 99.97, 99.96, 99.955, 99.95,
                       99.9, 99.85, 99.8, 99.75, 99.7, 99.5, 99, 98, 96.5, 96.49, 93, 92.9,
                       90, 89.99, 85, 84, 80, 79.5, 70, 69.9, 60, 59.99, 30, 0.01, -5]
@@ -162,6 +175,7 @@ __RANKS__
         stubs = {
             "Main.hx": main,
             "Ratings.hx": (ROOT / "source/Ratings.hx").read_text(encoding="utf-8"),
+            "StandardScore.hx": (ROOT / "source/StandardScore.hx").read_text(encoding="utf-8"),
             # Only truncateFloat: the rest of HelperFunctions reaches into PlayState.
             "HelperFunctions.hx": "class HelperFunctions {\n" + extract_method(
                 (ROOT / "source/HelperFunctions.hx").read_text(encoding="utf-8"),
@@ -170,21 +184,20 @@ __RANKS__
             "Highscore.hx": "enum abstract FCLevel(Int) from Int to Int { var None; var Clear; var Sdcb; var Bad; var Good; var Sick; }\nclass Highscore {}\n",
             "PlayState.hx": "class PlayState {\n public static var misses:Int=0; public static var goods:Int=0; public static var bads:Int=0;\n public static var shits:Int=0; public static var songScore:Int=0; public static var songScoreDef:Int=0;\n public static var nps:Int=0; public static var accuracy:Float=100;\n}\n",
             "Conductor.hx": "class Conductor { public static var safeFrames:Int=10; public static var safeZoneOffset:Float=166; }\n",
-            "ModifierState.hx": "class ModifierState { public static var namedModifiers:Dynamic={demo:{value:false}}; }\n",
+            "ModifierState.hx": "class ModifierState { public static var namedModifiers:Dynamic={demo:{value:false}}; public static function modifierIds(includeAmounts:Bool):Array<String> return []; }\n",
             "OptionsHandler.hx": "class OptionsHandler { public static var options:Dynamic={ignoreVile:false}; }\n",
             "Judge.hx": "class Judge { public static var sickJudge:Float=45; public static var goodJudge:Float=90; public static var badJudge:Float=135; public static var shitJudge:Float=166; public static var wayoffJudge:Float=203; }\n",
         }
         output = self.run_haxe(stubs).splitlines()
-        # With every count at zero the full combo label is (MFC).
         for (accuracy, botplay), line in zip(cases, output):
-            expected = old_letter_rank(float(accuracy), botplay, "(MFC)")
+            expected = standard_letter_rank(float(accuracy), botplay)
             self.assertEqual(line.split("|", 2)[2], expected, f"accuracy {accuracy} botplay {botplay}")
-        self.assertEqual(output[len(cases)], "NAN|" + old_letter_rank(math.nan, False, "(MFC)"))
+        self.assertEqual(output[len(cases)], "NAN|N/A")
         ratings = (ROOT / "source/Ratings.hx").read_text(encoding="utf-8")
         self.assertNotIn("wifeConditions", ratings)
         hud = self.play[self.play.index("\t\tif (disableScoreChange == false && !sourceScoreDisplayOwned())"):]
         self.assertTrue(hud.startswith("\t\tif (disableScoreChange == false && !sourceScoreDisplayOwned())\n"
-                                       "\t\t\tscoreTxt.text = Ratings.CalculateRankingCached(songScore, songScoreDef, nps, accuracy);"))
+                                       "\t\t\tscoreTxt.text = Ratings.CalculateRankingCached(songScore, songScoreDef, nps, standardAccuracyPercent());"))
 
     def test_smoke_gates_resolve_once_on_an_ordinary_launch(self):
         harness = (ROOT / "source/RuntimeSmokeHarness.hx").read_text(encoding="utf-8")

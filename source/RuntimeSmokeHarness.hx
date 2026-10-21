@@ -100,6 +100,11 @@ typedef RuntimeSmokeOptions = {
 	var noteRenderReadback:Bool;
 	/** Optional scene capture when a cutscene has no visible notes. */
 	var ?sceneRenderReadback:Bool;
+	/** --smoke-state-readback State:afterMs:path captures the window once that
+	    state has been current for afterMs, e.g. a menu or the results screen. */
+	var ?stateReadback:String;
+	/** --smoke-open results-solo|results-lobby|modifiers opens that screen with sample data. */
+	var ?openScreen:String;
 	/** PNG destination for --smoke-note-render-readback. */
 	var noteRenderPath:String;
 	/** Minimum song position before capturing the note framebuffer. */
@@ -410,6 +415,12 @@ class RuntimeSmokeHarness {
 				case '--smoke-note-render-readback':
 					smokeArgumentsSeen = true;
 					result.noteRenderReadback = true;
+				case '--smoke-open':
+					smokeArgumentsSeen = true;
+					result.openScreen = value == null ? '' : StringTools.trim(value);
+				case '--smoke-state-readback':
+					smokeArgumentsSeen = true;
+					result.stateReadback = value == null ? '' : StringTools.trim(value);
 				case '--smoke-scene-render-readback':
 					smokeArgumentsSeen = true;
 					result.noteRenderReadback = true;
@@ -967,6 +978,8 @@ class RuntimeSmokeHarness {
 			installCameraTrace();
 		if (config().noteRenderReadback)
 			installNoteRenderReadback();
+		if (config().stateReadback != null && config().stateReadback != '')
+			installStateReadback();
 		if (config().gameOverAfterMs >= 0)
 			installGameOverClock();
 		// Opt-in retry timing (--smoke-retry-after-ms); see RuntimeRetryProbe.
@@ -1845,6 +1858,13 @@ class RuntimeSmokeHarness {
 			fail('note-render-readback-timeout', 'Not every PlayState visit produced a visible-note framebuffer capture');
 			return;
 		}
+		if (config().stateReadback != null && config().stateReadback != '' && !stateReadbackDone) {
+			// Keep running until the requested screen has been captured, within a bound.
+			if (stateReadbackWaitFrom < 0) stateReadbackWaitFrom = nowMs();
+			if (nowMs() - stateReadbackWaitFrom > 30000)
+				fail('state-readback-timeout', 'The requested state was never shown long enough to capture');
+			return;
+		}
 		if (missingRequiredGameOver(config().gameOverAfterMs, config().gameOverTriggered)) {
 			fail('gameover-timeout', 'Configured game-over position did not trigger before the smoke window ended');
 			return;
@@ -2223,6 +2243,53 @@ class RuntimeSmokeHarness {
 			renderWindowStart = nowMs();
 			hitchTracker.beginRender(renderWindowStart);
 		}
+	}
+
+	static var stateReadbackDone:Bool = false;
+	static var stateReadbackSince:Float = -1;
+	static var stateReadbackWaitFrom:Float = -1;
+
+	static var stateReadbackInstalled:Bool = false;
+
+	/** Installed when PlayState is ready, or straight away for a --smoke-open screen. */
+	public static function installStateReadback():Void {
+		if (stateReadbackInstalled || !enabled() || config().stateReadback == null || config().stateReadback == '') return;
+		var window = Application.current == null ? null : Application.current.window;
+		if (window == null) return;
+		stateReadbackInstalled = true;
+		window.onRender.add(onStateReadbackRendered, false, -1000);
+	}
+
+	/** Capture the window once the configured state has been current long enough. */
+	static function onStateReadbackRendered(context:lime.graphics.RenderContext):Void {
+		if (stateReadbackDone || finished) return;
+		var parts = config().stateReadback.split(':');
+		var wanted = parts[0];
+		var after = parts.length > 1 ? Std.parseFloat(parts[1]) : 1000;
+		var path = parts.length > 2 ? parts.slice(2).join(':') : 'tmp/state-readback.png';
+		var current = Type.getClassName(Type.getClass(FlxG.state));
+		if (current != wanted) { stateReadbackSince = -1; return; }
+		if (stateReadbackSince < 0) stateReadbackSince = nowMs();
+		if (nowMs() - stateReadbackSince < (Math.isNaN(after) ? 1000 : after)) return;
+		#if sys
+		try {
+			var image = Application.current.window.readPixels();
+			if (image == null || image.width <= 0 || image.height <= 0)
+				throw 'state framebuffer readback returned an empty image';
+			var encoded = image.encode();
+			if (encoded == null || encoded.length == 0)
+				throw 'state framebuffer PNG encoding returned no bytes';
+			ensureParent(path);
+			File.saveBytes(path, encoded);
+			stateReadbackDone = true;
+			emit('state_render_readback', {state: current, path: Path.normalize(path), width: image.width,
+				height: image.height, shownMs: nowMs() - stateReadbackSince, muted: FlxG.sound.muted});
+			// A screen opened with --smoke-open has nothing else to wait for.
+			if (config().openScreen != null && config().openScreen != '') succeed();
+		} catch (error:Dynamic) {
+			fail('state-render-readback', Std.string(error));
+		}
+		#end
 	}
 
 	/** Capture the fully drawn native window once an actual gameplay note is on screen. */
